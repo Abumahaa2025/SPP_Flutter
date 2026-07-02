@@ -21,7 +21,7 @@ class LoginScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Align(alignment: Alignment.centerLeft, child: LuxuryBadge(label: 'PRO')),
+              const Align(alignment: Alignment.centerLeft, child: LuxuryBadge(label: 'SPP')),
               const Spacer(flex: 2),
               const Center(child: AiOrb(size: 150, luxury: true)),
               const SizedBox(height: 36),

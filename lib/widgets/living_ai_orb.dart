@@ -71,11 +71,11 @@ class _LivingAiOrbState extends State<LivingAiOrb> with TickerProviderStateMixin
                     shape: BoxShape.circle,
                     gradient: SweepGradient(
                       colors: [
-                        AppColors.aiBlue.withValues(alpha: haloOpacity),
-                        AppColors.aiPurple.withValues(alpha: haloOpacity * 0.9),
+                        AppColors.brandGlow.withValues(alpha: haloOpacity),
+                        AppColors.copper.withValues(alpha: haloOpacity * 0.6),
                         Colors.transparent,
-                        AppColors.aiIndigo.withValues(alpha: haloOpacity * 0.7),
-                        AppColors.aiBlue.withValues(alpha: haloOpacity),
+                        AppColors.brandLight.withValues(alpha: haloOpacity * 0.7),
+                        AppColors.brandGlow.withValues(alpha: haloOpacity),
                       ],
                     ),
                   ),
@@ -115,14 +115,14 @@ class _LivingAiOrbState extends State<LivingAiOrb> with TickerProviderStateMixin
                     gradient: AppColors.orbGradient,
                     boxShadow: [
                       BoxShadow(
-                        color: AppColors.aiPurple.withValues(alpha: 0.55),
-                        blurRadius: 55,
-                        spreadRadius: 8,
+                        color: AppColors.brandGlow.withValues(alpha: 0.5),
+                        blurRadius: 50,
+                        spreadRadius: 6,
                       ),
                       BoxShadow(
-                        color: AppColors.aiBlue.withValues(alpha: 0.35),
-                        blurRadius: 35,
-                        spreadRadius: 4,
+                        color: AppColors.copper.withValues(alpha: 0.2),
+                        blurRadius: 30,
+                        spreadRadius: 2,
                       ),
                     ],
                   ),

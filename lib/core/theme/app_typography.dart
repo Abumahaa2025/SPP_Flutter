@@ -46,7 +46,7 @@ class AppTypography {
         fontSize: 10,
         fontWeight: FontWeight.w700,
         letterSpacing: 2.8,
-        color: AppColors.gold,
+        color: AppColors.copper,
       );
 
   static TextStyle get metric => GoogleFonts.cairo(

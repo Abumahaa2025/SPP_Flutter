@@ -4,10 +4,10 @@ import 'package:provider/provider.dart';
 
 import '../core/theme/app_colors.dart';
 import '../core/theme/premium_icons.dart';
+import '../core/theme/spp_identity.dart';
 import '../providers/app_state.dart';
 import '../widgets/ai_orb.dart';
 import '../widgets/glass_card.dart';
-import '../widgets/reference_widgets.dart';
 
 class AiAssistantScreen extends StatefulWidget {
   const AiAssistantScreen({super.key});
@@ -21,10 +21,10 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
   final _scroll = ScrollController();
 
   static const _quickPrompts = [
-    'أرني أداء العقار هذا الشهر',
-    'توقع احتياجات الصيانة',
-    'حلل الإشعارات',
-    'من المتأخر بالسداد؟',
+    'ما قراري الأول اليوم؟',
+    'حلل صحة العقار',
+    'من يحتاج متابعة عاجلة؟',
+    'لخص الوارد الذكي',
   ];
 
   @override
@@ -40,7 +40,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
     _controller.clear();
     Future.delayed(const Duration(milliseconds: 100), () {
       if (_scroll.hasClients) {
-        _scroll.animateTo(_scroll.position.maxScrollExtent, duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+        _scroll.animateTo(_scroll.position.maxScrollExtent, duration: SppIdentity.normal, curve: SppIdentity.ease);
       }
     });
   }
@@ -51,86 +51,93 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
     final name = context.watch<AppState>().platform?.ownerName.split(' ').first ?? 'أحمد';
 
     return Scaffold(
-      extendBodyBehindAppBar: true,
+      backgroundColor: AppColors.bgDeep,
       appBar: AppBar(
-        title: const Text('المساعد الذكي'),
-        backgroundColor: Colors.transparent,
-        foregroundColor: Colors.white,
-      ),
-      body: Container(
-        decoration: BoxDecoration(gradient: AppColors.aiScreenGradient),
-        child: Column(
+        title: Column(
           children: [
-            const SizedBox(height: kToolbarHeight + 8),
-            const LivingAiOrb(size: 130, heroTag: 'main-orb', luxury: true),
-            const SizedBox(height: 20),
-            Text(
-              'مرحباً $name، كيف أساعدك اليوم؟',
-              style: const TextStyle(color: Colors.white, fontSize: 18, fontWeight: FontWeight.w700),
-            ),
-            const SizedBox(height: 24),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20),
-              child: GridView.count(
-                crossAxisCount: 2,
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                mainAxisSpacing: 10,
-                crossAxisSpacing: 10,
-                childAspectRatio: 2.2,
-                children: _quickPrompts
-                    .map((p) => GlassPromptPill(text: p, onTap: () => _send(p)))
-                    .toList(),
-              ),
-            ),
-            const SizedBox(height: 16),
-            if (chat.isNotEmpty)
-              Expanded(
-                child: ListView.builder(
-                  controller: _scroll,
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  itemCount: chat.length,
-                  itemBuilder: (context, i) => _Bubble(message: chat[i]),
-                ),
-              )
-            else
-              const Spacer(),
-            SafeArea(
-              top: false,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
-                child: GlassCard(
-                  blur: 20,
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  child: Row(
-                    children: [
-                      IconButton(
-                        onPressed: () {},
-                        icon: const Icon(PremiumIcons.mic, color: AppColors.accent),
-                      ),
-                      Expanded(
-                        child: TextField(
-                          controller: _controller,
-                          style: const TextStyle(color: Colors.white),
-                          onSubmitted: _send,
-                          decoration: InputDecoration(
-                            hintText: 'اسأل أي شيء...',
-                            hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.45)),
-                            border: InputBorder.none,
-                          ),
-                        ),
-                      ),
-                      IconButton(
-                        onPressed: () => _send(_controller.text),
-                        icon: const Icon(PremiumIcons.send, color: AppColors.accent),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
+            const Text('الموظف الذكي', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+            Text(SppIdentity.brandTagline, style: TextStyle(fontSize: 10, color: AppColors.textMuted, letterSpacing: 1)),
           ],
         ),
+        centerTitle: true,
+        backgroundColor: Colors.transparent,
+      ),
+      body: Column(
+        children: [
+          const SizedBox(height: 8),
+          const LivingAiOrb(size: 100, heroTag: 'main-orb', luxury: true),
+          const SizedBox(height: 16),
+          Text('مرحباً $name', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+          const SizedBox(height: 4),
+          const Text('أنا موظفك العقاري — اسألني أي شيء', style: TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+          const SizedBox(height: 16),
+          SizedBox(
+            height: 40,
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              itemCount: _quickPrompts.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 8),
+              itemBuilder: (context, i) => ActionChip(
+                label: Text(_quickPrompts[i], style: const TextStyle(fontSize: 12)),
+                onPressed: () => _send(_quickPrompts[i]),
+                backgroundColor: AppColors.bgElevated,
+                side: BorderSide(color: AppColors.brand.withValues(alpha: 0.3)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+              ),
+            ),
+          ),
+          const SizedBox(height: 12),
+          Expanded(
+            child: chat.isEmpty
+                ? Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(32),
+                      child: Text(
+                        'ابدأ المحادثة — سأحلل بيانات عقارك وأقترح الإجراء التالي.',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(color: AppColors.textMuted.withValues(alpha: 0.8), height: 1.6),
+                      ),
+                    ),
+                  )
+                : ListView.builder(
+                    controller: _scroll,
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    itemCount: chat.length,
+                    itemBuilder: (context, i) => _Bubble(message: chat[i]),
+                  ),
+          ),
+          SafeArea(
+            top: false,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+              child: GlassCard(
+                blur: 16,
+                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                child: Row(
+                  children: [
+                    IconButton(onPressed: () {}, icon: const Icon(PremiumIcons.mic, color: AppColors.brandGlow)),
+                    Expanded(
+                      child: TextField(
+                        controller: _controller,
+                        onSubmitted: _send,
+                        decoration: const InputDecoration(
+                          hintText: 'اسأل موظفك العقاري...',
+                          border: InputBorder.none,
+                          contentPadding: EdgeInsets.symmetric(horizontal: 8),
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      onPressed: () => _send(_controller.text),
+                      icon: const Icon(PremiumIcons.send, color: AppColors.brandGlow),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -143,19 +150,29 @@ class _Bubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isUser = message.isUser as bool;
+    final isInsight = message.isInsight == true;
     return Align(
       alignment: isUser ? Alignment.centerLeft : Alignment.centerRight,
       child: Container(
-        margin: const EdgeInsets.only(bottom: 8),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.8),
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.82),
         decoration: BoxDecoration(
-          color: isUser ? AppColors.aiIndigo.withValues(alpha: 0.35) : Colors.white.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+          color: isUser
+              ? AppColors.brand.withValues(alpha: 0.2)
+              : isInsight
+                  ? AppColors.copper.withValues(alpha: 0.12)
+                  : AppColors.bgElevated,
+          borderRadius: BorderRadius.only(
+            topLeft: const Radius.circular(18),
+            topRight: const Radius.circular(18),
+            bottomLeft: Radius.circular(isUser ? 4 : 18),
+            bottomRight: Radius.circular(isUser ? 18 : 4),
+          ),
+          border: Border.all(color: isInsight ? AppColors.copper.withValues(alpha: 0.3) : AppColors.borderSubtle),
         ),
-        child: Text(message.text as String, style: const TextStyle(color: Colors.white, height: 1.45)),
+        child: Text(message.text as String, style: const TextStyle(height: 1.55)),
       ),
-    ).animate().fadeIn(duration: 250.ms);
+    ).animate().fadeIn(duration: SppIdentity.fast);
   }
 }

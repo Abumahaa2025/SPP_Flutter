@@ -1,7 +1,7 @@
 name: spp_flutter
 description: "تميّز العقار الذكي — منصة ذكاء اصطناعي لإدارة العقارات"
 publish_to: 'none'
-version: 2.2.0+4
+version: 2.3.0+5
 
 environment:
   sdk: ^3.12.2
