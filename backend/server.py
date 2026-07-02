@@ -429,11 +429,22 @@ async def chat(req: ChatRequest):
     from emergentintegrations.llm.chat import UserMessage
     if not EMERGENT_LLM_KEY:
         raise HTTPException(500, "AI key not configured")
-    chat_obj = get_llm_chat(session_id=req.session_id)
-    reply = await chat_obj.send_message(UserMessage(text=req.text))
     now = _iso(datetime.now(timezone.utc))
-    msg = {"id": str(uuid.uuid4()), "session_id": req.session_id, "role": "assistant", "text": reply, "at": now}
     user_msg = {"id": str(uuid.uuid4()), "session_id": req.session_id, "role": "user", "text": req.text, "at": now}
+    try:
+        chat_obj = get_llm_chat(session_id=req.session_id)
+        reply = await chat_obj.send_message(UserMessage(text=req.text))
+    except Exception as e:
+        msg = str(e).lower()
+        if "budget" in msg or "quota" in msg:
+            reply = (
+                "The AI Employee is momentarily paused — your Emergent Universal Key "
+                "balance has run out. Top up in Profile → Universal Key → Add Balance "
+                "and I'll be right back."
+            )
+        else:
+            reply = "I couldn't reach the Brain just now. Try again in a moment."
+    msg = {"id": str(uuid.uuid4()), "session_id": req.session_id, "role": "assistant", "text": reply, "at": now}
     await db.chat_messages.insert_many([dict(user_msg), dict(msg)])
     return {"reply": reply, "at": now}
 

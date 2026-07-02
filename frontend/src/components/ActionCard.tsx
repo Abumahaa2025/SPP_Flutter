@@ -1,66 +1,77 @@
 import React from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
-import { Ionicons } from '@expo/vector-icons';
+import { Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { GlassCard } from './GlassCard';
 import { colors, radius, spacing, typography } from '../theme';
 import type { DecisionT } from '../api/client';
 
-const kindIcon: Record<string, keyof typeof Ionicons.glyphMap> = {
-  maintenance: 'construct-outline',
-  financial: 'trending-up-outline',
-  tenant: 'people-outline',
-  opportunity: 'sparkles-outline',
+const kindIcon: Record<string, keyof typeof Feather.glyphMap> = {
+  maintenance: 'tool',
+  financial: 'trending-up',
+  tenant: 'users',
+  opportunity: 'star',
 };
 
-const priorityMeta: Record<DecisionT['priority'], { label: string; color: string; dot: string }> = {
-  critical: { label: 'Critical', color: colors.danger, dot: colors.danger },
-  high: { label: 'High priority', color: colors.gold, dot: colors.gold },
-  medium: { label: 'Recommended', color: colors.emerald, dot: colors.emerald },
-  low: { label: 'Watch', color: colors.textMuted, dot: colors.textMuted },
+const priorityMeta: Record<DecisionT['priority'], { label: string; color: string }> = {
+  critical: { label: 'Critical', color: colors.danger },
+  high: { label: 'High priority', color: colors.gold },
+  medium: { label: 'Recommended', color: colors.emerald },
+  low: { label: 'Watch', color: colors.textMuted },
 };
 
 type Props = {
   decision: DecisionT;
+  rank?: number;
   onAccept?: () => void;
   onDetails?: () => void;
 };
 
 /**
- * "What should I do next?" — a beautifully spaced action card.
- * Zero data density. Reasoning + impact + one clear next step.
+ * Linear/Stripe-inspired priority card.
+ * Ordinal rank + reasoning + impact + one clear gold CTA. Massive breathing.
  */
-export function ActionCard({ decision, onAccept, onDetails }: Props) {
+export function ActionCard({ decision, rank, onAccept, onDetails }: Props) {
   const meta = priorityMeta[decision.priority];
-  const iconName = kindIcon[decision.kind] ?? 'flash-outline';
+  const iconName = kindIcon[decision.kind] ?? 'zap';
+  const highPriority = decision.priority === 'critical' || decision.priority === 'high';
 
   return (
     <GlassCard
       testID={`decision-card-${decision.id}`}
-      edge={decision.priority === 'critical' || decision.priority === 'high' ? 'gold' : 'neutral'}
-      padding={22}
+      edge={highPriority ? 'gold' : 'neutral'}
+      padding={26}
       radiusToken="lg"
       style={{ marginBottom: spacing.md }}
     >
-      <View style={styles.header}>
-        <View style={[styles.iconChip, { borderColor: meta.color }]}>
-          <Ionicons name={iconName} size={18} color={meta.color} />
-        </View>
-        <View style={styles.priorityRow}>
-          <View style={[styles.dot, { backgroundColor: meta.dot }]} />
+      {/* Rank + priority pill */}
+      <View style={styles.topRow}>
+        {typeof rank === 'number' ? (
+          <Text style={styles.rank}>
+            {String(rank).padStart(2, '0')}
+          </Text>
+        ) : null}
+        <View style={styles.priorityPill}>
+          <View style={[styles.dot, { backgroundColor: meta.color }]} />
           <Text style={[styles.priorityLabel, { color: meta.color }]}>{meta.label}</Text>
         </View>
+        <View style={{ flex: 1 }} />
         <View style={styles.confidence}>
           <Text style={styles.confidenceValue}>{decision.confidence}</Text>
-          <Text style={styles.confidenceLabel}>confidence</Text>
+          <Text style={styles.confidenceLabel}>conf.</Text>
         </View>
+      </View>
+
+      {/* Kind icon */}
+      <View style={[styles.iconWrap, highPriority && styles.iconWrapGold]}>
+        <Feather name={iconName} size={16} color={highPriority ? colors.gold : colors.textDim} />
       </View>
 
       <Text style={styles.title}>{decision.title}</Text>
       <Text style={styles.reason}>{decision.reason}</Text>
 
       <View style={styles.impactRow}>
-        <Ionicons name="pulse-outline" size={14} color={colors.emerald} />
+        <View style={styles.impactBar} />
         <Text style={styles.impact}>{decision.impact}</Text>
       </View>
 
@@ -71,9 +82,21 @@ export function ActionCard({ decision, onAccept, onDetails }: Props) {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
             onAccept?.();
           }}
-          style={({ pressed }) => [styles.primaryBtn, pressed && { opacity: 0.85 }]}
+          style={({ pressed }) => [
+            styles.primaryBtn,
+            highPriority ? styles.primaryBtnGold : styles.primaryBtnGhost,
+            pressed && { opacity: 0.82, transform: [{ scale: 0.995 }] },
+          ]}
         >
-          <Text style={styles.primaryBtnText}>{decision.recommended_action}</Text>
+          <Text
+            style={[
+              styles.primaryBtnText,
+              highPriority ? styles.primaryBtnTextGold : styles.primaryBtnTextGhost,
+            ]}
+            numberOfLines={2}
+          >
+            {decision.recommended_action}
+          </Text>
         </Pressable>
 
         <Pressable
@@ -85,7 +108,7 @@ export function ActionCard({ decision, onAccept, onDetails }: Props) {
           hitSlop={12}
           style={styles.secondaryBtn}
         >
-          <Ionicons name="chevron-forward" size={18} color={colors.textDim} />
+          <Feather name="arrow-up-right" size={16} color={colors.textDim} />
         </Pressable>
       </View>
     </GlassCard>
@@ -93,48 +116,62 @@ export function ActionCard({ decision, onAccept, onDetails }: Props) {
 }
 
 const styles = StyleSheet.create({
-  header: {
+  topRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: spacing.md,
+    gap: 14,
   },
-  iconChip: {
-    width: 36, height: 36, borderRadius: radius.pill,
-    alignItems: 'center', justifyContent: 'center',
-    borderWidth: StyleSheet.hairlineWidth,
-    backgroundColor: 'rgba(255,255,255,0.03)',
-  },
-  priorityRow: {
-    marginLeft: spacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    flex: 1,
-  },
-  dot: { width: 6, height: 6, borderRadius: 3, marginRight: 8 },
-  priorityLabel: {
-    fontSize: typography.small,
+  rank: {
+    fontSize: 11,
+    color: colors.textSubtle,
+    letterSpacing: 2,
+    fontVariant: ['tabular-nums'],
     fontWeight: typography.weight.medium,
-    letterSpacing: 0.6,
+  },
+  priorityPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  dot: { width: 5, height: 5, borderRadius: 3 },
+  priorityLabel: {
+    fontSize: 11,
+    letterSpacing: 1.4,
     textTransform: 'uppercase',
+    fontWeight: typography.weight.medium,
   },
   confidence: { alignItems: 'flex-end' },
   confidenceValue: {
     color: colors.text,
-    fontSize: typography.cardTitle,
+    fontSize: 16,
     fontWeight: typography.weight.semibold,
     letterSpacing: typography.letter.tight,
+    fontVariant: ['tabular-nums'],
   },
   confidenceLabel: {
     color: colors.textSubtle,
-    fontSize: 10,
+    fontSize: 9.5,
     marginTop: -2,
-    letterSpacing: 0.8,
+    letterSpacing: 1.2,
     textTransform: 'uppercase',
   },
+  iconWrap: {
+    marginTop: spacing.lg,
+    width: 34, height: 34, borderRadius: radius.pill,
+    alignItems: 'center', justifyContent: 'center',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    backgroundColor: 'rgba(255,255,255,0.025)',
+  },
+  iconWrapGold: {
+    borderColor: colors.goldEdge,
+    backgroundColor: colors.goldSoft,
+  },
   title: {
+    marginTop: spacing.md,
     color: colors.text,
     fontSize: typography.cardTitle,
-    lineHeight: 24,
+    lineHeight: 25,
     fontWeight: typography.weight.semibold,
     letterSpacing: typography.letter.tight,
   },
@@ -148,38 +185,57 @@ const styles = StyleSheet.create({
     marginTop: spacing.md,
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 10,
+  },
+  impactBar: {
+    width: 2, height: 14,
+    backgroundColor: colors.emerald,
+    borderRadius: 1,
+    opacity: 0.85,
   },
   impact: {
+    flex: 1,
     color: colors.emerald,
-    fontSize: typography.small,
-    letterSpacing: 0.2,
+    fontSize: 13,
+    letterSpacing: 0.1,
+    lineHeight: 18,
   },
   actionRow: {
     marginTop: spacing.lg,
     flexDirection: 'row',
-    alignItems: 'center',
+    alignItems: 'stretch',
     gap: 10,
   },
   primaryBtn: {
     flex: 1,
-    height: 48,
+    minHeight: 46,
     borderRadius: radius.md,
-    backgroundColor: colors.goldSoft,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.goldEdge,
     alignItems: 'center',
     justifyContent: 'center',
     paddingHorizontal: spacing.md,
+    paddingVertical: 12,
+  },
+  primaryBtnGold: {
+    backgroundColor: colors.goldSoft,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.goldEdge,
+  },
+  primaryBtnGhost: {
+    backgroundColor: 'rgba(255,255,255,0.035)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
   },
   primaryBtnText: {
-    color: colors.gold,
-    fontSize: typography.body,
+    fontSize: 13.5,
     fontWeight: typography.weight.medium,
     letterSpacing: 0.2,
+    lineHeight: 18,
+    textAlign: 'center',
   },
+  primaryBtnTextGold: { color: colors.gold },
+  primaryBtnTextGhost: { color: colors.text },
   secondaryBtn: {
-    width: 48, height: 48,
+    width: 46,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,

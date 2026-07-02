@@ -1,0 +1,63 @@
+import React from 'react';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { Feather } from '@expo/vector-icons';
+import { useRouter } from 'expo-router';
+import * as Haptics from 'expo-haptics';
+import Animated, { FadeInDown } from 'react-native-reanimated';
+import { colors, spacing, typography, radius } from '../theme';
+
+type Props = {
+  eyebrow?: string;
+  title: string;
+  sub?: string;
+  showBack?: boolean;
+};
+
+/**
+ * Shared premium screen header — matches the AI Employee Home hero language.
+ * Eyebrow, large title, subhead. Optional back button.
+ */
+export function ScreenHeader({ eyebrow, title, sub, showBack }: Props) {
+  const router = useRouter();
+  return (
+    <Animated.View entering={FadeInDown.duration(700).delay(80)} style={styles.wrap}>
+      {showBack ? (
+        <Pressable
+          testID="header-back"
+          onPress={() => { Haptics.selectionAsync(); router.back(); }}
+          style={styles.back}
+          hitSlop={12}
+        >
+          <Feather name="arrow-left" size={16} color={colors.textDim} />
+        </Pressable>
+      ) : null}
+      {eyebrow ? <Text style={styles.eyebrow}>{eyebrow}</Text> : null}
+      <Text style={styles.title}>{title}</Text>
+      {sub ? <Text style={styles.sub}>{sub}</Text> : null}
+    </Animated.View>
+  );
+}
+
+const styles = StyleSheet.create({
+  wrap: { marginBottom: spacing.xl },
+  back: {
+    width: 40, height: 40, borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    marginBottom: spacing.lg,
+  },
+  eyebrow: {
+    color: colors.textMuted, fontSize: 11, letterSpacing: 2.4,
+    textTransform: 'uppercase', fontWeight: typography.weight.medium,
+    marginBottom: spacing.md,
+  },
+  title: {
+    color: colors.text, fontSize: typography.display, lineHeight: 40,
+    fontWeight: typography.weight.semibold, letterSpacing: -0.8,
+  },
+  sub: {
+    color: colors.textMuted, fontSize: typography.body, lineHeight: 22,
+    marginTop: spacing.md, maxWidth: '92%',
+  },
+});

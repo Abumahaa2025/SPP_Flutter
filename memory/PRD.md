@@ -3,60 +3,51 @@
 ## Vision
 An **AI Operating System for Real Estate**. The AI is the product; screens are windows into intelligence. Every screen answers "What should I do next?" instead of "What data do you want to see?"
 
-## Positioning
-Not a CRUD, not an ERP, not an admin dashboard. Feel closer to Apple / Linear / Arc / Stripe / Airbnb / Nothing OS / Tesla / Notion / Raycast / Revolut / Superhuman — but with its own unique visual identity.
+## Phase 1 — Design System + AI Employee Home ✅
+- Dark Luxury tokens (`/app/frontend/src/theme/tokens.ts`).
+- Component library (`GlassCard`, `HealthRing`, `ActionCard`, `AmbientBackground`, `LoadingOrb`, `GlassTabBar`, `StatPill`, `ScreenScaffold`, `ScreenHeader`).
+- AI Employee Home — cinematic hero, animated ring, ranked action cards, ambient scroll parallax, floating tab bar.
 
----
+## Phase 2 — Full platform ✅
 
-## v1 delivered (Phase 1 — Design System + AI Employee Home)
+### Navigation
+- **Bottom glass tab bar** — Home / Portfolio / Brain / Insights (max 4 tabs per design spec).
+- **Stack routes** for deeper screens: property/[id], maintenance, health, sensors, notifications, settings, onboarding.
+- Onboarding gated by AsyncStorage on first launch.
 
-### 1. SPP Design System (`/app/frontend/src/theme/tokens.ts`)
-- **Color** — Deep navy surfaces `#060B14`, dark-smoked glass, premium gold `#D4AF37`, soft emerald `#50C878`, muted ink scale, gold/emerald edges & glows.
-- **Typography** — strict scale (Display 32 / Title 22 / Card 18 / Body 15 / Small 13), Geist-style tight letter spacing.
-- **Spacing** — 8pt grid with generous breathing (16 / 24 / 32 / 48 / 64).
-- **Radius** — 10 / 18 / 26 / 34 / pill.
-- **Shadows** — layered card + gold + emerald glow tokens.
-- **Motion** — 180 / 320 / 520ms + 2.6s ambient breath.
+### Screens
+1. **AI Employee Home** (`/`) — daily briefing, health snapshot, ranked priorities, Ask the Brain, quick nav.
+2. **Portfolio** (`/portfolio`) — chip filters (All/Attention/Stable), premium property cards with health pill and KPIs.
+3. **Property Detail** (`/property/[id]`) — full-bleed hero, health + KPI row, tabbed Overview/Sensors/Timeline.
+4. **Unified Brain** (`/brain`) — GPT-5.2 chat with system prompt, suggested prompts, glass bubbles, gold send button, KeyboardAvoidingView.
+5. **Insights / Analytics** (`/insights`) — annualized revenue + composite health, revenue bar chart per property, occupancy + signal stats, AI activity summary.
+6. **Predictive Maintenance** (`/maintenance`) — cinematic timeline of upcoming interventions with reasoning, impact and confidence.
+7. **Property Health** (`/health`) — composite ring, ranked list of properties with in-line score bars.
+8. **Virtual Sensors** (`/sensors`) — status-filtered grid of premium sensor tiles.
+9. **Notifications** (`/notifications`) — priority-coded inbox.
+10. **Settings** (`/settings`) — Language (EN/AR + RTL), Appearance, Brain (model = GPT-5.2, Universal Key = Active).
+11. **Onboarding** (`/onboarding`) — 3-slide horizontal pager with breathing orb, gold CTA, page dots.
 
-### 2. Reusable Component Library (`/app/frontend/src/components/`)
-- `AmbientBackground` — cinematic navy + slow-breathing emerald/gold light-leak orbs.
-- `GlassCard` — dark smoked glassmorphism with inner sheen and gold/emerald edge variants.
-- `HealthRing` — SVG circular progress with animated gradient stroke + emerald glow.
-- `ActionCard` — priority-styled AI decision card with reasoning, impact, confidence, primary CTA.
-- `GlassTabBar` — floating 4-tab glass bar (Home · Portfolio · Brain · Insights).
-- `StatPill` — premium stat display.
-- `Pulse` — breathing emerald status dot.
+### Internationalization
+- English + Arabic with `useI18n()` hook (`/app/frontend/src/i18n/index.ts`).
+- Language persisted to AsyncStorage; RTL toggled via `I18nManager` (relaunch takes effect on native).
 
-### 3. AI Employee Home Screen (`/app/frontend/app/index.tsx`)
-- Ambient cinematic background with breathing gradient.
-- SPP brand row + live pulse + notification.
-- Hero greeting: time-aware salutation + "N actions need your attention." headline.
-- Portfolio Health card: animated ring + occupancy / annualized revenue / sensor alerts.
-- **Next Best Actions** — glassmorphic AI decision cards with recommended action CTAs.
-- Ask the Unified Brain entry card.
-- Floating glass tab bar (4 tabs).
-- Entrance staggered fade-ins, haptics on every interaction.
-
-### 4. Backend (`/app/backend/server.py`)
-- FastAPI + Motor + emergent-integrations.
-- Modular **AI layer** — currently `openai / gpt-5.2` via Emergent Universal Key; provider/model swappable in one place (`get_llm_chat`) without touching callers. Ready for Claude Sonnet 4.5 / Gemini 3 Pro.
-- Rich seed data on first launch — 4 properties, 4 tenants, 4 contracts, 4 AI decisions, timeline, virtual sensors, notifications.
+### Backend
+- FastAPI + Motor + MongoDB.
+- Modular AI layer — `get_llm_chat()` factory currently binds `openai/gpt-5.2` via **Emergent Universal LLM Key**. Provider/model swap in one line.
 - Endpoints: `/api/briefing`, `/api/properties[/{id}]`, `/api/decisions`, `/api/tenants`, `/api/contracts`, `/api/timeline`, `/api/sensors`, `/api/notifications`, `/api/chat`, `/api/chat/{session_id}`.
+- Chat degrades gracefully when the Universal Key budget is exhausted.
+- Rich seed data on first launch — 4 properties, 4 tenants, 4 contracts, 4 AI decisions, 6 sensors, timeline, notifications.
 
----
+### Design language reused across every screen
+- `AmbientBackground` with scroll-driven aurora parallax.
+- `ScreenScaffold` + `ScreenHeader` for consistent hero and safe area.
+- `GlassCard` with gold / emerald edges for hierarchy.
+- Feather icons throughout for minimal, consistent stroke weight.
+- Staggered fade-in-down entrances everywhere; haptics on every interaction.
 
-## Phase 2 — pending owner approval, then build
-1. **Unified Brain (chat screen)** — streaming GPT-5.2 chat with property memory grounding.
-2. **Property detail** — health, sensors, timeline, contracts (AI-augmented, not CRUD tables).
-3. **Portfolio** — cards feed, not a list.
-4. **AI Decisions** — full stack of decisions with filters.
-5. **Predictive Maintenance** — timeline of anticipated interventions.
-6. **Virtual Sensors** — beautiful sensor tiles + trends.
-7. **Analytics** — cinematic charts, not dashboards.
-8. **Notifications inbox**.
-9. **Onboarding** and premium loading/empty states everywhere.
-
-## Notes
-- Auth deferred to v2 per owner's directive.
-- Emergent Universal LLM Key used for GPT-5.2; swappable model architecture is in place.
-- No hardcoded URLs / secrets — everything reads from `.env`.
+## Deferred (v3)
+- Authentication (owner explicitly deferred for v1).
+- Push notifications (build-time only).
+- Real-time streaming for chat (backend factory supports it).
+- Home Assistant / IoT / WhatsApp bridges.

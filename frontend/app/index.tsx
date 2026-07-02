@@ -1,79 +1,148 @@
 import React, { useEffect, useState } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, RefreshControl, Pressable, ActivityIndicator,
+  View, Text, StyleSheet, RefreshControl, Pressable,
 } from 'react-native';
+import Animated, {
+  FadeInDown, FadeIn, useSharedValue, useAnimatedScrollHandler,
+  useAnimatedStyle, withRepeat, withTiming, Easing, interpolate, Extrapolation,
+} from 'react-native-reanimated';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Ionicons } from '@expo/vector-icons';
-import Animated, {
-  FadeInDown, FadeIn, useSharedValue, useAnimatedStyle,
-  withRepeat, withTiming, Easing,
-} from 'react-native-reanimated';
+import { Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { useRouter } from 'expo-router';
+import { storage } from '@/src/utils/storage';
 
 import { AmbientBackground } from '@/src/components/AmbientBackground';
 import { GlassCard } from '@/src/components/GlassCard';
 import { HealthRing } from '@/src/components/HealthRing';
 import { ActionCard } from '@/src/components/ActionCard';
 import { GlassTabBar } from '@/src/components/GlassTabBar';
-import { StatPill } from '@/src/components/StatPill';
+import { LoadingOrb } from '@/src/components/LoadingOrb';
 import { api, type Briefing } from '@/src/api/client';
 import { colors, spacing, typography, radius } from '@/src/theme';
 
+const AnimatedScroll = Animated.ScrollView;
+
+function QuickLink({ icon, label, onPress, testID }: { icon: keyof typeof Feather.glyphMap; label: string; onPress: () => void; testID: string }) {
+  return (
+    <Pressable
+      testID={testID}
+      onPress={() => { Haptics.selectionAsync(); onPress(); }}
+      style={quickLinkStyles.wrap}
+    >
+      <View style={quickLinkStyles.iconWrap}>
+        <Feather name={icon} size={14} color={colors.textDim} />
+      </View>
+      <Text style={quickLinkStyles.label}>{label}</Text>
+    </Pressable>
+  );
+}
+const quickLinkStyles = StyleSheet.create({
+  wrap: {
+    flex: 1, alignItems: 'center', gap: 8,
+    paddingVertical: 14,
+    borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border,
+    backgroundColor: 'rgba(255,255,255,0.02)',
+  },
+  iconWrap: {
+    width: 34, height: 34, borderRadius: 17,
+    borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.02)',
+  },
+  label: {
+    color: colors.textDim, fontSize: 11, letterSpacing: 1.4,
+    textTransform: 'uppercase', fontWeight: '500',
+  },
+});
+
 const fmtCurrency = (n: number) => {
-  if (n >= 1_000_000) return `AED ${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `AED ${(n / 1000).toFixed(0)}K`;
-  return `AED ${n}`;
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
+  if (n >= 1_000) return `${(n / 1000).toFixed(0)}K`;
+  return `${n}`;
 };
 
-/** Pulsing status dot — soft emerald breathing. */
-function Pulse() {
+/** Breathing status pulse — used in the brand row & Live chip */
+function Pulse({ color = colors.emerald, size = 6 }: { color?: string; size?: number }) {
   const p = useSharedValue(0);
   useEffect(() => {
     p.value = withRepeat(withTiming(1, { duration: 1600, easing: Easing.inOut(Easing.sin) }), -1, true);
   }, [p]);
-  const s = useAnimatedStyle(() => ({
-    opacity: 0.4 + p.value * 0.6,
-    transform: [{ scale: 1 + p.value * 0.35 }],
+  const halo = useAnimatedStyle(() => ({
+    opacity: 0.35 + p.value * 0.55,
+    transform: [{ scale: 1 + p.value * 0.6 }],
   }));
   return (
-    <View style={pulseStyles.wrap}>
-      <Animated.View style={[pulseStyles.halo, s]} />
-      <View style={pulseStyles.dot} />
+    <View style={{ width: size * 2.4, height: size * 2.4, alignItems: 'center', justifyContent: 'center' }}>
+      <Animated.View
+        style={[
+          {
+            position: 'absolute', width: size * 2.4, height: size * 2.4,
+            borderRadius: size * 1.2, backgroundColor: color, opacity: 0.35,
+          },
+          halo,
+        ]}
+      />
+      <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: color }} />
     </View>
   );
 }
-const pulseStyles = StyleSheet.create({
-  wrap: { width: 14, height: 14, alignItems: 'center', justifyContent: 'center' },
-  halo: {
-    position: 'absolute', width: 14, height: 14, borderRadius: 7,
-    backgroundColor: colors.emerald, opacity: 0.4,
-  },
-  dot: { width: 6, height: 6, borderRadius: 3, backgroundColor: colors.emerald },
-});
+
+/** Localized date eyebrow */
+function useDateEyebrow() {
+  const [label] = useState(() => {
+    const d = new Date();
+    const day = d.toLocaleDateString(undefined, { weekday: 'long' });
+    const date = d.toLocaleDateString(undefined, { month: 'long', day: 'numeric' });
+    return `${day} · ${date}`;
+  });
+  return label;
+}
 
 export default function Home() {
   const insets = useSafeAreaInsets();
+  const router = useRouter();
   const [briefing, setBriefing] = useState<Briefing | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState('home');
+  const dateEyebrow = useDateEyebrow();
+
+  const scrollY = useSharedValue(0);
+  const onScroll = useAnimatedScrollHandler((e) => {
+    scrollY.value = e.contentOffset.y;
+  });
+
+  // header collapses subtly on scroll
+  const heroAnim = useAnimatedStyle(() => {
+    const shift = interpolate(scrollY.value, [0, 220], [0, -20], Extrapolation.CLAMP);
+    const fade = interpolate(scrollY.value, [0, 180], [1, 0.85], Extrapolation.CLAMP);
+    return { opacity: fade, transform: [{ translateY: shift }] };
+  });
 
   const load = async () => {
     try {
-      setError(null);
       const b = await api.briefing();
       setBriefing(b);
-    } catch (e: any) {
-      setError(e?.message ?? 'Lost connection to SPP Brain.');
+    } catch {
+      // Silent — the ambient screen speaks for itself.
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    (async () => {
+      const done = await storage.getItem<boolean>('spp.onboarded', false);
+      if (!done) {
+        router.replace('/onboarding');
+        return;
+      }
+      load();
+    })();
+  }, []);
 
   const onRefresh = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
@@ -84,50 +153,56 @@ export default function Home() {
   return (
     <View style={styles.root} testID="ai-employee-home">
       <StatusBar style="light" />
-      <AmbientBackground />
+      <AmbientBackground scrollY={scrollY} />
 
       {loading && !briefing ? (
         <View style={styles.loading}>
-          <ActivityIndicator size="small" color={colors.gold} />
-          <Text style={styles.loadingText}>Waking up your AI Employee…</Text>
+          <LoadingOrb size={72} />
+          <Text style={styles.loadingText}>Preparing your briefing…</Text>
         </View>
       ) : (
-        <ScrollView
+        <AnimatedScroll
           testID="home-scroll"
+          onScroll={onScroll}
+          scrollEventThrottle={16}
           contentContainerStyle={[
             styles.scroll,
-            { paddingTop: insets.top + spacing.lg, paddingBottom: 140 },
+            { paddingTop: insets.top + spacing.xl, paddingBottom: 180 },
           ]}
           showsVerticalScrollIndicator={false}
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
               onRefresh={onRefresh}
-              tintColor={colors.emerald}
+              tintColor={colors.gold}
             />
           }
         >
-          {/* ------- Top row ------- */}
+          {/* ============ TOP BAR ============ */}
           <Animated.View entering={FadeIn.duration(500)} style={styles.topRow}>
             <View style={styles.brandRow}>
-              <Pulse />
-              <Text style={styles.brandName}>SPP</Text>
-              <Text style={styles.brandDivider}>·</Text>
-              <Text style={styles.brandSub}>AI Employee</Text>
+              <Pulse color={colors.emerald} />
+              <Text style={styles.brandName}>S P P</Text>
             </View>
             <Pressable
               testID="notifications-btn"
-              onPress={() => Haptics.selectionAsync()}
+              onPress={() => { Haptics.selectionAsync(); router.push('/notifications'); }}
               style={styles.iconButton}
               hitSlop={8}
             >
-              <Ionicons name="notifications-outline" size={18} color={colors.textDim} />
+              <Feather name="bell" size={16} color={colors.textDim} />
               <View style={styles.badge} />
             </Pressable>
           </Animated.View>
 
-          {/* ------- Hero greeting ------- */}
-          <Animated.View entering={FadeInDown.duration(600).delay(80)} style={styles.hero}>
+          {/* ============ HERO ============ */}
+          <Animated.View
+            entering={FadeInDown.duration(700).delay(80)}
+            style={[styles.hero, heroAnim]}
+          >
+            <Text style={styles.eyebrow} testID="date-eyebrow">
+              {dateEyebrow}
+            </Text>
             <Text style={styles.salutation} testID="salutation">
               {briefing?.salutation}, {briefing?.owner_name}.
             </Text>
@@ -139,83 +214,121 @@ export default function Home() {
             </Text>
           </Animated.View>
 
-          {/* ------- Health snapshot ------- */}
-          <Animated.View entering={FadeInDown.duration(650).delay(160)}>
-            <GlassCard padding={24} radiusToken="lg" edge="emerald" testID="health-card">
+          {/* ============ PORTFOLIO HEALTH ============ */}
+          <Animated.View entering={FadeInDown.duration(750).delay(200)}>
+            <Pressable
+              testID="health-card-btn"
+              onPress={() => { Haptics.selectionAsync(); router.push('/health'); }}
+            >
+              <GlassCard padding={28} radiusToken="lg" edge="emerald" testID="health-card">
               <View style={styles.healthTop}>
-                <View>
-                  <Text style={styles.eyebrow}>Portfolio Health</Text>
-                  <Text style={styles.healthCaption}>
-                    {briefing && briefing.avg_health >= 85
-                      ? 'Excellent condition.'
-                      : briefing && briefing.avg_health >= 70
-                        ? 'Stable with items to review.'
-                        : 'Needs your attention.'}
-                  </Text>
-                </View>
-                <View style={styles.brainChip}>
-                  <Ionicons name="sparkles" size={11} color={colors.gold} />
-                  <Text style={styles.brainChipText}>Live</Text>
+                <Text style={styles.sectionEyebrow}>Portfolio Health</Text>
+                <View style={styles.liveChip}>
+                  <Pulse color={colors.emerald} size={4} />
+                  <Text style={styles.liveChipText}>Live</Text>
                 </View>
               </View>
+
+              <Text style={styles.healthCaption}>
+                {briefing && briefing.avg_health >= 85
+                  ? 'Excellent condition.'
+                  : briefing && briefing.avg_health >= 70
+                    ? 'Stable · items to review.'
+                    : 'Attention required.'}
+              </Text>
 
               <View style={styles.healthBody}>
                 <HealthRing
                   score={briefing?.avg_health ?? 0}
                   label="Health"
-                  sublabel="last synced now"
+                  sublabel="synced just now"
                 />
                 <View style={styles.statsCol}>
-                  <StatPill
-                    label="Occupancy"
-                    value={`${briefing?.occupancy ?? 0}%`}
-                    hint={`${briefing?.properties_count ?? 0} properties`}
-                  />
-                  <View style={styles.divider} />
-                  <StatPill
-                    label="Annualized"
-                    value={fmtCurrency(briefing?.portfolio_annual_revenue ?? 0)}
-                    hint="projected revenue"
-                  />
-                  <View style={styles.divider} />
-                  <StatPill
-                    label="Alerts"
-                    value={`${briefing?.sensor_alerts.length ?? 0}`}
-                    hint="from virtual sensors"
-                  />
+                  <View>
+                    <Text style={styles.statLabel}>Occupancy</Text>
+                    <View style={styles.statValueRow}>
+                      <Text style={styles.statValue}>{briefing?.occupancy ?? 0}</Text>
+                      <Text style={styles.statUnit}>%</Text>
+                    </View>
+                    <Text style={styles.statHint}>{briefing?.properties_count ?? 0} properties</Text>
+                  </View>
+                  <View style={styles.hair} />
+                  <View>
+                    <Text style={styles.statLabel}>Annualized</Text>
+                    <View style={styles.statValueRow}>
+                      <Text style={styles.statUnitLead}>AED</Text>
+                      <Text style={styles.statValue}>
+                        {fmtCurrency(briefing?.portfolio_annual_revenue ?? 0)}
+                      </Text>
+                    </View>
+                    <Text style={styles.statHint}>projected revenue</Text>
+                  </View>
+                  <View style={styles.hair} />
+                  <View>
+                    <Text style={styles.statLabel}>Signal</Text>
+                    <View style={styles.statValueRow}>
+                      <Text style={styles.statValue}>{briefing?.sensor_alerts.length ?? 0}</Text>
+                      <Text style={styles.statUnit}>alerts</Text>
+                    </View>
+                    <Text style={styles.statHint}>from virtual sensors</Text>
+                  </View>
                 </View>
               </View>
             </GlassCard>
+            </Pressable>
           </Animated.View>
 
-          {/* ------- Section — Next best actions ------- */}
-          <Animated.View entering={FadeInDown.duration(650).delay(240)} style={styles.sectionHead}>
-            <Text style={styles.sectionTitle}>Next best actions</Text>
-            <Text style={styles.sectionSub}>Ranked by projected impact</Text>
+          {/* ============ TODAY'S PRIORITIES ============ */}
+          <Animated.View
+            entering={FadeInDown.duration(650).delay(320)}
+            style={styles.sectionHead}
+          >
+            <Pressable
+              testID="priorities-header-btn"
+              onPress={() => { Haptics.selectionAsync(); router.push('/maintenance'); }}
+              style={{ flex: 1 }}
+            >
+              <Text style={styles.sectionTitle}>Today&apos;s priorities</Text>
+              <Text style={styles.sectionSub}>Ranked by projected impact</Text>
+            </Pressable>
+            <View style={styles.countBadge}>
+              <Text style={styles.countBadgeText}>{briefing?.decisions.length ?? 0}</Text>
+            </View>
           </Animated.View>
 
           {briefing?.decisions.map((d, i) => (
             <Animated.View
               key={d.id}
-              entering={FadeInDown.duration(600).delay(280 + i * 90)}
+              entering={FadeInDown.duration(650).delay(360 + i * 90)}
             >
-              <ActionCard decision={d} onAccept={() => {}} onDetails={() => {}} />
+              <ActionCard
+                decision={d}
+                rank={i + 1}
+                onAccept={() => {
+                  if (d.kind === 'maintenance') router.push('/maintenance');
+                  else if (d.property_id) router.push(`/property/${d.property_id}` as any);
+                }}
+                onDetails={() => {
+                  if (d.property_id) router.push(`/property/${d.property_id}` as any);
+                  else router.push('/maintenance');
+                }}
+              />
             </Animated.View>
           ))}
 
-          {/* ------- Chat entry (Unified Brain) ------- */}
-          <Animated.View entering={FadeInDown.duration(650).delay(600)}>
+          {/* ============ ASK THE BRAIN ============ */}
+          <Animated.View entering={FadeInDown.duration(700).delay(720)} style={{ marginTop: spacing.md }}>
             <Pressable
               testID="open-brain-btn"
               onPress={() => {
                 Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                setTab('brain');
+                router.push('/brain');
               }}
             >
-              <GlassCard padding={18} radiusToken="lg">
+              <GlassCard padding={22} radiusToken="lg">
                 <View style={styles.brainRow}>
                   <View style={styles.brainIcon}>
-                    <Ionicons name="sparkles" size={18} color={colors.gold} />
+                    <Feather name="message-circle" size={18} color={colors.gold} />
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.brainTitle}>Ask the Unified Brain</Text>
@@ -223,22 +336,30 @@ export default function Home() {
                       &ldquo;Should I renew Marcus Reed at 4%?&rdquo;
                     </Text>
                   </View>
-                  <Ionicons name="arrow-forward" size={18} color={colors.textDim} />
+                  <View style={styles.brainArrow}>
+                    <Feather name="arrow-up-right" size={16} color={colors.textDim} />
+                  </View>
                 </View>
               </GlassCard>
             </Pressable>
           </Animated.View>
 
-          {error ? (
-            <View style={styles.errorRow} testID="error-banner">
-              <Ionicons name="cloud-offline-outline" size={14} color={colors.warning} />
-              <Text style={styles.errorText}>{error}</Text>
-            </View>
-          ) : null}
-        </ScrollView>
+          {/* ============ QUICK NAV ============ */}
+          <Animated.View entering={FadeIn.duration(700).delay(820)} style={styles.quickNav}>
+            <QuickLink icon="activity" label="Sensors" onPress={() => router.push('/sensors')} testID="qn-sensors" />
+            <QuickLink icon="heart" label="Health" onPress={() => router.push('/health')} testID="qn-health" />
+            <QuickLink icon="settings" label="Settings" onPress={() => router.push('/settings')} testID="qn-settings" />
+          </Animated.View>
+
+          {/* ============ FOOTER SIGNATURE ============ */}
+          <Animated.View entering={FadeIn.duration(700).delay(900)} style={styles.footer}>
+            <View style={styles.footerLine} />
+            <Text style={styles.footerText}>SPP · your AI employee, always working</Text>
+          </Animated.View>
+        </AnimatedScroll>
       )}
 
-      <GlassTabBar active={tab} onChange={setTab} />
+      <GlassTabBar />
     </View>
   );
 }
@@ -246,15 +367,17 @@ export default function Home() {
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
   loading: {
-    flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12,
+    flex: 1, alignItems: 'center', justifyContent: 'center', gap: 24,
   },
   loadingText: {
-    color: colors.textMuted, fontSize: typography.small, letterSpacing: 0.6,
+    color: colors.textMuted, fontSize: typography.small, letterSpacing: 1.2,
+    textTransform: 'uppercase', fontWeight: typography.weight.medium,
   },
   scroll: {
     paddingHorizontal: spacing.lg,
   },
 
+  // ---- Top bar ----
   topRow: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -264,15 +387,9 @@ const styles = StyleSheet.create({
   brandRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   brandName: {
     color: colors.text,
-    fontSize: typography.body,
-    letterSpacing: 3,
+    fontSize: 13,
+    letterSpacing: 6,
     fontWeight: typography.weight.semibold,
-  },
-  brandDivider: { color: colors.textSubtle, fontSize: 14, marginHorizontal: 2 },
-  brandSub: {
-    color: colors.textMuted,
-    fontSize: typography.small,
-    letterSpacing: 0.6,
   },
   iconButton: {
     width: 40, height: 40, borderRadius: radius.pill,
@@ -282,82 +399,134 @@ const styles = StyleSheet.create({
   },
   badge: {
     position: 'absolute', top: 10, right: 12,
-    width: 7, height: 7, borderRadius: 4, backgroundColor: colors.gold,
+    width: 6, height: 6, borderRadius: 3, backgroundColor: colors.gold,
+    shadowColor: colors.gold, shadowOpacity: 0.9, shadowRadius: 4,
+    shadowOffset: { width: 0, height: 0 },
   },
 
-  hero: {
-    marginBottom: spacing.xl,
+  // ---- Hero ----
+  hero: { marginBottom: spacing['2xl'] },
+  eyebrow: {
+    color: colors.textMuted,
+    fontSize: 11,
+    letterSpacing: 2.4,
+    textTransform: 'uppercase',
+    fontWeight: typography.weight.medium,
+    marginBottom: spacing.md,
   },
   salutation: {
     color: colors.textDim,
-    fontSize: typography.body,
-    letterSpacing: 0.2,
+    fontSize: typography.title,
+    letterSpacing: typography.letter.tight,
+    lineHeight: 28,
   },
   headline: {
     color: colors.text,
     fontSize: typography.display,
     lineHeight: 40,
     fontWeight: typography.weight.semibold,
-    letterSpacing: typography.letter.tight,
+    letterSpacing: -0.8,
     marginTop: 6,
   },
   subhead: {
     color: colors.textMuted,
     fontSize: typography.body,
     lineHeight: 22,
-    marginTop: 12,
+    marginTop: spacing.md,
+    maxWidth: '92%',
   },
 
+  // ---- Health card ----
   healthTop: {
     flexDirection: 'row',
     justifyContent: 'space-between',
-    alignItems: 'flex-start',
-    marginBottom: spacing.md,
-    gap: spacing.md,
+    alignItems: 'center',
+    marginBottom: spacing.sm,
   },
-  eyebrow: {
+  sectionEyebrow: {
     color: colors.textMuted,
-    fontSize: 11,
-    letterSpacing: 1.6,
+    fontSize: 10.5,
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+    fontWeight: typography.weight.medium,
+  },
+  liveChip: {
+    flexDirection: 'row', alignItems: 'center', gap: 6,
+    borderRadius: radius.pill,
+    paddingHorizontal: 10, paddingVertical: 4,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.emeraldEdge,
+    backgroundColor: colors.emeraldSoft,
+  },
+  liveChipText: {
+    color: colors.emerald,
+    fontSize: 10,
+    letterSpacing: 1.4,
     textTransform: 'uppercase',
     fontWeight: typography.weight.medium,
   },
   healthCaption: {
-    marginTop: 6,
     color: colors.text,
-    fontSize: typography.cardTitle,
+    fontSize: typography.title,
     fontWeight: typography.weight.semibold,
     letterSpacing: typography.letter.tight,
-    maxWidth: 200,
-  },
-  brainChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.goldEdge,
-    paddingHorizontal: 10, paddingVertical: 6,
-    borderRadius: radius.pill,
-    backgroundColor: colors.goldSoft,
-    flexShrink: 0,
-  },
-  brainChipText: {
-    color: colors.gold,
-    fontSize: 10,
-    letterSpacing: 0.8,
-    textTransform: 'uppercase',
-    fontWeight: typography.weight.medium,
+    marginTop: spacing.sm,
   },
   healthBody: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.lg,
-    marginTop: spacing.sm,
-  },
-  statsCol: { flex: 1, gap: spacing.sm },
-  divider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.divider },
-
-  sectionHead: {
+    gap: spacing.xl,
     marginTop: spacing.xl,
-    marginBottom: spacing.md,
+  },
+  statsCol: { flex: 1, gap: spacing.md },
+  statLabel: {
+    color: colors.textMuted,
+    fontSize: 10,
+    letterSpacing: 1.4,
+    textTransform: 'uppercase',
+    fontWeight: typography.weight.medium,
+  },
+  statValueRow: {
+    flexDirection: 'row',
+    alignItems: 'baseline',
+    gap: 4,
+    marginTop: 4,
+  },
+  statValue: {
+    color: colors.text,
+    fontSize: 22,
+    fontWeight: typography.weight.semibold,
+    letterSpacing: typography.letter.tight,
+    fontVariant: ['tabular-nums'],
+  },
+  statUnit: {
+    color: colors.textMuted,
+    fontSize: 13,
+    letterSpacing: 0.2,
+  },
+  statUnitLead: {
+    color: colors.textMuted,
+    fontSize: 11,
+    letterSpacing: 1.2,
+    marginRight: 2,
+  },
+  statHint: {
+    color: colors.textSubtle,
+    fontSize: 11,
+    marginTop: 2,
+  },
+  hair: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.divider,
+  },
+
+  // ---- Section header ----
+  sectionHead: {
+    marginTop: spacing['2xl'],
+    marginBottom: spacing.lg,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   sectionTitle: {
     color: colors.text,
@@ -371,12 +540,27 @@ const styles = StyleSheet.create({
     marginTop: 4,
     letterSpacing: 0.2,
   },
+  countBadge: {
+    minWidth: 26, height: 26, borderRadius: 13,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.goldEdge,
+    backgroundColor: colors.goldSoft,
+    alignItems: 'center', justifyContent: 'center',
+    paddingHorizontal: 6,
+  },
+  countBadgeText: {
+    color: colors.gold,
+    fontSize: 12,
+    fontWeight: typography.weight.semibold,
+    fontVariant: ['tabular-nums'],
+  },
 
+  // ---- Brain row ----
   brainRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 14,
+    flexDirection: 'row', alignItems: 'center', gap: 16,
   },
   brainIcon: {
-    width: 42, height: 42, borderRadius: radius.pill,
+    width: 44, height: 44, borderRadius: radius.pill,
     borderWidth: StyleSheet.hairlineWidth, borderColor: colors.goldEdge,
     backgroundColor: colors.goldSoft,
     alignItems: 'center', justifyContent: 'center',
@@ -388,15 +572,38 @@ const styles = StyleSheet.create({
     letterSpacing: typography.letter.tight,
   },
   brainSub: {
-    marginTop: 2,
+    marginTop: 4,
     color: colors.textMuted,
     fontSize: typography.small,
+    fontStyle: 'italic',
+  },
+  brainArrow: {
+    width: 34, height: 34, borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border,
+    alignItems: 'center', justifyContent: 'center',
+    backgroundColor: 'rgba(255,255,255,0.02)',
   },
 
-  errorRow: {
-    marginTop: spacing.lg,
-    flexDirection: 'row', alignItems: 'center', gap: 8,
-    justifyContent: 'center',
+  // ---- Footer signature ----
+  footer: {
+    marginTop: spacing['2xl'],
+    alignItems: 'center',
+    gap: spacing.md,
   },
-  errorText: { color: colors.warning, fontSize: typography.small },
+  quickNav: {
+    marginTop: spacing.xl,
+    flexDirection: 'row',
+    gap: spacing.md,
+  },
+  footerLine: {
+    width: 40, height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.border,
+  },
+  footerText: {
+    color: colors.textSubtle,
+    fontSize: 10.5,
+    letterSpacing: 2,
+    textTransform: 'uppercase',
+    fontWeight: typography.weight.medium,
+  },
 });
