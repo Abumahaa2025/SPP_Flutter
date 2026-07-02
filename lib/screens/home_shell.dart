@@ -2,13 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:provider/provider.dart';
 
+import '../core/navigation/luxury_route.dart';
 import '../core/theme/app_colors.dart';
+import '../core/theme/premium_icons.dart';
 import '../providers/app_state.dart';
 import '../widgets/ai_orb.dart';
-import 'ai_assistant_screen.dart';
 import 'brain_hub_screen.dart';
+import 'maintenance_tab_screen.dart';
 import 'more_hub_screen.dart';
-import 'smart_dashboard_screen.dart';
+import 'properties_list_screen.dart';
 import 'smart_inbox_screen.dart';
 import 'subscription_screen.dart';
 
@@ -26,8 +28,9 @@ class _HomeShellState extends State<HomeShell> {
 
   late final _pages = [
     const BrainHubScreen(),
-    const SmartDashboardScreen(),
     const SmartInboxScreen(),
+    const MaintenanceTabScreen(),
+    const PropertiesListScreen(),
     MoreHubScreen(onLogout: widget.onLogout),
   ];
 
@@ -35,74 +38,32 @@ class _HomeShellState extends State<HomeShell> {
   Widget build(BuildContext context) {
     final sub = context.watch<AppState>().platform?.subscription;
     final needsSubscription = sub != null && !sub.active;
+    final isLightTab = _index == 1 || _index == 2;
 
     return AnimatedBackground(
       child: Scaffold(
-        backgroundColor: Colors.transparent,
-        appBar: AppBar(
-          title: Text(_titles[_index]),
-          actions: [
-            IconButton(
-              onPressed: () => Navigator.of(context).push(
-                MaterialPageRoute(builder: (_) => const AiAssistantScreen()),
-              ),
-              icon: const Icon(Icons.psychology_alt_outlined),
-              tooltip: 'الموظف الذكي',
-            ),
-            IconButton(
-              onPressed: () => context.read<AppState>().refresh(),
-              icon: const Icon(Icons.refresh_rounded),
-            ),
-          ],
-        ),
+        backgroundColor: isLightTab ? AppColors.bgLight : Colors.transparent,
+        extendBody: true,
         body: Stack(
           children: [
             IndexedStack(index: _index, children: _pages),
             if (needsSubscription)
               _SubscriptionOverlay(
-                onView: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const SubscriptionScreen()),
-                ),
+                onView: () => pushLuxury(context, const SubscriptionScreen()),
               ),
           ],
         ),
-        floatingActionButton: _index == 0
-            ? null
-            : Container(
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(28),
-                  gradient: AppColors.goldGradient,
-                  boxShadow: [
-                    BoxShadow(
-                      color: AppColors.gold.withValues(alpha: 0.4),
-                      blurRadius: 20,
-                      offset: const Offset(0, 6),
-                    ),
-                  ],
-                ),
-                child: FloatingActionButton.extended(
-                  onPressed: () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const AiAssistantScreen()),
-                  ),
-                  backgroundColor: Colors.transparent,
-                  elevation: 0,
-                  icon: const Icon(Icons.chat_rounded, color: AppColors.bgDeep),
-                  label: const Text('اسأل الذكي', style: TextStyle(color: AppColors.bgDeep, fontWeight: FontWeight.w800)),
-                ),
-              ),
-        bottomNavigationBar: _ProNavBar(
+        bottomNavigationBar: _RefNavBar(
           index: _index,
           onChanged: (i) => setState(() => _index = i),
         ),
       ),
     );
   }
-
-  static const _titles = ['العقل المركزي', 'القرارات', 'الوارد الذكي', 'المزيد'];
 }
 
-class _ProNavBar extends StatelessWidget {
-  const _ProNavBar({required this.index, required this.onChanged});
+class _RefNavBar extends StatelessWidget {
+  const _RefNavBar({required this.index, required this.onChanged});
 
   final int index;
   final ValueChanged<int> onChanged;
@@ -110,58 +71,40 @@ class _ProNavBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      margin: const EdgeInsets.fromLTRB(12, 0, 12, 12),
       decoration: BoxDecoration(
-        color: AppColors.bgCard.withValues(alpha: 0.92),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: AppColors.border.withValues(alpha: 0.5)),
+        color: AppColors.bgCard.withValues(alpha: 0.95),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(color: AppColors.border.withValues(alpha: 0.4)),
         boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.3),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-          ),
+          BoxShadow(color: Colors.black.withValues(alpha: 0.4), blurRadius: 24, offset: const Offset(0, 10)),
         ],
       ),
       child: ClipRRect(
-        borderRadius: BorderRadius.circular(24),
+        borderRadius: BorderRadius.circular(28),
         child: NavigationBar(
           selectedIndex: index,
           onDestinationSelected: onChanged,
           backgroundColor: Colors.transparent,
           elevation: 0,
           height: 68,
+          labelBehavior: NavigationDestinationLabelBehavior.onlyShowSelected,
+          indicatorColor: AppColors.teal.withValues(alpha: 0.15),
           destinations: const [
-            NavigationDestination(
-              icon: Icon(Icons.hub_outlined),
-              selectedIcon: Icon(Icons.hub),
-              label: 'العقل',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.insights_outlined),
-              selectedIcon: Icon(Icons.insights),
-              label: 'قرارات',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.inbox_outlined),
-              selectedIcon: Icon(Icons.inbox),
-              label: 'وارد',
-            ),
-            NavigationDestination(
-              icon: Icon(Icons.apps_outlined),
-              selectedIcon: Icon(Icons.apps),
-              label: 'المزيد',
-            ),
+            NavigationDestination(icon: Icon(PremiumIcons.home), selectedIcon: Icon(PremiumIcons.home, color: AppColors.teal), label: 'الرئيسية'),
+            NavigationDestination(icon: Icon(PremiumIcons.inbox), selectedIcon: Icon(PremiumIcons.inbox, color: AppColors.teal), label: 'الوارد'),
+            NavigationDestination(icon: Icon(PremiumIcons.maintenance), selectedIcon: Icon(PremiumIcons.maintenance, color: AppColors.teal), label: 'الصيانة'),
+            NavigationDestination(icon: Icon(PremiumIcons.property), selectedIcon: Icon(PremiumIcons.property, color: AppColors.teal), label: 'العقارات'),
+            NavigationDestination(icon: Icon(PremiumIcons.more), selectedIcon: Icon(PremiumIcons.more, color: AppColors.teal), label: 'المزيد'),
           ],
         ),
       ),
-    ).animate().fadeIn(delay: 200.ms).slideY(begin: 0.2);
+    ).animate().fadeIn(delay: 200.ms).slideY(begin: 0.15);
   }
 }
 
 class _SubscriptionOverlay extends StatelessWidget {
   const _SubscriptionOverlay({required this.onView});
-
   final VoidCallback onView;
 
   @override
@@ -174,23 +117,13 @@ class _SubscriptionOverlay extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const AiOrb(size: 90, pulsing: false),
+              const LivingAiOrb(size: 90, luxury: true),
               const SizedBox(height: 20),
-              const Text(
-                'الاشتراك منتهٍ',
-                style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900),
-              ),
+              const Text('الاشتراك منتهٍ', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900)),
               const SizedBox(height: 8),
-              const Text(
-                'يمكنك الاستعراض فقط — جدّد الاشتراك للمتابعة',
-                textAlign: TextAlign.center,
-                style: TextStyle(color: AppColors.textSecondary),
-              ),
+              const Text('يمكنك الاستعراض فقط — جدّد الاشتراك للمتابعة', textAlign: TextAlign.center, style: TextStyle(color: AppColors.textSecondary)),
               const SizedBox(height: 20),
-              FilledButton(
-                onPressed: onView,
-                child: const Text('عرض الاشتراك'),
-              ),
+              FilledButton(onPressed: onView, child: const Text('عرض الاشتراك')),
             ],
           ),
         ),

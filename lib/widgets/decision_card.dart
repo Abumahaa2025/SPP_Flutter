@@ -4,6 +4,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import '../core/theme/app_colors.dart';
 import '../models/platform_data.dart';
 import 'glass_card.dart';
+import 'living_ai_orb.dart';
 
 class DecisionCard extends StatelessWidget {
   const DecisionCard({
@@ -169,11 +170,7 @@ class LoadingBrain extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const SizedBox(
-            width: 64,
-            height: 64,
-            child: CircularProgressIndicator(strokeWidth: 2.5, color: AppColors.gold),
-          ),
+          const LivingAiOrb(size: 88, luxury: true),
           const SizedBox(height: 24),
           Text(
             message,

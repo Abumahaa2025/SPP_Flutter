@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../core/constants/api_constants.dart';
 import '../core/theme/app_colors.dart';
+import '../core/theme/premium_icons.dart';
 import '../providers/app_state.dart';
 import '../widgets/ai_orb.dart';
 import '../widgets/glass_card.dart';
@@ -20,7 +21,7 @@ class LoginScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              const Align(alignment: Alignment.centerLeft, child: LuxuryBadge(label: 'EXPERIENCE PRO')),
+              const Align(alignment: Alignment.centerLeft, child: LuxuryBadge(label: 'PRO')),
               const Spacer(flex: 2),
               const Center(child: AiOrb(size: 150, luxury: true)),
               const SizedBox(height: 36),
@@ -45,26 +46,20 @@ class LoginScreen extends StatelessWidget {
               GlassCard(
                 luxury: true,
                 child: Column(
-                  children: [
-                    _Row(icon: Icons.hub, text: 'Unified Brain — عقل موحد'),
-                    _Row(icon: Icons.sensors, text: 'Virtual Sensors — حساسات افتراضية'),
-                    _Row(icon: Icons.auto_awesome, text: 'Property Memory — ذاكرة العقار'),
+                  children: const [
+                    _Row(icon: PremiumIcons.brain, text: 'عقل موحد لإدارة العقار'),
+                    _Row(icon: PremiumIcons.sensor, text: 'مراقبة ذكية للحساسات'),
+                    _Row(icon: PremiumIcons.memory, text: 'ذاكرة عقارية تتعلم معك'),
                   ],
                 ),
               ).animate().fadeIn(delay: 500.ms).slideY(begin: 0.06),
               const Spacer(flex: 3),
               LuxuryButton(
                 label: 'إيقاظ الموظف الذكي',
-                icon: Icons.bolt_rounded,
+                icon: PremiumIcons.decision,
                 onPressed: () => context.read<AppState>().enterExperience(),
               ).animate().fadeIn(delay: 650.ms),
-              const SizedBox(height: 14),
-              Text(
-                'واجهة عرض فاخرة — بدون ربط Backend حالياً',
-                textAlign: TextAlign.center,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
-              ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 20),
             ],
           ),
         ),

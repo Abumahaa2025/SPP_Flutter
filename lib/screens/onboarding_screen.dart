@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 
 import '../core/theme/app_colors.dart';
+import '../core/theme/premium_icons.dart';
 import '../widgets/ai_orb.dart';
 import '../widgets/glass_card.dart';
 
@@ -21,18 +22,18 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
   static const _slides = [
     _Slide(
       title: 'موظفك العقاري الذكي',
-      body: 'ليس برنامج إدارة — شريك يفكر، يحلل، ويقترح القرار التالي.',
-      icon: Icons.psychology_alt_rounded,
+      body: 'شريك يفكر معك، يحلل وضع العقار، ويقترح القرار التالي في الوقت المناسب.',
+      icon: PremiumIcons.assistant,
     ),
     _Slide(
       title: 'قرارات لا أرقام',
       body: 'لوحة ذكية تخبرك ماذا تفعل الآن — قبل أن تسأل.',
-      icon: Icons.insights_rounded,
+      icon: PremiumIcons.analytics,
     ),
     _Slide(
       title: 'عقار يتذكر',
-      body: 'Property Memory + Virtual Sensors + Unified Brain في منصة واحدة.',
-      icon: Icons.hub_rounded,
+      body: 'ذاكرة عقارية، مراقبة ذكية، وتحليلات موحدة في منصة واحدة.',
+      icon: PremiumIcons.brain,
     ),
   ];
 
@@ -64,31 +65,39 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 itemCount: _slides.length,
                 itemBuilder: (context, i) {
                   final slide = _slides[i];
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 28),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        AiOrb(size: 110, luxury: true, pulsing: i == 0),
-                        const SizedBox(height: 40),
-                        Icon(slide.icon, size: 52, color: AppColors.gold),
-                        const SizedBox(height: 24),
-                        Text(
-                          slide.title,
-                          textAlign: TextAlign.center,
-                          style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
-                        ),
-                        const SizedBox(height: 14),
-                        Text(
-                          slide.body,
-                          textAlign: TextAlign.center,
-                          style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                                color: AppColors.textSecondary,
-                                height: 1.7,
+                  return LayoutBuilder(
+                    builder: (context, constraints) {
+                      final compact = constraints.maxHeight < 420;
+                      return SingleChildScrollView(
+                        padding: const EdgeInsets.symmetric(horizontal: 28),
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                          child: Column(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              AiOrb(size: compact ? 88 : 110, luxury: true),
+                              SizedBox(height: compact ? 24 : 40),
+                              Icon(slide.icon, size: compact ? 44 : 52, color: AppColors.gold),
+                              const SizedBox(height: 24),
+                              Text(
+                                slide.title,
+                                textAlign: TextAlign.center,
+                                style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
                               ),
+                              const SizedBox(height: 14),
+                              Text(
+                                slide.body,
+                                textAlign: TextAlign.center,
+                                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                                      color: AppColors.textSecondary,
+                                      height: 1.7,
+                                    ),
+                              ),
+                            ],
+                          ),
                         ),
-                      ],
-                    ),
+                      );
+                    },
                   );
                 },
               ),
@@ -116,7 +125,7 @@ class _OnboardingScreenState extends State<OnboardingScreen> {
                 children: [
                   LuxuryButton(
                     label: _index < _slides.length - 1 ? 'التالي' : 'ابدأ التجربة',
-                    icon: Icons.arrow_back,
+                    icon: PremiumIcons.arrow,
                     onPressed: _next,
                   ),
                   if (_index < _slides.length - 1)

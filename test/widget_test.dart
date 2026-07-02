@@ -6,5 +6,6 @@ void main() {
   testWidgets('launches luxury splash experience', (WidgetTester tester) async {
     await tester.pumpWidget(const SppApp());
     expect(find.text(ApiConstants.appName), findsOneWidget);
+    await tester.pump(const Duration(seconds: 4));
   });
 }

@@ -3,9 +3,11 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:provider/provider.dart';
 
 import '../core/theme/app_colors.dart';
+import '../core/theme/premium_icons.dart';
 import '../models/platform_data.dart';
 import '../providers/app_state.dart';
 import '../widgets/decision_card.dart';
+import '../widgets/empty_state.dart';
 import '../widgets/glass_card.dart';
 
 class PropertyMemoryScreen extends StatelessWidget {
@@ -25,7 +27,11 @@ class PropertyMemoryScreen extends StatelessWidget {
             subtitle: 'كل ما تعلمه النظام عن عقارك',
           ),
           if (records.isEmpty)
-            const GlassCard(child: Text('لا سجلات بعد'))
+            const EmptyState(
+              icon: PremiumIcons.memory,
+              title: 'لا سجلات بعد',
+              subtitle: 'ستُبنى ذاكرة العقار تلقائياً مع كل حدث وتحليل',
+            )
           else
             ...records.asMap().entries.map((e) {
               final r = e.value;
@@ -93,7 +99,7 @@ class _MemoryTile extends StatelessWidget {
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.auto_awesome, size: 16, color: AppColors.gold),
+                      const Icon(PremiumIcons.memory, size: 16, color: AppColors.gold),
                       const SizedBox(width: 8),
                       Expanded(child: Text(record.recommendation, style: const TextStyle(fontSize: 12))),
                     ],

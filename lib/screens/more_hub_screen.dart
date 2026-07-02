@@ -2,12 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../core/constants/api_constants.dart';
+import '../core/navigation/luxury_route.dart';
 import '../core/theme/app_colors.dart';
+import '../core/theme/premium_icons.dart';
 import '../providers/app_state.dart';
 import '../widgets/glass_card.dart';
+import '../widgets/luxury_cards.dart';
+import 'analytics_screen.dart';
 import 'contracts_screen.dart';
 import 'predictive_maintenance_screen.dart';
 import 'property_health_screen.dart';
+import 'property_map_screen.dart';
 import 'property_memory_screen.dart';
 import 'subscription_screen.dart';
 
@@ -22,15 +27,20 @@ class MoreHubScreen extends StatelessWidget {
     final settings = data?.settings;
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 100),
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 110),
       children: [
         GlassCard(
+          luxury: true,
+          blur: 16,
           child: Row(
             children: [
-              const CircleAvatar(
+              CircleAvatar(
                 radius: 28,
-                backgroundColor: AppColors.primary,
-                child: Icon(Icons.person, color: Colors.white, size: 28),
+                backgroundColor: AppColors.teal.withValues(alpha: 0.2),
+                child: Text(
+                  (settings?.clientName.isNotEmpty == true ? settings!.clientName[0] : 'أ'),
+                  style: const TextStyle(fontWeight: FontWeight.w900, color: AppColors.teal, fontSize: 22),
+                ),
               ),
               const SizedBox(width: 14),
               Expanded(
@@ -41,51 +51,68 @@ class MoreHubScreen extends StatelessWidget {
                       settings?.clientName.isNotEmpty == true ? settings!.clientName : 'المالك',
                       style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 17),
                     ),
-                    Text(
-                      settings?.propertyName ?? '—',
-                      style: const TextStyle(color: AppColors.textSecondary),
-                    ),
+                    Text(settings?.propertyName ?? 'مجمعك الرئيسي', style: const TextStyle(color: AppColors.textSecondary)),
                   ],
                 ),
               ),
+              const LuxuryBadge(label: 'PRO'),
             ],
           ),
         ),
-        const SizedBox(height: 20),
-        _HubTile(
-          icon: Icons.favorite_outline,
+        const SizedBox(height: 16),
+        WideInsightCard(
+          title: 'تحليلات الأداء',
+          subtitle: 'إيرادات · إشغال · تحصيل',
+          icon: PremiumIcons.analytics,
+          accent: true,
+          onTap: () => pushLuxury(context, const AnalyticsScreen()),
+        ),
+        const SizedBox(height: 10),
+        WideInsightCard(
+          title: 'خريطة العقارات',
+          subtitle: 'عرض تفاعلي على الخريطة',
+          icon: PremiumIcons.map,
+          onTap: () => pushLuxury(context, const PropertyMapScreen()),
+        ),
+        const SizedBox(height: 10),
+        WideInsightCard(
           title: 'Smart Property Health',
           subtitle: 'صحة العقار الشاملة',
-          onTap: () => _open(context, const PropertyHealthScreen()),
+          icon: PremiumIcons.health,
+          onTap: () => pushLuxury(context, const PropertyHealthScreen()),
         ),
-        _HubTile(
-          icon: Icons.handyman_outlined,
+        const SizedBox(height: 10),
+        WideInsightCard(
           title: 'Predictive Maintenance',
           subtitle: 'صيانة استباقية ذكية',
-          onTap: () => _open(context, const PredictiveMaintenanceScreen()),
+          icon: PremiumIcons.maintenance,
+          onTap: () => pushLuxury(context, const PredictiveMaintenanceScreen()),
         ),
-        _HubTile(
-          icon: Icons.description_outlined,
+        const SizedBox(height: 10),
+        WideInsightCard(
           title: 'العقود',
           subtitle: 'عقود نشطة ومنتهية وقريبة',
-          onTap: () => _open(context, const ContractsScreen()),
+          icon: PremiumIcons.contract,
+          onTap: () => pushLuxury(context, const ContractsScreen()),
         ),
-        _HubTile(
-          icon: Icons.memory_outlined,
+        const SizedBox(height: 10),
+        WideInsightCard(
           title: 'Property Memory',
           subtitle: '${data?.aiRecords.length ?? 0} سجل ذكي',
-          onTap: () => _open(context, const PropertyMemoryScreen()),
+          icon: PremiumIcons.memory,
+          onTap: () => pushLuxury(context, const PropertyMemoryScreen()),
         ),
-        _HubTile(
-          icon: Icons.workspace_premium_outlined,
+        const SizedBox(height: 10),
+        WideInsightCard(
           title: 'الاشتراك',
-          subtitle: data?.subscription.message ?? '—',
-          onTap: () => _open(context, const SubscriptionScreen()),
+          subtitle: data?.subscription.message ?? 'الخطة الاحترافية',
+          icon: PremiumIcons.subscription,
+          onTap: () => pushLuxury(context, const SubscriptionScreen()),
         ),
         const SizedBox(height: 16),
         OutlinedButton.icon(
           onPressed: onLogout,
-          icon: const Icon(Icons.logout, color: AppColors.danger),
+          icon: const Icon(PremiumIcons.logout, color: AppColors.danger),
           label: const Text('تسجيل الخروج', style: TextStyle(color: AppColors.danger)),
           style: OutlinedButton.styleFrom(
             minimumSize: const Size.fromHeight(48),
@@ -94,62 +121,8 @@ class MoreHubScreen extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 8),
-        Text(
-          'Build ${ApiConstants.buildTag} · ${ApiConstants.baseUrl.substring(0, 40)}...',
-          style: const TextStyle(color: AppColors.textMuted, fontSize: 10),
-        ),
+        Text('Build ${ApiConstants.buildTag}', style: const TextStyle(color: AppColors.textMuted, fontSize: 10), textAlign: TextAlign.center),
       ],
-    );
-  }
-
-  void _open(BuildContext context, Widget screen) {
-    Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
-  }
-}
-
-class _HubTile extends StatelessWidget {
-  const _HubTile({
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
-      child: GlassCard(
-        onTap: onTap,
-        child: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: AppColors.primary.withValues(alpha: 0.15),
-                borderRadius: BorderRadius.circular(14),
-              ),
-              child: Icon(icon, color: AppColors.accent),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(title, style: const TextStyle(fontWeight: FontWeight.w800)),
-                  Text(subtitle, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
-                ],
-              ),
-            ),
-            const Icon(Icons.arrow_back_ios_new, size: 14, color: AppColors.textMuted),
-          ],
-        ),
-      ),
     );
   }
 }

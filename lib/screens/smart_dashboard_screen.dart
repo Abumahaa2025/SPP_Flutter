@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../core/theme/app_colors.dart';
+import '../core/theme/app_typography.dart';
+import '../core/theme/premium_icons.dart';
 import '../providers/app_state.dart';
 import '../widgets/decision_card.dart';
 import '../widgets/glass_card.dart';
+import '../widgets/luxury_cards.dart';
 
 class SmartDashboardScreen extends StatelessWidget {
   const SmartDashboardScreen({super.key});
@@ -24,51 +27,68 @@ class SmartDashboardScreen extends StatelessWidget {
             title: 'لوحة القرارات',
             subtitle: 'تحليل استراتيجي — ماذا تفعل الآن؟',
           ),
-          ...data.priorityDecisions.asMap().entries.map(
+          if (data.priorityDecisions.isNotEmpty)
+            HeroDecisionCard(item: data.priorityDecisions.first),
+          const SizedBox(height: 12),
+          ...data.priorityDecisions.skip(1).toList().asMap().entries.map(
                 (e) => Padding(
                   padding: const EdgeInsets.only(bottom: 10),
-                  child: DecisionCard(item: e.value, index: e.key),
+                  child: DecisionCard(item: e.value, index: e.key + 1),
                 ),
               ),
           const SizedBox(height: 8),
-          SectionHeader(title: 'مؤشرات الأداء', subtitle: 'من البيانات الحية'),
-          _KpiGrid(data: data),
+          Text('PERFORMANCE', style: AppTypography.englishCaps),
+          const SizedBox(height: 12),
+          SizedBox(
+            height: 110,
+            child: ListView(
+              scrollDirection: Axis.horizontal,
+              children: [
+                SizedBox(
+                  width: 150,
+                  child: CompactMetricCard(
+                    label: 'وحدات',
+                    value: '${data.dashboard.summary.totalUnits}',
+                    icon: PremiumIcons.property,
+                    index: 0,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                SizedBox(
+                  width: 150,
+                  child: CompactMetricCard(
+                    label: 'تحصيل',
+                    value: '${data.report.collectionRate.toStringAsFixed(0)}%',
+                    icon: PremiumIcons.payment,
+                    color: AppColors.success,
+                    index: 1,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                SizedBox(
+                  width: 150,
+                  child: CompactMetricCard(
+                    label: 'متأخرون',
+                    value: '${data.dashboard.summary.lateCount}',
+                    icon: PremiumIcons.decision,
+                    color: AppColors.danger,
+                    index: 2,
+                  ),
+                ),
+              ],
+            ),
+          ),
           const SizedBox(height: 16),
           SectionHeader(title: 'التنبؤات النشطة'),
           if (data.predictions.isEmpty)
             const GlassCard(
-              child: Text('لا تنبؤات حالياً — شغّل المحرك من المنصة'),
+              child: Text('لا تنبؤات نشطة حالياً', style: TextStyle(color: AppColors.textSecondary)),
             )
           else
-            ...data.predictions.take(5).map(
-                  (p) => Padding(
+            ...data.predictions.take(5).toList().asMap().entries.map(
+                  (e) => Padding(
                     padding: const EdgeInsets.only(bottom: 10),
-                    child: GlassCard(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              Icon(
-                                p.isHighRisk ? Icons.error_outline : Icons.info_outline,
-                                color: p.isHighRisk ? AppColors.danger : AppColors.warning,
-                                size: 20,
-                              ),
-                              const SizedBox(width: 8),
-                              Expanded(
-                                child: Text(p.title, style: const TextStyle(fontWeight: FontWeight.w800)),
-                              ),
-                            ],
-                          ),
-                          if (p.description.isNotEmpty) ...[
-                            const SizedBox(height: 6),
-                            Text(p.description, style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
-                          ],
-                          const SizedBox(height: 8),
-                          Text('↳ ${p.recommendation}', style: const TextStyle(color: AppColors.accent, fontSize: 13)),
-                        ],
-                      ),
-                    ),
+                    child: _PredictionCard(prediction: e.value, index: e.key),
                   ),
                 ),
         ],
@@ -77,46 +97,49 @@ class SmartDashboardScreen extends StatelessWidget {
   }
 }
 
-class _KpiGrid extends StatelessWidget {
-  const _KpiGrid({required this.data});
+class _PredictionCard extends StatelessWidget {
+  const _PredictionCard({required this.prediction, required this.index});
 
-  final dynamic data;
+  final dynamic prediction;
+  final int index;
 
   @override
   Widget build(BuildContext context) {
-    final s = data.dashboard.summary;
-    final items = [
-      ('وحدات', '${s.totalUnits}', Icons.apartment),
-      ('مؤجرة', '${s.rented}', Icons.home_work_outlined),
-      ('شاغرة', '${s.vacant}', Icons.meeting_room_outlined),
-      ('تحصيل', '${data.report.collectionRate.toStringAsFixed(0)}%', Icons.pie_chart_outline),
-      ('متأخرون', '${s.lateCount}', Icons.warning_amber_rounded),
-      ('صافي', '${data.propertyHealth.netProfit}', Icons.account_balance_wallet_outlined),
-    ];
+    final high = prediction.isHighRisk as bool;
+    final accent = high ? AppColors.danger : AppColors.warning;
+    final wide = index.isEven;
 
-    return GridView.count(
-      crossAxisCount: 2,
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      mainAxisSpacing: 10,
-      crossAxisSpacing: 10,
-      childAspectRatio: 1.6,
-      children: items
-          .map(
-            (e) => GlassCard(
-              padding: const EdgeInsets.all(14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(e.$3, color: AppColors.accent, size: 20),
-                  const Spacer(),
-                  Text(e.$2, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 20)),
-                  Text(e.$1, style: const TextStyle(color: AppColors.textMuted, fontSize: 12)),
-                ],
+    if (wide) {
+      return WideInsightCard(
+        title: prediction.title as String,
+        subtitle: prediction.recommendation as String,
+        icon: high ? Icons.error_outline_rounded : Icons.insights_rounded,
+        accent: high,
+      );
+    }
+
+    return GlassCard(
+      luxury: high,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              PremiumIcons.inCircle(high ? Icons.error_outline_rounded : Icons.info_outline_rounded, color: accent),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(prediction.title as String, style: const TextStyle(fontWeight: FontWeight.w800)),
               ),
-            ),
-          )
-          .toList(),
+            ],
+          ),
+          if ((prediction.description as String).isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(prediction.description as String, style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
+          ],
+          const SizedBox(height: 8),
+          Text('↳ ${prediction.recommendation}', style: TextStyle(color: accent, fontSize: 13, fontWeight: FontWeight.w700)),
+        ],
+      ),
     );
   }
 }

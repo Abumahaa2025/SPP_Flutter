@@ -2,251 +2,118 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:provider/provider.dart';
 
+import '../core/navigation/luxury_route.dart';
 import '../core/theme/app_colors.dart';
-import '../models/platform_data.dart';
+import '../core/theme/premium_icons.dart';
 import '../providers/app_state.dart';
-import '../widgets/ai_orb.dart';
-import '../widgets/decision_card.dart';
-import '../widgets/glass_card.dart';
+import '../widgets/reference_widgets.dart';
 import 'ai_assistant_screen.dart';
-import 'property_memory_screen.dart';
 
 class BrainHubScreen extends StatelessWidget {
   const BrainHubScreen({super.key});
+
+  static const _chartData = [72.0, 78.0, 81.0, 85.0, 88.0, 91.0, 94.0];
 
   @override
   Widget build(BuildContext context) {
     final data = context.watch<AppState>().platform;
     if (data == null) return const SizedBox.shrink();
 
+    final s = data.dashboard.summary;
+    final score = data.propertyHealth.score;
+    final recommendations = data.priorityDecisions.length + data.predictions.length;
+    final firstName = data.ownerName.split(' ').first;
+
     return RefreshIndicator(
-      color: AppColors.gold,
+      color: AppColors.teal,
       onRefresh: () => context.read<AppState>().refresh(),
       child: CustomScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
+        physics: const BouncingScrollPhysics(parent: AlwaysScrollableScrollPhysics()),
         slivers: [
-          SliverToBoxAdapter(child: _HeroHeader(data: data)),
-          SliverPadding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 120),
-            sliver: SliverList(
-              delegate: SliverChildListDelegate([
-                SectionHeader(
-                  title: 'قرارات اليوم',
-                  subtitle: 'ما يستحق انتباهك الآن',
-                  trailing: LuxuryBadge(label: '${data.priorityDecisions.length} نشط'),
-                ),
-                ...data.priorityDecisions.asMap().entries.map(
-                      (e) => Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: DecisionCard(item: e.value, index: e.key),
-                      ),
-                    ),
-                const SizedBox(height: 8),
-                SectionHeader(title: 'Unified Brain', subtitle: 'حالة العقل الموحد'),
-                _BrainPanel(data: data),
-                const SizedBox(height: 16),
-                SectionHeader(title: 'Virtual Sensors', subtitle: 'البنية التحتية الافتراضية'),
-                _SensorGrid(data: data),
-                const SizedBox(height: 16),
-                _AssistantCta(
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const AiAssistantScreen()),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                GlassCard(
-                  luxury: true,
-                  onTap: () => Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const PropertyMemoryScreen()),
-                  ),
+          SliverToBoxAdapter(
+            child: CityscapeHeader(
+              height: 210,
+              child: SafeArea(
+                bottom: false,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 8, 20, 16),
                   child: Row(
                     children: [
-                      Icon(Icons.memory_rounded, color: AppColors.gold, size: 28),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            const Text('Property Memory', style: TextStyle(fontWeight: FontWeight.w800)),
-                            Text(
-                              '${data.aiRecords.length} سجل ذكي محفوظ',
-                              style: const TextStyle(color: AppColors.textSecondary, fontSize: 12),
-                            ),
-                          ],
+                      IconButton(
+                        onPressed: () {},
+                        icon: const Icon(PremiumIcons.notification, color: Colors.white),
+                      ),
+                      const Spacer(),
+                      CircleAvatar(
+                        radius: 22,
+                        backgroundColor: AppColors.teal.withValues(alpha: 0.3),
+                        child: Text(
+                          data.ownerName.isNotEmpty ? data.ownerName[0] : 'أ',
+                          style: const TextStyle(fontWeight: FontWeight.w900, color: Colors.white),
                         ),
                       ),
-                      const Icon(Icons.arrow_back_ios_new, size: 14, color: AppColors.textMuted),
                     ],
                   ),
                 ),
-              ]),
+              ),
             ),
           ),
-        ],
-      ),
-    );
-  }
-}
-
-class _HeroHeader extends StatelessWidget {
-  const _HeroHeader({required this.data});
-
-  final PlatformData data;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-      child: GlassCard(
-        luxury: true,
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'مرحباً، ${data.ownerName}',
-                        style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontWeight: FontWeight.w900),
+          SliverToBoxAdapter(
+            child: Transform.translate(
+              offset: const Offset(0, -24),
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(20, 0, 20, 0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 16, right: 4),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'أهلاً $firstName',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: MediaQuery.sizeOf(context).width < 360 ? 22 : 26,
+                              fontWeight: FontWeight.w900,
+                            ),
+                          ),
+                          Text(
+                            data.propertyName,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(color: AppColors.textSecondary, fontSize: 14),
+                          ),
+                        ],
                       ),
-                      const SizedBox(height: 6),
-                      Text(data.propertyName, style: const TextStyle(color: AppColors.textSecondary)),
-                      const SizedBox(height: 10),
-                      const LuxuryBadge(label: 'AI-FIRST ACTIVE'),
-                    ],
-                  ),
+                    ),
+                    PerformanceSummaryCard(
+                      score: score,
+                      trend: '+12%',
+                      chartData: _chartData,
+                      stats: [
+                        (label: 'وحدات مؤجرة', value: '${s.rented}', icon: PremiumIcons.unit, color: AppColors.teal),
+                        (label: 'وحدات شاغرة', value: '${s.vacant}', icon: PremiumIcons.vacant, color: AppColors.warning),
+                        (label: 'عقود قريبة', value: '${s.nearCount}', icon: PremiumIcons.contract, color: AppColors.info),
+                        (label: 'تنبيهات مهمة', value: '${data.smartSummary.highRisks + data.maintenanceRequests.where((m) => m.isUrgent).length}', icon: PremiumIcons.alert, color: AppColors.danger),
+                      ],
+                    ).animate().fadeIn(duration: 500.ms).slideY(begin: 0.06),
+                    const SizedBox(height: 16),
+                    AiAssistantBanner(
+                      recommendationCount: recommendations,
+                      onTap: () => pushLuxury(context, const AiAssistantScreen()),
+                    ).animate(delay: 150.ms).fadeIn().slideY(begin: 0.05),
+                    const SizedBox(height: 100),
+                  ],
                 ),
-                AiOrb(size: 88, score: data.propertyHealth.score, luxury: true),
-              ],
-            ),
-          ],
-        ),
-      ),
-    ).animate().fadeIn().slideY(begin: -0.04);
-  }
-}
-
-class _BrainPanel extends StatelessWidget {
-  const _BrainPanel({required this.data});
-
-  final PlatformData data;
-
-  @override
-  Widget build(BuildContext context) {
-    return GlassCard(
-      child: Column(
-        children: [
-          _Row('نسبة التحصيل', '${data.report.collectionRate.toStringAsFixed(1)}%', AppColors.success),
-          _Row('مخاطر عالية', '${data.smartSummary.highRisks}', AppColors.danger),
-          _Row('صيانة مفتوحة', '${data.liveMonitor.openMaintenance}', AppColors.warning),
-          _Row('واتساب', data.liveMonitor.greenStatus, AppColors.accent),
-        ],
-      ),
-    );
-  }
-}
-
-class _Row extends StatelessWidget {
-  const _Row(this.label, this.value, this.color);
-
-  final String label;
-  final String value;
-  final Color color;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        children: [
-          Container(width: 6, height: 6, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
-          const SizedBox(width: 10),
-          Text(label, style: const TextStyle(color: AppColors.textSecondary)),
-          const Spacer(),
-          Text(value, style: const TextStyle(fontWeight: FontWeight.w800)),
-        ],
-      ),
-    );
-  }
-}
-
-class _SensorGrid extends StatelessWidget {
-  const _SensorGrid({required this.data});
-
-  final PlatformData data;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(child: _Tile('⚡ كهرباء', data.smartStatus.power, data.smartStatus.powerAlert)),
-        const SizedBox(width: 10),
-        Expanded(child: _Tile('💧 مياه', data.smartStatus.water, data.smartStatus.waterAlert)),
-      ],
-    );
-  }
-}
-
-class _Tile extends StatelessWidget {
-  const _Tile(this.label, this.value, this.alert);
-
-  final String label;
-  final String value;
-  final bool alert;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = alert ? AppColors.danger : AppColors.success;
-    return GlassCard(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
-          const SizedBox(height: 8),
-          Text(value, style: TextStyle(fontWeight: FontWeight.w800, color: c)),
-        ],
-      ),
-    );
-  }
-}
-
-class _AssistantCta extends StatelessWidget {
-  const _AssistantCta({required this.onTap});
-
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GlassCard(
-      luxury: true,
-      onTap: onTap,
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              gradient: AppColors.goldGradient,
-              borderRadius: BorderRadius.circular(18),
-            ),
-            child: const Icon(Icons.chat_rounded, color: AppColors.bgDeep),
-          ),
-          const SizedBox(width: 16),
-          const Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('تحدث مع الموظف الذكي', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16)),
-                Text('اسأل عن أي شيء — يفهم عقارك', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
-              ],
+              ),
             ),
           ),
-          Icon(Icons.arrow_back_ios_new, size: 16, color: AppColors.gold.withValues(alpha: 0.8)),
         ],
       ),
-    ).animate().shimmer(duration: 2.seconds, color: AppColors.gold.withValues(alpha: 0.15));
+    );
   }
 }

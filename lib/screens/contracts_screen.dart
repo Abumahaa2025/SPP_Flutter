@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../core/theme/app_colors.dart';
+import '../core/theme/premium_icons.dart';
 import '../models/platform_data.dart';
 import '../providers/app_state.dart';
+import '../widgets/empty_state.dart';
 import '../widgets/glass_card.dart';
 
 class ContractsScreen extends StatelessWidget {
@@ -47,7 +49,11 @@ class _ContractList extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (units.isEmpty) {
-      return const Center(child: Text('لا عقود في هذا القسم'));
+      return const EmptyState(
+        icon: PremiumIcons.contract,
+        title: 'لا عقود في هذا القسم',
+        subtitle: 'ستظهر العقود النشطة والمنتهية هنا',
+      );
     }
 
     return ListView.separated(
