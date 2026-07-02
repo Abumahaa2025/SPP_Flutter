@@ -39,21 +39,27 @@ export function AmbientBackground({ scrollY }: Props) {
     );
   }, [emerald, gold, deep]);
 
-  const shiftBy = (factor: number) =>
-    scrollY ? interpolate(scrollY.value, [0, 600], [0, factor], Extrapolation.CLAMP) : 0;
-
-  const emeraldStyle = useAnimatedStyle(() => ({
-    opacity: 0.32 + emerald.value * 0.18,
-    transform: [{ translateY: shiftBy(-160) }, { scale: 1 + emerald.value * 0.04 }],
-  }));
-  const goldStyle = useAnimatedStyle(() => ({
-    opacity: 0.2 + (1 - gold.value) * 0.16,
-    transform: [{ translateY: shiftBy(-90) }, { scale: 1 + (1 - gold.value) * 0.035 }],
-  }));
-  const deepStyle = useAnimatedStyle(() => ({
-    opacity: 0.14 + deep.value * 0.08,
-    transform: [{ translateY: shiftBy(-40) }],
-  }));
+  const emeraldStyle = useAnimatedStyle(() => {
+    const shift = scrollY ? interpolate(scrollY.value, [0, 600], [0, -160], Extrapolation.CLAMP) : 0;
+    return {
+      opacity: 0.32 + emerald.value * 0.18,
+      transform: [{ translateY: shift }, { scale: 1 + emerald.value * 0.04 }],
+    };
+  });
+  const goldStyle = useAnimatedStyle(() => {
+    const shift = scrollY ? interpolate(scrollY.value, [0, 600], [0, -90], Extrapolation.CLAMP) : 0;
+    return {
+      opacity: 0.2 + (1 - gold.value) * 0.16,
+      transform: [{ translateY: shift }, { scale: 1 + (1 - gold.value) * 0.035 }],
+    };
+  });
+  const deepStyle = useAnimatedStyle(() => {
+    const shift = scrollY ? interpolate(scrollY.value, [0, 600], [0, -40], Extrapolation.CLAMP) : 0;
+    return {
+      opacity: 0.14 + deep.value * 0.08,
+      transform: [{ translateY: shift }],
+    };
+  });
 
   return (
     <View style={StyleSheet.absoluteFill} pointerEvents="none">
