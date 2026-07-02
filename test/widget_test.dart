@@ -1,11 +1,10 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:spp_flutter/app.dart';
+import 'package:spp_flutter/core/constants/api_constants.dart';
 
 void main() {
-  testWidgets('shows AI-first login screen', (WidgetTester tester) async {
+  testWidgets('launches luxury splash experience', (WidgetTester tester) async {
     await tester.pumpWidget(const SppApp());
-
-    expect(find.text('تفعيل الموظف الذكي'), findsOneWidget);
-    expect(find.textContaining('موظفك العقاري الذكي'), findsOneWidget);
+    expect(find.text(ApiConstants.appName), findsOneWidget);
   });
 }

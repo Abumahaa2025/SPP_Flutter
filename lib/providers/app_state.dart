@@ -1,55 +1,45 @@
 import 'package:flutter/foundation.dart';
 
+import '../data/luxury_mock.dart';
 import '../models/platform_data.dart';
-import '../services/api_service.dart';
 import '../services/platform_brain.dart';
 
-enum AppLoadState { idle, loading, ready, error }
+enum AppLoadState { splash, onboarding, login, loading, ready }
 
+/// وضع العرض الفاخر — بدون API أو Backend.
 class AppState extends ChangeNotifier {
-  AppState({ApiService? api}) : _api = api ?? ApiService();
-
-  final ApiService _api;
-
-  AppLoadState state = AppLoadState.idle;
+  AppLoadState flow = AppLoadState.splash;
   PlatformData? platform;
   List<BrainMessage> chat = [];
-  String? errorMessage;
-  bool authenticated = false;
 
-  bool get isLoading => state == AppLoadState.loading;
-  bool get hasData => platform != null && state == AppLoadState.ready;
+  bool get isLoading => flow == AppLoadState.loading;
+  bool get authenticated => flow == AppLoadState.ready;
 
-  Future<void> connect() async {
-    state = AppLoadState.loading;
-    errorMessage = null;
+  void finishSplash() {
+    flow = AppLoadState.onboarding;
+    notifyListeners();
+  }
+
+  void finishOnboarding() {
+    flow = AppLoadState.login;
+    notifyListeners();
+  }
+
+  Future<void> enterExperience() async {
+    flow = AppLoadState.loading;
     notifyListeners();
 
-    try {
-      await _api.ping();
-      final data = await _api.fetchPlatform(forceRefresh: true);
-      platform = data;
-      state = AppLoadState.ready;
-      authenticated = true;
-      chat = PlatformBrain.initialBriefing(data);
-    } catch (e) {
-      state = AppLoadState.error;
-      errorMessage = e.toString();
-      platform = PlatformData.empty(error: errorMessage);
-    }
+    await Future<void>.delayed(const Duration(milliseconds: 1800));
+
+    platform = LuxuryMock.build();
+    chat = PlatformBrain.initialBriefing(platform!);
+    flow = AppLoadState.ready;
     notifyListeners();
   }
 
   Future<void> refresh() async {
-    if (!authenticated) return;
-    try {
-      final data = await _api.fetchPlatform(forceRefresh: true);
-      platform = data;
-      state = AppLoadState.ready;
-      errorMessage = null;
-    } catch (e) {
-      errorMessage = e.toString();
-    }
+    await Future<void>.delayed(const Duration(milliseconds: 600));
+    platform = LuxuryMock.build();
     notifyListeners();
   }
 
@@ -64,17 +54,10 @@ class AppState extends ChangeNotifier {
   }
 
   void logout() {
-    authenticated = false;
     platform = null;
     chat = [];
-    state = AppLoadState.idle;
+    flow = AppLoadState.login;
     notifyListeners();
-  }
-
-  @override
-  void dispose() {
-    _api.dispose();
-    super.dispose();
   }
 }
 

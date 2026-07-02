@@ -6,6 +6,8 @@ import 'core/theme/app_theme.dart';
 import 'providers/app_state.dart';
 import 'screens/home_shell.dart';
 import 'screens/login_screen.dart';
+import 'screens/onboarding_screen.dart';
+import 'screens/splash_screen.dart';
 import 'widgets/ai_orb.dart';
 import 'widgets/decision_card.dart';
 
@@ -40,18 +42,19 @@ class _Root extends StatelessWidget {
   Widget build(BuildContext context) {
     final app = context.watch<AppState>();
 
-    if (!app.authenticated) {
-      return const LoginScreen();
+    switch (app.flow) {
+      case AppLoadState.splash:
+        return SplashScreen(onDone: () => context.read<AppState>().finishSplash());
+      case AppLoadState.onboarding:
+        return OnboardingScreen(onComplete: () => context.read<AppState>().finishOnboarding());
+      case AppLoadState.login:
+        return const LoginScreen();
+      case AppLoadState.loading:
+        return const AnimatedBackground(
+          child: LoadingBrain(message: 'جاري إيقاظ الموظف الذكي...'),
+        );
+      case AppLoadState.ready:
+        return HomeShell(onLogout: () => context.read<AppState>().logout());
     }
-
-    if (app.isLoading) {
-      return const AnimatedBackground(
-        child: LoadingBrain(),
-      );
-    }
-
-    return HomeShell(
-      onLogout: () => context.read<AppState>().logout(),
-    );
   }
 }

@@ -5,10 +5,10 @@ import '../core/constants/api_constants.dart';
 import '../core/theme/app_colors.dart';
 import '../providers/app_state.dart';
 import '../widgets/glass_card.dart';
-import '../models/platform_data.dart';
 import 'contracts_screen.dart';
 import 'predictive_maintenance_screen.dart';
 import 'property_health_screen.dart';
+import 'property_memory_screen.dart';
 import 'subscription_screen.dart';
 
 class MoreHubScreen extends StatelessWidget {
@@ -74,7 +74,7 @@ class MoreHubScreen extends StatelessWidget {
           icon: Icons.memory_outlined,
           title: 'Property Memory',
           subtitle: '${data?.aiRecords.length ?? 0} سجل ذكي',
-          onTap: () => _showMemory(context, data?.aiRecords ?? []),
+          onTap: () => _open(context, const PropertyMemoryScreen()),
         ),
         _HubTile(
           icon: Icons.workspace_premium_outlined,
@@ -103,37 +103,7 @@ class MoreHubScreen extends StatelessWidget {
   }
 
   void _open(BuildContext context, Widget screen) {
-    Navigator.of(context).push(
-      MaterialPageRoute(builder: (_) => screen),
-    );
-  }
-
-  void _showMemory(BuildContext context, List<AiRecord> records) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: AppColors.bgCard,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('Property Memory', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 18)),
-            const SizedBox(height: 12),
-            if (records.isEmpty)
-              const Text('لا سجلات بعد — ستُبنى من التحليلات الذكية')
-            else
-              ...records.take(8).map((r) => Padding(
-                    padding: const EdgeInsets.only(bottom: 10),
-                    child: Text('• ${r.date} — ${r.title} (${r.unit})'),
-                  )),
-          ],
-        ),
-      ),
-    );
+    Navigator.of(context).push(MaterialPageRoute(builder: (_) => screen));
   }
 }
 

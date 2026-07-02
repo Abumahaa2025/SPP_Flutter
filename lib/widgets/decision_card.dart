@@ -48,17 +48,21 @@ class DecisionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GlassCard(
+      luxury: item.priority == DecisionPriority.high,
       onTap: onTap,
       child: Row(
         children: [
           Container(
-            width: 48,
-            height: 48,
+            width: 52,
+            height: 52,
             decoration: BoxDecoration(
-              color: _accent.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(14),
+              gradient: LinearGradient(
+                colors: [_accent.withValues(alpha: 0.25), _accent.withValues(alpha: 0.08)],
+              ),
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(color: _accent.withValues(alpha: 0.35)),
             ),
-            child: Icon(_icon, color: _accent),
+            child: Icon(_icon, color: _accent, size: 24),
           ),
           const SizedBox(width: 14),
           Expanded(
@@ -67,15 +71,14 @@ class DecisionCard extends StatelessWidget {
               children: [
                 Text(
                   item.title,
-                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
+                  style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
                 ),
                 const SizedBox(height: 4),
                 Text(
                   item.subtitle,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: AppColors.textSecondary,
+                        height: 1.4,
                       ),
                 ),
               ],
@@ -83,22 +86,25 @@ class DecisionCard extends StatelessWidget {
           ),
           const SizedBox(width: 8),
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
-              color: _accent.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(20),
+              gradient: item.priority == DecisionPriority.high
+                  ? LinearGradient(colors: [_accent.withValues(alpha: 0.3), _accent.withValues(alpha: 0.1)])
+                  : null,
+              color: item.priority == DecisionPriority.high ? null : _accent.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(22),
             ),
             child: Text(
               item.actionLabel,
-              style: TextStyle(color: _accent, fontWeight: FontWeight.w700, fontSize: 12),
+              style: TextStyle(color: _accent, fontWeight: FontWeight.w800, fontSize: 12),
             ),
           ),
         ],
       ),
     )
-        .animate(delay: (80 * index).ms)
-        .fadeIn(duration: 400.ms)
-        .slideX(begin: 0.08, curve: Curves.easeOutCubic);
+        .animate(delay: (70 * index).ms)
+        .fadeIn(duration: 450.ms)
+        .slideX(begin: 0.06, curve: Curves.easeOutCubic);
   }
 }
 
@@ -117,7 +123,7 @@ class SectionHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.only(bottom: 14, top: 4),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
@@ -125,19 +131,21 @@ class SectionHeader extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  title,
-                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w800,
-                      ),
+                ShaderMask(
+                  shaderCallback: (b) => AppColors.goldGradient.createShader(b),
+                  child: Text(
+                    title,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w900,
+                          color: Colors.white,
+                        ),
+                  ),
                 ),
                 if (subtitle != null) ...[
-                  const SizedBox(height: 2),
+                  const SizedBox(height: 4),
                   Text(
                     subtitle!,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                          color: AppColors.textMuted,
-                        ),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
                   ),
                 ],
               ],
@@ -162,19 +170,14 @@ class LoadingBrain extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           const SizedBox(
-            width: 56,
-            height: 56,
-            child: CircularProgressIndicator(
-              strokeWidth: 3,
-              color: AppColors.accent,
-            ),
+            width: 64,
+            height: 64,
+            child: CircularProgressIndicator(strokeWidth: 2.5, color: AppColors.gold),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 24),
           Text(
             message,
-            style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                  color: AppColors.textSecondary,
-                ),
+            style: Theme.of(context).textTheme.bodyLarge?.copyWith(color: AppColors.textSecondary),
           ),
         ],
       ),

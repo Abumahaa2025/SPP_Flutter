@@ -68,13 +68,27 @@ class _HomeShellState extends State<HomeShell> {
         ),
         floatingActionButton: _index == 0
             ? null
-            : FloatingActionButton.extended(
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const AiAssistantScreen()),
+            : Container(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(28),
+                  gradient: AppColors.goldGradient,
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppColors.gold.withValues(alpha: 0.4),
+                      blurRadius: 20,
+                      offset: const Offset(0, 6),
+                    ),
+                  ],
                 ),
-                backgroundColor: AppColors.primary,
-                icon: const Icon(Icons.chat_rounded),
-                label: const Text('اسأل الذكي'),
+                child: FloatingActionButton.extended(
+                  onPressed: () => Navigator.of(context).push(
+                    MaterialPageRoute(builder: (_) => const AiAssistantScreen()),
+                  ),
+                  backgroundColor: Colors.transparent,
+                  elevation: 0,
+                  icon: const Icon(Icons.chat_rounded, color: AppColors.bgDeep),
+                  label: const Text('اسأل الذكي', style: TextStyle(color: AppColors.bgDeep, fontWeight: FontWeight.w800)),
+                ),
               ),
         bottomNavigationBar: _ProNavBar(
           index: _index,
