@@ -5,45 +5,47 @@
 
 export const colors = {
   // Surfaces
-  bg: '#060B14',             // deep navy — base
-  bgElevated: '#0B1220',
-  surface: '#111827',
-  surfaceHi: '#1F2937',
-  surfaceGlass: 'rgba(6, 11, 20, 0.62)',
+  bg: '#050A12',             // slightly deeper for more depth
+  bgElevated: '#0A1120',
+  surface: '#0F1826',
+  surfaceHi: '#1A2436',
+  surfaceGlass: 'rgba(6, 11, 20, 0.58)',
   surfaceGlassStrong: 'rgba(6, 11, 20, 0.78)',
+  glassSheen: 'rgba(255, 255, 255, 0.22)',  // inner top hairline
+  glassSheenSoft: 'rgba(255, 255, 255, 0.08)',
 
   // Ink
-  text: '#F8FAFC',
-  textDim: '#CBD5E1',
-  textMuted: '#94A3B8',
-  textSubtle: '#64748B',
+  text: '#F5F7FA',
+  textDim: '#C7D0DC',
+  textMuted: '#8B95A5',
+  textSubtle: '#5A6473',
 
-  // Brand — gold primary + emerald secondary (per design spec)
+  // Brand — gold primary + emerald secondary
   gold: '#D4AF37',
-  goldSoft: 'rgba(212, 175, 55, 0.14)',
-  goldEdge: 'rgba(212, 175, 55, 0.35)',
-  emerald: '#50C878',
-  emeraldSoft: 'rgba(80, 200, 120, 0.14)',
-  emeraldEdge: 'rgba(80, 200, 120, 0.35)',
-  emeraldGlow: 'rgba(80, 200, 120, 0.45)',
+  goldSoft: 'rgba(212, 175, 55, 0.11)',
+  goldEdge: 'rgba(212, 175, 55, 0.32)',
+  emerald: '#4FCB84',
+  emeraldSoft: 'rgba(80, 200, 120, 0.11)',
+  emeraldEdge: 'rgba(80, 200, 120, 0.32)',
+  emeraldGlow: 'rgba(80, 200, 120, 0.4)',
 
   // Semantic
   success: '#10B981',
-  warning: '#F59E0B',
-  danger: '#EF4444',
-  info: '#3B82F6',
+  warning: '#F5B454',
+  danger: '#E96B6B',
+  info: '#5892E8',
 
   // Structure
-  border: 'rgba(255, 255, 255, 0.08)',
-  borderStrong: 'rgba(255, 255, 255, 0.14)',
-  borderGold: 'rgba(212, 175, 55, 0.28)',
-  divider: 'rgba(255, 255, 255, 0.05)',
+  border: 'rgba(255, 255, 255, 0.07)',
+  borderStrong: 'rgba(255, 255, 255, 0.12)',
+  borderGold: 'rgba(212, 175, 55, 0.25)',
+  divider: 'rgba(255, 255, 255, 0.04)',
 
-  // Gradient stops used across the app
-  heroTop: '#0A1524',
-  heroMid: '#060B14',
-  auroraA: 'rgba(80, 200, 120, 0.16)',
-  auroraB: 'rgba(212, 175, 55, 0.10)',
+  // Gradient stops
+  heroTop: '#08121F',
+  heroMid: '#050A12',
+  auroraA: 'rgba(80, 200, 120, 0.14)',
+  auroraB: 'rgba(212, 175, 55, 0.09)',
 };
 
 export const spacing = {
@@ -96,39 +98,46 @@ export const typography = {
 export const shadows = {
   glass: {
     shadowColor: '#000',
-    shadowOpacity: 0.45,
-    shadowRadius: 26,
-    shadowOffset: { width: 0, height: 14 },
-    elevation: 12,
+    shadowOpacity: 0.5,
+    shadowRadius: 32,
+    shadowOffset: { width: 0, height: 20 },
+    elevation: 14,
   },
   card: {
     shadowColor: '#000',
-    shadowOpacity: 0.35,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 10 },
-    elevation: 8,
+    shadowOpacity: 0.38,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: 12 },
+    elevation: 10,
   },
   glow: {
     shadowColor: colors.emerald,
-    shadowOpacity: 0.35,
-    shadowRadius: 22,
+    shadowOpacity: 0.32,
+    shadowRadius: 26,
     shadowOffset: { width: 0, height: 0 },
     elevation: 6,
   },
   gold: {
     shadowColor: colors.gold,
-    shadowOpacity: 0.25,
-    shadowRadius: 18,
-    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.28,
+    shadowRadius: 22,
+    shadowOffset: { width: 0, height: 10 },
     elevation: 6,
+  },
+  floating: {
+    shadowColor: '#000',
+    shadowOpacity: 0.6,
+    shadowRadius: 36,
+    shadowOffset: { width: 0, height: 22 },
+    elevation: 22,
   },
 };
 
 export const motion = {
-  fast: 180,
-  base: 320,
-  slow: 520,
-  breath: 2600, // for pulsing orbs
+  fast: 200,
+  base: 360,
+  slow: 580,
+  breath: 2800,
 };
 
 export const theme = { colors, spacing, radius, typography, shadows, motion };

@@ -160,15 +160,15 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase', fontWeight: typography.weight.medium,
   },
   barRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
-  barName: { color: colors.text, fontSize: 13, flex: 1, marginRight: 12 },
-  barValue: { color: colors.textDim, fontSize: 12, fontVariant: ['tabular-nums'] },
+  barName: { color: colors.text, fontSize: 13, flex: 1, marginRight: 12, letterSpacing: -0.1 },
+  barValue: { color: colors.textDim, fontSize: 12, fontVariant: ['tabular-nums'], letterSpacing: -0.1 },
   barTrack: {
-    height: 6, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.05)',
-    marginTop: 8, overflow: 'hidden',
+    height: 5, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.04)',
+    marginTop: 10, overflow: 'hidden',
   },
   barFill: {
-    height: 6, borderRadius: 3, backgroundColor: colors.gold,
-    shadowColor: colors.gold, shadowOpacity: 0.6, shadowRadius: 8, shadowOffset: { width: 0, height: 0 },
+    height: 5, borderRadius: 3, backgroundColor: colors.gold,
+    shadowColor: colors.gold, shadowOpacity: 0.55, shadowRadius: 10, shadowOffset: { width: 0, height: 0 },
   },
   grid: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.lg },
   gsLabel: {

@@ -51,9 +51,11 @@ export default function PropertyDetail() {
         {/* Hero image */}
         <View style={styles.hero}>
           {prop ? (
-            <Image source={{ uri: prop.hero_image }} style={styles.heroImg} contentFit="cover" transition={300} />
+            <Image source={{ uri: prop.hero_image }} style={styles.heroImg} contentFit="cover" transition={340} />
           ) : null}
           <View style={styles.heroOverlay} />
+          <View style={styles.heroGradTop} />
+          <View style={styles.heroGradBottom} />
           <Pressable
             testID="detail-back"
             onPress={() => { Haptics.selectionAsync(); router.back(); }}
@@ -62,6 +64,11 @@ export default function PropertyDetail() {
           >
             <Feather name="arrow-left" size={16} color={colors.text} />
           </Pressable>
+          {prop ? (
+            <View style={[styles.kindBadge, { top: insets.top + 12 }]}>
+              <Text style={styles.kindBadgeText}>{prop.kind.toUpperCase()}</Text>
+            </View>
+          ) : null}
         </View>
 
         <View style={styles.body}>
@@ -187,18 +194,37 @@ function Empty({ text }: { text: string }) {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.bg },
-  hero: { height: 340, width: '100%' },
+  hero: { height: 380, width: '100%' },
   heroImg: { ...StyleSheet.absoluteFillObject },
   heroOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'rgba(6,11,20,0.35)',
+    backgroundColor: 'rgba(5,10,18,0.25)',
+  },
+  heroGradTop: {
+    position: 'absolute', left: 0, right: 0, top: 0, height: 120,
+    backgroundColor: 'rgba(5,10,18,0.55)',
+  },
+  heroGradBottom: {
+    position: 'absolute', left: 0, right: 0, bottom: 0, height: 220,
+    backgroundColor: 'rgba(5,10,18,0.7)',
   },
   back: {
     position: 'absolute', left: spacing.lg,
     width: 40, height: 40, borderRadius: radius.pill,
-    borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.2)',
-    backgroundColor: 'rgba(6,11,20,0.6)',
+    borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.18)',
+    backgroundColor: 'rgba(5,10,18,0.55)',
     alignItems: 'center', justifyContent: 'center',
+  },
+  kindBadge: {
+    position: 'absolute', right: spacing.lg,
+    paddingHorizontal: 12, paddingVertical: 8,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.18)',
+    backgroundColor: 'rgba(5,10,18,0.55)',
+  },
+  kindBadgeText: {
+    color: colors.text, fontSize: 10, letterSpacing: 1.8,
+    fontWeight: typography.weight.medium,
   },
   body: { paddingHorizontal: spacing.lg, marginTop: -60 },
   city: { color: colors.textMuted, fontSize: 11, letterSpacing: 2.4, fontWeight: typography.weight.medium },

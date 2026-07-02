@@ -76,9 +76,18 @@ export default function Portfolio() {
                   source={{ uri: p.hero_image }}
                   style={styles.image}
                   contentFit="cover"
-                  transition={280}
+                  transition={340}
                 />
                 <View style={styles.imageOverlay} />
+                <View style={styles.imageGradient}>
+                  <View style={styles.gradTop} />
+                  <View style={styles.gradBottom} />
+                </View>
+                <View style={styles.imageBadgeRow}>
+                  <View style={styles.imageBadge}>
+                    <Text style={styles.imageBadgeText}>{p.kind.toUpperCase()}</Text>
+                  </View>
+                </View>
                 <View style={styles.cardBody}>
                   <View style={styles.cardTop}>
                     <View style={{ flex: 1 }}>
@@ -92,7 +101,7 @@ export default function Portfolio() {
                     <Dot />
                     <Meta icon="users" label={`${Math.round(p.occupancy * 100)}% occ.`} />
                     <Dot />
-                    <Meta icon="trending-up" label={`${(p.monthly_revenue / 1000).toFixed(0)}K/mo`} />
+                    <Meta icon="trending-up" label={`AED ${(p.monthly_revenue / 1000).toFixed(0)}K/mo`} />
                   </View>
                 </View>
               </View>
@@ -146,12 +155,33 @@ const styles = StyleSheet.create({
   },
   chipTextActive: { color: colors.gold },
   card: { borderRadius: radius.lg, overflow: 'hidden' },
-  image: { width: '100%', height: 180 },
+  image: { width: '100%', height: 200 },
   imageOverlay: {
-    position: 'absolute', left: 0, right: 0, top: 0, height: 180,
-    backgroundColor: 'rgba(6,11,20,0.35)',
+    position: 'absolute', left: 0, right: 0, top: 0, height: 200,
+    backgroundColor: 'rgba(5,10,18,0.28)',
   },
-  cardBody: { padding: 20 },
+  imageGradient: { position: 'absolute', left: 0, right: 0, top: 0, height: 200 },
+  gradTop: {
+    position: 'absolute', left: 0, right: 0, top: 0, height: 60,
+    backgroundColor: 'rgba(5,10,18,0.55)',
+  },
+  gradBottom: {
+    position: 'absolute', left: 0, right: 0, bottom: 0, height: 90,
+    backgroundColor: 'rgba(5,10,18,0.5)',
+  },
+  imageBadgeRow: {
+    position: 'absolute', top: 16, left: 16, flexDirection: 'row', gap: 8,
+  },
+  imageBadge: {
+    paddingHorizontal: 10, paddingVertical: 5,
+    borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.18)',
+    backgroundColor: 'rgba(5,10,18,0.55)',
+  },
+  imageBadgeText: {
+    color: colors.text, fontSize: 9.5, letterSpacing: 1.6, fontWeight: typography.weight.medium,
+  },
+  cardBody: { padding: 22 },
   cardTop: { flexDirection: 'row', alignItems: 'flex-start', gap: 12 },
   city: {
     color: colors.textMuted, fontSize: 10.5, letterSpacing: 2,

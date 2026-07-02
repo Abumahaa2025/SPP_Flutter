@@ -188,7 +188,7 @@ def _seed_dataset() -> Dict[str, List[dict]]:
             "occupancy": 1.0,
             "monthly_revenue": 68_500,
             "health_score": 92,
-            "hero_image": "https://images.unsplash.com/photo-1527576539890-dfa815648363?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjAzMjd8MHwxfHNlYXJjaHwzfHxkYXJrJTIwY2luZW1hdGljJTIwbW9kZXJuJTIwYXJjaGl0ZWN0dXJlfGVufDB8fHx8MTc4MzAyOTc1MXww&ixlib=rb-4.1.0&q=85",
+            "hero_image": "https://images.unsplash.com/photo-1600607687939-ce8a6c25118c?w=1200&q=80",
             "tenant_ids": ["ten_1", "ten_2"],
             "owner_id": "own_1",
         },

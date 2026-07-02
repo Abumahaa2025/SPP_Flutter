@@ -28,8 +28,9 @@ type Props = {
 };
 
 /**
- * Linear/Stripe-inspired priority card.
- * Ordinal rank + reasoning + impact + one clear gold CTA. Massive breathing.
+ * Refined priority card — Apple/Linear/Stripe hybrid.
+ * Softer separators, hairline dividers instead of gradient borders,
+ * tighter typography, less visual weight on secondary meta.
  */
 export function ActionCard({ decision, rank, onAccept, onDetails }: Props) {
   const meta = priorityMeta[decision.priority];
@@ -40,16 +41,14 @@ export function ActionCard({ decision, rank, onAccept, onDetails }: Props) {
     <GlassCard
       testID={`decision-card-${decision.id}`}
       edge={highPriority ? 'gold' : 'neutral'}
-      padding={26}
+      padding={24}
       radiusToken="lg"
       style={{ marginBottom: spacing.md }}
     >
-      {/* Rank + priority pill */}
+      {/* Header row — rank · priority · confidence */}
       <View style={styles.topRow}>
         {typeof rank === 'number' ? (
-          <Text style={styles.rank}>
-            {String(rank).padStart(2, '0')}
-          </Text>
+          <Text style={styles.rank}>{String(rank).padStart(2, '0')}</Text>
         ) : null}
         <View style={styles.priorityPill}>
           <View style={[styles.dot, { backgroundColor: meta.color }]} />
@@ -62,18 +61,24 @@ export function ActionCard({ decision, rank, onAccept, onDetails }: Props) {
         </View>
       </View>
 
-      {/* Kind icon */}
-      <View style={[styles.iconWrap, highPriority && styles.iconWrapGold]}>
-        <Feather name={iconName} size={16} color={highPriority ? colors.gold : colors.textDim} />
+      {/* Body — icon + title */}
+      <View style={styles.bodyRow}>
+        <View style={[styles.iconWrap, highPriority && styles.iconWrapGold]}>
+          <Feather name={iconName} size={15} color={highPriority ? colors.gold : colors.textDim} />
+        </View>
+        <View style={{ flex: 1 }}>
+          <Text style={styles.title}>{decision.title}</Text>
+        </View>
       </View>
 
-      <Text style={styles.title}>{decision.title}</Text>
       <Text style={styles.reason}>{decision.reason}</Text>
 
       <View style={styles.impactRow}>
         <View style={styles.impactBar} />
         <Text style={styles.impact}>{decision.impact}</Text>
       </View>
+
+      <View style={styles.hair} />
 
       <View style={styles.actionRow}>
         <Pressable
@@ -108,7 +113,7 @@ export function ActionCard({ decision, rank, onAccept, onDetails }: Props) {
           hitSlop={12}
           style={styles.secondaryBtn}
         >
-          <Feather name="arrow-up-right" size={16} color={colors.textDim} />
+          <Feather name="arrow-up-right" size={15} color={colors.textDim} />
         </Pressable>
       </View>
     </GlassCard>
@@ -119,67 +124,72 @@ const styles = StyleSheet.create({
   topRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 14,
+    gap: 12,
   },
   rank: {
-    fontSize: 11,
+    fontSize: 10.5,
     color: colors.textSubtle,
-    letterSpacing: 2,
+    letterSpacing: 2.2,
     fontVariant: ['tabular-nums'],
     fontWeight: typography.weight.medium,
   },
   priorityPill: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 7,
   },
   dot: { width: 5, height: 5, borderRadius: 3 },
   priorityLabel: {
-    fontSize: 11,
-    letterSpacing: 1.4,
+    fontSize: 10.5,
+    letterSpacing: 1.5,
     textTransform: 'uppercase',
     fontWeight: typography.weight.medium,
   },
   confidence: { alignItems: 'flex-end' },
   confidenceValue: {
     color: colors.text,
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: typography.weight.semibold,
-    letterSpacing: typography.letter.tight,
+    letterSpacing: -0.4,
     fontVariant: ['tabular-nums'],
   },
   confidenceLabel: {
     color: colors.textSubtle,
-    fontSize: 9.5,
+    fontSize: 9,
     marginTop: -2,
-    letterSpacing: 1.2,
+    letterSpacing: 1.4,
     textTransform: 'uppercase',
   },
-  iconWrap: {
+  bodyRow: {
+    flexDirection: 'row',
+    gap: 14,
+    alignItems: 'flex-start',
     marginTop: spacing.lg,
-    width: 34, height: 34, borderRadius: radius.pill,
+  },
+  iconWrap: {
+    width: 34, height: 34, borderRadius: 17,
     alignItems: 'center', justifyContent: 'center',
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
-    backgroundColor: 'rgba(255,255,255,0.025)',
+    backgroundColor: 'rgba(255,255,255,0.02)',
   },
   iconWrapGold: {
     borderColor: colors.goldEdge,
     backgroundColor: colors.goldSoft,
   },
   title: {
-    marginTop: spacing.md,
     color: colors.text,
-    fontSize: typography.cardTitle,
-    lineHeight: 25,
+    fontSize: 17,
+    lineHeight: 24,
     fontWeight: typography.weight.semibold,
-    letterSpacing: typography.letter.tight,
+    letterSpacing: -0.35,
+    paddingTop: 4,
   },
   reason: {
-    marginTop: spacing.sm,
+    marginTop: spacing.md,
     color: colors.textDim,
-    fontSize: typography.body,
-    lineHeight: 22,
+    fontSize: 14,
+    lineHeight: 21,
   },
   impactRow: {
     marginTop: spacing.md,
@@ -188,27 +198,32 @@ const styles = StyleSheet.create({
     gap: 10,
   },
   impactBar: {
-    width: 2, height: 14,
+    width: 2, height: 12,
     backgroundColor: colors.emerald,
     borderRadius: 1,
-    opacity: 0.85,
+    opacity: 0.9,
   },
   impact: {
     flex: 1,
     color: colors.emerald,
-    fontSize: 13,
+    fontSize: 12.5,
     letterSpacing: 0.1,
     lineHeight: 18,
   },
-  actionRow: {
+  hair: {
+    height: StyleSheet.hairlineWidth,
+    backgroundColor: colors.divider,
     marginTop: spacing.lg,
+  },
+  actionRow: {
+    marginTop: spacing.md,
     flexDirection: 'row',
     alignItems: 'stretch',
     gap: 10,
   },
   primaryBtn: {
     flex: 1,
-    minHeight: 46,
+    minHeight: 44,
     borderRadius: radius.md,
     alignItems: 'center',
     justifyContent: 'center',
@@ -221,21 +236,21 @@ const styles = StyleSheet.create({
     borderColor: colors.goldEdge,
   },
   primaryBtnGhost: {
-    backgroundColor: 'rgba(255,255,255,0.035)',
+    backgroundColor: 'rgba(255,255,255,0.03)',
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
   },
   primaryBtnText: {
-    fontSize: 13.5,
+    fontSize: 13,
     fontWeight: typography.weight.medium,
-    letterSpacing: 0.2,
+    letterSpacing: 0.1,
     lineHeight: 18,
     textAlign: 'center',
   },
   primaryBtnTextGold: { color: colors.gold },
   primaryBtnTextGhost: { color: colors.text },
   secondaryBtn: {
-    width: 46,
+    width: 44,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,

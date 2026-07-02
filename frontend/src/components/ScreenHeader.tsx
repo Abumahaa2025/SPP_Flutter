@@ -39,25 +39,25 @@ export function ScreenHeader({ eyebrow, title, sub, showBack }: Props) {
 }
 
 const styles = StyleSheet.create({
-  wrap: { marginBottom: spacing.xl },
+  wrap: { marginBottom: spacing['2xl'] },
   back: {
-    width: 40, height: 40, borderRadius: radius.pill,
+    width: 38, height: 38, borderRadius: radius.pill,
     borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border,
     alignItems: 'center', justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.03)',
+    backgroundColor: 'rgba(255,255,255,0.025)',
     marginBottom: spacing.lg,
   },
   eyebrow: {
-    color: colors.textMuted, fontSize: 11, letterSpacing: 2.4,
+    color: colors.textMuted, fontSize: 10.5, letterSpacing: 2.4,
     textTransform: 'uppercase', fontWeight: typography.weight.medium,
     marginBottom: spacing.md,
   },
   title: {
-    color: colors.text, fontSize: typography.display, lineHeight: 40,
-    fontWeight: typography.weight.semibold, letterSpacing: -0.8,
+    color: colors.text, fontSize: 30, lineHeight: 36,
+    fontWeight: typography.weight.semibold, letterSpacing: -0.7,
   },
   sub: {
-    color: colors.textMuted, fontSize: typography.body, lineHeight: 22,
+    color: colors.textMuted, fontSize: 14.5, lineHeight: 21,
     marginTop: spacing.md, maxWidth: '92%',
   },
 });

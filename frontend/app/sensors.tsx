@@ -7,6 +7,7 @@ import * as Haptics from 'expo-haptics';
 import { ScreenScaffold } from '@/src/components/ScreenScaffold';
 import { ScreenHeader } from '@/src/components/ScreenHeader';
 import { GlassCard } from '@/src/components/GlassCard';
+import { EmptyState } from '@/src/components/EmptyState';
 import { api, type PropertyT, type SensorT } from '@/src/api/client';
 import { colors, spacing, typography, radius } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
@@ -76,6 +77,11 @@ export default function Sensors() {
       </ScrollView>
 
       <View style={styles.grid}>
+        {filtered.length === 0 ? (
+          <View style={{ width: '100%' }}>
+            <EmptyState icon="activity" eyebrow="No signals" title="No sensors match this filter." />
+          </View>
+        ) : null}
         {filtered.map((s, i) => {
           const c = s.status === 'nominal' ? colors.emerald : s.status === 'attention' ? colors.gold : colors.danger;
           const iconName = iconOf[s.kind] ?? 'activity';
@@ -119,7 +125,7 @@ const styles = StyleSheet.create({
   },
   chipTextActive: { color: colors.gold },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.md },
-  gridItem: { width: '48%' },
+  gridItem: { flexGrow: 1, flexBasis: '46%', maxWidth: '48%' },
   tileTop: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
   iconWrap: { width: 32, height: 32, borderRadius: 16, borderWidth: StyleSheet.hairlineWidth, alignItems: 'center', justifyContent: 'center' },
   statusDot: { width: 6, height: 6, borderRadius: 3 },

@@ -45,9 +45,9 @@ export function GlassTabBar() {
                 >
                   <Feather
                     name={t.icon}
-                    size={20}
+                    size={19}
                     color={isActive ? colors.text : colors.textMuted}
-                    style={{ opacity: isActive ? 1 : 0.85 }}
+                    style={{ opacity: isActive ? 1 : 0.8 }}
                   />
                   {isActive
                     ? <Animated.View entering={FadeIn.duration(220)} style={styles.dot} />
@@ -63,21 +63,21 @@ export function GlassTabBar() {
 }
 
 const styles = StyleSheet.create({
-  wrap: { position: 'absolute', left: spacing.lg, right: spacing.lg, bottom: spacing.lg, alignItems: 'center' },
+  wrap: { position: 'absolute', left: spacing.md + 4, right: spacing.md + 4, bottom: spacing.md + 6, alignItems: 'center' },
   shadow: {
     width: '100%', borderRadius: radius.pill, overflow: 'hidden',
-    borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.09)',
-    backgroundColor: 'rgba(6,11,20,0.55)',
-    shadowColor: '#000', shadowOpacity: 0.55, shadowRadius: 26,
-    shadowOffset: { width: 0, height: 18 }, elevation: 18,
+    borderWidth: StyleSheet.hairlineWidth, borderColor: 'rgba(255,255,255,0.08)',
+    backgroundColor: 'rgba(6,11,20,0.6)',
+    shadowColor: '#000', shadowOpacity: 0.6, shadowRadius: 32,
+    shadowOffset: { width: 0, height: 22 }, elevation: 22,
   },
   bar: { width: '100%' },
-  highlight: { position: 'absolute', left: 24, right: 24, top: 0, height: StyleSheet.hairlineWidth, backgroundColor: 'rgba(255,255,255,0.18)' },
-  inner: { flexDirection: 'row', paddingHorizontal: spacing.sm, paddingTop: 16, paddingBottom: 14 },
-  item: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 6 },
+  highlight: { position: 'absolute', left: 28, right: 28, top: 0, height: StyleSheet.hairlineWidth, backgroundColor: 'rgba(255,255,255,0.22)' },
+  inner: { flexDirection: 'row', paddingHorizontal: spacing.sm, paddingTop: 18, paddingBottom: 16 },
+  item: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 7 },
   dot: {
     width: 4, height: 4, borderRadius: 2, backgroundColor: colors.gold,
-    shadowColor: colors.gold, shadowOpacity: 0.8, shadowRadius: 6, shadowOffset: { width: 0, height: 0 }, elevation: 4,
+    shadowColor: colors.gold, shadowOpacity: 0.9, shadowRadius: 8, shadowOffset: { width: 0, height: 0 }, elevation: 6,
   },
   dotHidden: { width: 4, height: 4 },
 });

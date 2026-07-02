@@ -113,6 +113,6 @@ const styles = StyleSheet.create({
   city: { color: colors.textMuted, fontSize: 12, marginTop: 2 },
   scoreWrap: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   score: { fontSize: 22, fontWeight: typography.weight.semibold, fontVariant: ['tabular-nums'], letterSpacing: typography.letter.tight },
-  bar: { height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.05)', marginTop: 12, overflow: 'hidden' },
-  barFill: { height: 4, borderRadius: 2 },
+  bar: { height: 3, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.04)', marginTop: 14, overflow: 'hidden' },
+  barFill: { height: 3, borderRadius: 2 },
 });

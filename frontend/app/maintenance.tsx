@@ -6,6 +6,7 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import { ScreenScaffold } from '@/src/components/ScreenScaffold';
 import { ScreenHeader } from '@/src/components/ScreenHeader';
 import { GlassCard } from '@/src/components/GlassCard';
+import { EmptyState } from '@/src/components/EmptyState';
 import { api, type DecisionT, type PropertyT } from '@/src/api/client';
 import { colors, spacing, typography, radius } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
@@ -54,9 +55,12 @@ export default function Maintenance() {
       <View style={{ marginTop: spacing.xl }}>
         <Text style={styles.sectionEyebrow}>Upcoming interventions</Text>
         {decisions.length === 0 ? (
-          <GlassCard padding={22} radiusToken="lg" style={{ marginTop: spacing.md }}>
-            <Text style={styles.empty}>Nothing predicted right now. Your properties are calm.</Text>
-          </GlassCard>
+          <EmptyState
+            icon="check-circle"
+            eyebrow="Nothing predicted"
+            title="Your properties are calm."
+            body="SPP is watching every sensor and service log. You'll see interventions here well before any failure."
+          />
         ) : (
           decisions.map((d, i) => {
             const prop = d.property_id ? propMap.get(d.property_id) : null;

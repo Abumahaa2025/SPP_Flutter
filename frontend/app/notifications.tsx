@@ -6,6 +6,7 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import { ScreenScaffold } from '@/src/components/ScreenScaffold';
 import { ScreenHeader } from '@/src/components/ScreenHeader';
 import { GlassCard } from '@/src/components/GlassCard';
+import { EmptyState } from '@/src/components/EmptyState';
 import { api, type NotifT } from '@/src/api/client';
 import { colors, spacing, typography, radius } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
@@ -28,12 +29,12 @@ export default function Notifications() {
       />
 
       {items.length === 0 ? (
-        <GlassCard padding={26} radiusToken="lg">
-          <View style={{ alignItems: 'center', gap: 12 }}>
-            <Feather name="bell" size={20} color={colors.textMuted} />
-            <Text style={styles.empty}>You&apos;re all caught up.</Text>
-          </View>
-        </GlassCard>
+        <EmptyState
+          icon="check-circle"
+          eyebrow="All quiet"
+          title="You're all caught up."
+          body="SPP only surfaces what matters. You'll see something here when it does."
+        />
       ) : (
         items.map((n, i) => {
           const c = priorityColor(n.priority);
