@@ -1,130 +1,85 @@
 import 'package:flutter/material.dart';
-import '../core/theme/app_theme.dart';
-import '../models/app_models.dart';
-import '../services/api_service.dart';
+import 'package:provider/provider.dart';
 
-class ContractsScreen extends StatefulWidget {
+import '../core/theme/app_colors.dart';
+import '../models/platform_data.dart';
+import '../providers/app_state.dart';
+import '../widgets/glass_card.dart';
+
+class ContractsScreen extends StatelessWidget {
   const ContractsScreen({super.key});
 
   @override
-  State<ContractsScreen> createState() => _ContractsScreenState();
+  Widget build(BuildContext context) {
+    final data = context.watch<AppState>().platform;
+    if (data == null) return const SizedBox.shrink();
+
+    return DefaultTabController(
+      length: 3,
+      child: Scaffold(
+        appBar: AppBar(
+          title: const Text('العقود'),
+          bottom: const TabBar(
+            tabs: [
+              Tab(text: 'الكل'),
+              Tab(text: 'قريبة'),
+              Tab(text: 'منتهية'),
+            ],
+          ),
+        ),
+        body: TabBarView(
+          children: [
+            _ContractList(units: data.dashboard.units),
+            _ContractList(units: data.dashboard.nearContracts),
+            _ContractList(units: data.dashboard.expiredContracts),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
-class _ContractsScreenState extends State<ContractsScreen> {
-  final _api = const ApiService();
-  List<ContractItem> _contracts = [];
-  bool _loading = true;
+class _ContractList extends StatelessWidget {
+  const _ContractList({required this.units});
 
-  @override
-  void initState() {
-    super.initState();
-    _load();
-  }
-
-  Future<void> _load() async {
-    final contracts = await _api.fetchContracts();
-    if (!mounted) return;
-    setState(() {
-      _contracts = contracts;
-      _loading = false;
-    });
-  }
-
-  Color _statusColor(String status) {
-    if (status.contains('متأخر')) return Colors.red;
-    if (status.contains('ينتهي')) return Colors.orange;
-    return AppTheme.primary;
-  }
+  final List<UnitRow> units;
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) {
-      return const Center(child: CircularProgressIndicator(color: AppTheme.primary));
+    if (units.isEmpty) {
+      return const Center(child: Text('لا عقود في هذا القسم'));
     }
 
-    return RefreshIndicator(
-      color: AppTheme.primary,
-      onRefresh: _load,
-      child: ListView.separated(
-        padding: const EdgeInsets.all(16),
-        itemCount: _contracts.length,
-        separatorBuilder: (_, _) => const SizedBox(height: 10),
-        itemBuilder: (context, index) {
-          final contract = _contracts[index];
-
-          return Card(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+    return ListView.separated(
+      padding: const EdgeInsets.all(16),
+      itemCount: units.length,
+      separatorBuilder: (_, _) => const SizedBox(height: 10),
+      itemBuilder: (context, index) {
+        final u = units[index];
+        return GlassCard(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(u.tenant, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+              const SizedBox(height: 6),
+              Text(u.unit, style: const TextStyle(color: AppColors.accent)),
+              const SizedBox(height: 10),
+              Row(
                 children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          contract.tenant,
-                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                                fontWeight: FontWeight.w800,
-                              ),
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: _statusColor(contract.status).withValues(alpha: 0.12),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Text(
-                          contract.status,
-                          style: TextStyle(
-                            color: _statusColor(contract.status),
-                            fontWeight: FontWeight.w700,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      const Icon(Icons.apartment, size: 16, color: AppTheme.primary),
-                      const SizedBox(width: 6),
-                      Text(contract.unit),
-                      const Spacer(),
-                      Text(
-                        contract.id,
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Colors.grey.shade500,
-                            ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Text(
-                        '${contract.rent} ر.س / شهر',
-                        style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                              fontWeight: FontWeight.w700,
-                              color: AppTheme.primary,
-                            ),
-                      ),
-                      const Spacer(),
-                      Text(
-                        'ينتهي ${contract.endDate}',
-                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: Colors.grey.shade600,
-                            ),
-                      ),
-                    ],
-                  ),
+                  Text('${u.rent} ر.س', style: const TextStyle(fontWeight: FontWeight.w700)),
+                  const Spacer(),
+                  if (u.expiryDate != null)
+                    Text('ينتهي ${u.expiryDate}', style: const TextStyle(color: AppColors.textMuted, fontSize: 12)),
                 ],
               ),
-            ),
-          );
-        },
-      ),
+              if (u.payStatus != null && u.payStatus!.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Text(u.payStatus!, style: TextStyle(color: u.payStatus!.contains('متأخر') ? AppColors.danger : AppColors.success, fontSize: 12)),
+              ],
+            ],
+          ),
+        );
+      },
     );
   }
 }

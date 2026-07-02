@@ -1,7 +1,7 @@
 name: spp_flutter
-description: "Smart Real Estate MVP - Arabic RTL"
+description: "تميّز العقار الذكي — منصة ذكاء اصطناعي لإدارة العقارات"
 publish_to: 'none'
-version: 1.0.0+1
+version: 2.0.0+2
 
 environment:
   sdk: ^3.12.2
@@ -14,6 +14,11 @@ dependencies:
   cupertino_icons: ^1.0.8
   google_fonts: ^6.2.1
   intl: ^0.20.2
+  http: ^1.2.2
+  provider: ^6.1.2
+  flutter_animate: ^4.5.2
+  shimmer: ^3.0.0
+  fl_chart: ^0.70.2
 
 dev_dependencies:
   flutter_test:

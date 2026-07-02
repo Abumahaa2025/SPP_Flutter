@@ -1,148 +1,112 @@
 import 'package:flutter/material.dart';
-import '../core/theme/app_theme.dart';
-import '../data/demo_data.dart';
+import 'package:flutter_animate/flutter_animate.dart';
+import 'package:provider/provider.dart';
 
-class LoginScreen extends StatefulWidget {
-  const LoginScreen({super.key, required this.onLogin});
+import '../core/constants/api_constants.dart';
+import '../core/theme/app_colors.dart';
+import '../providers/app_state.dart';
+import '../widgets/ai_orb.dart';
+import '../widgets/decision_card.dart';
+import '../widgets/glass_card.dart';
 
-  final VoidCallback onLogin;
-
-  @override
-  State<LoginScreen> createState() => _LoginScreenState();
-}
-
-class _LoginScreenState extends State<LoginScreen> {
-  final _emailController = TextEditingController(text: 'demo@spp.sa');
-  final _passwordController = TextEditingController(text: '••••••••');
-  bool _loading = false;
-
-  Future<void> _submit() async {
-    setState(() => _loading = true);
-    await Future<void>.delayed(const Duration(milliseconds: 800));
-    if (!mounted) return;
-    setState(() => _loading = false);
-    widget.onLogin();
-  }
-
-  @override
-  void dispose() {
-    _emailController.dispose();
-    _passwordController.dispose();
-    super.dispose();
-  }
+class LoginScreen extends StatelessWidget {
+  const LoginScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: SafeArea(
-        child: SingleChildScrollView(
+    final app = context.watch<AppState>();
+
+    return AnimatedBackground(
+      child: SafeArea(
+        child: Padding(
           padding: const EdgeInsets.all(24),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              const Spacer(),
+              const Center(child: AiOrb(size: 140)),
+              const SizedBox(height: 28),
+              Text(
+                ApiConstants.appName,
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      fontWeight: FontWeight.w900,
+                      color: AppColors.textPrimary,
+                    ),
+              ).animate().fadeIn(duration: 600.ms).slideY(begin: 0.1),
+              const SizedBox(height: 10),
+              Text(
+                'موظفك العقاري الذكي — ليس مجرد برنامج إدارة',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      color: AppColors.textSecondary,
+                    ),
+              ).animate(delay: 150.ms).fadeIn(),
               const SizedBox(height: 32),
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(
-                  color: AppTheme.primary,
-                  borderRadius: BorderRadius.circular(24),
-                ),
+              GlassCard(
                 child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Icon(Icons.apartment_rounded, color: Colors.white, size: 48),
-                    const SizedBox(height: 12),
-                    Text(
-                      'تميّز العقار الذكي',
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                            color: Colors.white,
-                            fontWeight: FontWeight.w800,
-                          ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 8),
-                    Text(
-                      DemoData.propertyName,
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                            color: Colors.white70,
-                          ),
-                      textAlign: TextAlign.center,
-                    ),
+                    _FeatureRow(icon: Icons.psychology, text: 'Unified Brain — قرارات ذكية'),
+                    _FeatureRow(icon: Icons.sensors, text: 'Virtual Sensors — مراقبة لحظية'),
+                    _FeatureRow(icon: Icons.auto_awesome, text: 'Property Memory — ذاكرة العقار'),
                   ],
                 ),
-              ),
-              const SizedBox(height: 32),
-              Text(
-                'تسجيل الدخول',
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                      fontWeight: FontWeight.w700,
-                    ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                'نسخة تجريبية — ${DemoData.trialDaysLeft} يوم متبقٍ',
-                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                      color: AppTheme.primary,
-                      fontWeight: FontWeight.w600,
-                    ),
-              ),
-              const SizedBox(height: 24),
-              TextField(
-                controller: _emailController,
-                keyboardType: TextInputType.emailAddress,
-                textInputAction: TextInputAction.next,
-                decoration: const InputDecoration(
-                  labelText: 'البريد الإلكتروني',
-                  prefixIcon: Icon(Icons.email_outlined),
-                ),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: _passwordController,
-                obscureText: true,
-                textInputAction: TextInputAction.done,
-                onSubmitted: (_) => _submit(),
-                decoration: const InputDecoration(
-                  labelText: 'كلمة المرور',
-                  prefixIcon: Icon(Icons.lock_outline),
-                ),
-              ),
-              const SizedBox(height: 24),
-              FilledButton(
-                onPressed: _loading ? null : _submit,
-                style: FilledButton.styleFrom(
-                  backgroundColor: AppTheme.primary,
-                  foregroundColor: Colors.white,
-                  minimumSize: const Size.fromHeight(52),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
+              ).animate(delay: 250.ms).fadeIn().slideY(begin: 0.05),
+              const Spacer(),
+              if (app.state == AppLoadState.error) ...[
+                GlassCard(
+                  padding: const EdgeInsets.all(14),
+                  child: Text(
+                    app.errorMessage ?? 'تعذر الاتصال بالمنصة',
+                    style: const TextStyle(color: AppColors.danger),
                   ),
                 ),
-                child: _loading
-                    ? const SizedBox(
-                        height: 22,
-                        width: 22,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: Colors.white,
-                        ),
-                      )
-                    : const Text('دخول تجريبي'),
-              ),
-              const SizedBox(height: 16),
-              OutlinedButton.icon(
-                onPressed: _loading ? null : _submit,
-                icon: const Icon(Icons.play_circle_outline),
-                label: const Text('تجربة بدون حساب'),
-                style: OutlinedButton.styleFrom(
-                  minimumSize: const Size.fromHeight(48),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(14),
+                const SizedBox(height: 12),
+              ],
+              if (app.isLoading)
+                const LoadingBrain(message: 'جاري الاتصال بالمنصة...')
+              else
+                FilledButton(
+                  onPressed: () => context.read<AppState>().connect(),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                    minimumSize: const Size.fromHeight(56),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
                   ),
-                ),
+                  child: const Text('تفعيل الموظف الذكي', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 16)),
+                ).animate(delay: 350.ms).fadeIn(),
+              const SizedBox(height: 12),
+              Text(
+                'يتصل مباشرة بمنصة SPP — بيانات حقيقية فقط',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
               ),
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _FeatureRow extends StatelessWidget {
+  const _FeatureRow({required this.icon, required this.text});
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          Icon(icon, color: AppColors.accent, size: 20),
+          const SizedBox(width: 10),
+          Expanded(child: Text(text, style: const TextStyle(fontWeight: FontWeight.w600))),
+        ],
       ),
     );
   }

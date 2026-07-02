@@ -1,47 +1,46 @@
-# SPP Flutter — تميّز العقار الذكي
+# تميّز العقار الذكي — SPP Flutter Pro
 
-تطبيق Flutter MVP لمنصة إدارة العقارات الذكية (SPP)، بواجهة عربية RTL وبيانات تجريبية.
+منصة ذكاء اصطناعي لإدارة العقارات — AI First، متصلة مباشرة بمنصة SPP.
 
-## الشاشات
+## الميزات
 
-| الشاشة | الوصف |
+| الوحدة | الوصف |
 |--------|--------|
-| تسجيل الدخول | دخول تجريبي (14 يوم) |
-| لوحة التحكم | إحصائيات الوحدات والتحصيل |
-| صندوق الوارد | رسائل وتنبيهات |
-| العقود | قائمة العقود النشطة |
-| الصيانة | بلاغات الصيانة |
-| الإعدادات | الملف الشخصي والتكامل |
+| **Unified Brain** | العقل المركزي — قرارات وليس أرقام فقط |
+| **AI Assistant** | موظف عقاري ذكي يتحدث مع المالك |
+| **Smart Dashboard** | لوحة قرارات استراتيجية |
+| **Smart Inbox** | تصنيف ذكي + إجراءات مقترحة |
+| **Property Health** | صحة العقار الشاملة |
+| **Predictive Maintenance** | صيانة استباقية |
+| **Virtual Sensors** | كهرباء، مياه، أحداث |
+| **Property Memory** | ذاكرة العقار من AI Records |
+| **Subscription** | نظام اشتراكات احترافي |
+
+## الاتصال بالمنصة
+
+```
+GET .../exec?view=api&action=getAppData
+GET .../exec?view=api&action=healthCheck
+GET .../exec?view=api&action=getSubscription
+```
+
+Build: `spp-flutter-pro-v1`
 
 ## التشغيل
 
 ```bash
-cd SPP_Flutter
 flutter pub get
 flutter run
 ```
 
-## البناء (APK)
+## البناء
 
 ```bash
 flutter build apk --release
+flutter build appbundle --release   # Google Play
+flutter build ipa                   # App Store (macOS)
 ```
 
-أو عبر GitHub Actions: workflow `build_apk.yml` يبني APK تلقائياً عند push.
+## GitHub
 
-## التكامل مع Apps Script
-
-Endpoint جاهز في `lib/core/constants/api_constants.dart` — الطبقة `ApiService` تستخدم بيانات تجريبية حالياً.
-
-```
-https://script.google.com/macros/s/AKfycbyfGVaod79j2J7QytcDcTiyx7oh5ioQODLBkARZ5-vVjTg7EiW2g1SzNZeKjxp3Pbv1rQ/exec?app=koil
-```
-
-Build tag: `spp-flutter-mvp-v1`
-
-## التصميم
-
-- Material 3
-- خط Cairo (google_fonts)
-- اللون الأساسي: `#0D7A72`
-- RTL افتراضي
+https://github.com/Abumahaa2025/SPP_Flutter

@@ -1,37 +1,46 @@
-import '../core/constants/api_constants.dart';
-import '../data/demo_data.dart';
-import '../models/app_models.dart';
+import '../core/network/api_client.dart';
+import '../models/platform_data.dart';
 
-/// Stub API layer — returns demo data until Apps Script integration is wired.
 class ApiService {
-  const ApiService();
+  ApiService({ApiClient? client}) : _client = client ?? ApiClient();
 
-  Future<bool> ping() async {
-    // Future: GET ${ApiConstants.baseUrl}?view=ping
-    await Future<void>.delayed(const Duration(milliseconds: 400));
-    return true;
+  final ApiClient _client;
+
+  Future<PlatformData> fetchPlatform({bool forceRefresh = false}) async {
+    final data = await _client.getData<Map<String, dynamic>>(
+      'getAppData',
+      params: forceRefresh ? {'forceRefresh': 'true'} : null,
+      parser: (json) => Map<String, dynamic>.from(json as Map),
+    );
+    return PlatformData.fromJson(data);
   }
 
-  Future<DashboardStats> fetchDashboard() async {
-    await Future<void>.delayed(const Duration(milliseconds: 300));
-    return DemoData.dashboard;
+  Future<SubscriptionInfo> fetchSubscription() async {
+    final data = await _client.getData<Map<String, dynamic>>(
+      'getSubscription',
+      parser: (json) => Map<String, dynamic>.from(json as Map),
+    );
+    return SubscriptionInfo.fromJson(data);
   }
 
-  Future<List<InboxMessage>> fetchInbox() async {
-    await Future<void>.delayed(const Duration(milliseconds: 300));
-    return DemoData.inbox;
+  Future<dynamic> fetchSmartAnalysis() async {
+    return _client.getData('getSmartAnalysis', parser: (json) => json);
   }
 
-  Future<List<ContractItem>> fetchContracts() async {
-    await Future<void>.delayed(const Duration(milliseconds: 300));
-    return DemoData.contracts;
+  Future<List<PredictionItem>> fetchPredictions() async {
+    return _client.getData<List<PredictionItem>>(
+      'getPredictions',
+      parser: (json) {
+        if (json is! List) return [];
+        return json
+            .whereType<Map>()
+            .map((e) => PredictionItem.fromJson(Map<String, dynamic>.from(e)))
+            .toList();
+      },
+    );
   }
 
-  Future<List<MaintenanceTicket>> fetchMaintenance() async {
-    await Future<void>.delayed(const Duration(milliseconds: 300));
-    return DemoData.maintenance;
-  }
+  Future<bool> ping() => _client.ping();
 
-  String get endpointHint =>
-      '${ApiConstants.baseUrl}?app=${ApiConstants.appParam}';
+  void dispose() => _client.dispose();
 }
