@@ -1,7 +1,7 @@
 name: spp_flutter
 description: "تميّز العقار الذكي — منصة ذكاء اصطناعي لإدارة العقارات"
 publish_to: 'none'
-version: 2.3.0+5
+version: 2.4.0+6
 
 environment:
   sdk: ^3.12.2
@@ -19,6 +19,7 @@ dependencies:
   flutter_animate: ^4.5.2
   shimmer: ^3.0.0
   fl_chart: ^0.70.2
+  auto_size_text: ^3.0.0
 
 dev_dependencies:
   flutter_test:

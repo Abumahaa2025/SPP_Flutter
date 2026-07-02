@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../core/layout/spp_layout.dart';
 import '../core/theme/app_colors.dart';
 import '../core/theme/premium_icons.dart';
 import '../models/platform_data.dart';
@@ -57,7 +58,7 @@ class _ContractList extends StatelessWidget {
     }
 
     return ListView.separated(
-      padding: const EdgeInsets.all(16),
+      padding: EdgeInsets.fromLTRB(16, 16, 16, SppLayout.bottomNavClearance),
       itemCount: units.length,
       separatorBuilder: (_, _) => const SizedBox(height: 10),
       itemBuilder: (context, index) {

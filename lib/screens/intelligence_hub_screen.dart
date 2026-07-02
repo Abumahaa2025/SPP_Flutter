@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../core/constants/api_constants.dart';
+import '../core/layout/spp_layout.dart';
 import '../core/theme/app_colors.dart';
 import '../core/theme/premium_icons.dart';
 import '../core/theme/spp_identity.dart';
@@ -29,7 +30,7 @@ class IntelligenceHubScreen extends StatelessWidget {
     final settings = data?.settings;
 
     return ListView(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 120),
+      padding: SppLayout.listPadding(),
       children: [
         SppScreenHeader(
           title: 'منصة SPP',

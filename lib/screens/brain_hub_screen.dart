@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../core/layout/spp_layout.dart';
 import '../core/theme/app_colors.dart';
 import '../core/theme/premium_icons.dart';
 import '../core/theme/spp_identity.dart';
@@ -16,7 +17,8 @@ class BrainHubScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final data = context.watch<AppState>().platform;
+    final state = context.watch<AppState>();
+    final data = state.platform;
     if (data == null) return const SizedBox.shrink();
 
     final decisions = data.priorityDecisions;
@@ -43,6 +45,7 @@ class BrainHubScreen extends StatelessWidget {
                       children: [
                         _SppMark(),
                         const Spacer(),
+                        DataConnectionBadge(isLive: state.isLiveData, notice: state.connectionNotice),
                         IconButton(onPressed: () {}, icon: const Icon(PremiumIcons.notification, color: AppColors.textSecondary)),
                         CircleAvatar(
                           radius: 20,
@@ -63,7 +66,7 @@ class BrainHubScreen extends StatelessWidget {
             ),
           ),
           SliverPadding(
-            padding: const EdgeInsets.fromLTRB(20, 20, 20, 120),
+            padding: EdgeInsets.fromLTRB(20, 20, 20, SppLayout.bottomNavClearance),
             sliver: SliverList(
               delegate: SliverChildListDelegate([
                 EmployeeBriefingCard(
@@ -76,7 +79,7 @@ class BrainHubScreen extends StatelessWidget {
                   const SizedBox(height: 16),
                 ],
                 if (secondary.isNotEmpty) ...[
-                  SectionHeader(title: 'قرارات إضافية', subtitle: '${secondary.length} بناءً على تحليل Unified Brain'),
+                  SectionHeader(title: 'قرارات إضافية', subtitle: 'Additional Decisions · ${secondary.length}'),
                   ...secondary.asMap().entries.map(
                         (e) => Padding(
                           padding: const EdgeInsets.only(bottom: 10),

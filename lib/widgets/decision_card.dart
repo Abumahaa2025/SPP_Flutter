@@ -5,6 +5,7 @@ import '../core/theme/app_colors.dart';
 import '../models/platform_data.dart';
 import 'glass_card.dart';
 import 'living_ai_orb.dart';
+import 'spp_safe_text.dart';
 
 class DecisionCard extends StatelessWidget {
   const DecisionCard({
@@ -70,13 +71,16 @@ class DecisionCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
+                SppSafeText(
                   item.title,
+                  maxLines: 2,
                   style: Theme.of(context).textTheme.titleSmall?.copyWith(fontWeight: FontWeight.w800),
                 ),
                 const SizedBox(height: 4),
-                Text(
+                SppSafeText(
                   item.subtitle,
+                  maxLines: 3,
+                  minFontSize: 10,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
                         color: AppColors.textSecondary,
                         height: 1.4,
@@ -85,19 +89,28 @@ class DecisionCard extends StatelessWidget {
               ],
             ),
           ),
-          const SizedBox(width: 8),
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-            decoration: BoxDecoration(
-              gradient: item.priority == DecisionPriority.high
-                  ? LinearGradient(colors: [_accent.withValues(alpha: 0.3), _accent.withValues(alpha: 0.1)])
-                  : null,
-              color: item.priority == DecisionPriority.high ? null : _accent.withValues(alpha: 0.12),
-              borderRadius: BorderRadius.circular(22),
-            ),
-            child: Text(
-              item.actionLabel,
-              style: TextStyle(color: _accent, fontWeight: FontWeight.w800, fontSize: 12),
+          const SizedBox(width: 6),
+          Flexible(
+            flex: 0,
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 96),
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+                  decoration: BoxDecoration(
+                    gradient: item.priority == DecisionPriority.high
+                        ? LinearGradient(colors: [_accent.withValues(alpha: 0.3), _accent.withValues(alpha: 0.1)])
+                        : null,
+                    color: item.priority == DecisionPriority.high ? null : _accent.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(22),
+                  ),
+                  child: Text(
+                    item.actionLabel,
+                    style: TextStyle(color: _accent, fontWeight: FontWeight.w800, fontSize: 12),
+                  ),
+                ),
+              ),
             ),
           ),
         ],
@@ -134,8 +147,9 @@ class SectionHeader extends StatelessWidget {
               children: [
                 ShaderMask(
                   shaderCallback: (b) => AppColors.goldGradient.createShader(b),
-                  child: Text(
+                  child: SppSafeText(
                     title,
+                    maxLines: 2,
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.w900,
                           color: Colors.white,
@@ -146,7 +160,11 @@ class SectionHeader extends StatelessWidget {
                   const SizedBox(height: 4),
                   Text(
                     subtitle!,
-                    style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppColors.textMuted),
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: AppColors.textMuted,
+                          fontSize: 11,
+                          letterSpacing: 0.5,
+                        ),
                   ),
                 ],
               ],

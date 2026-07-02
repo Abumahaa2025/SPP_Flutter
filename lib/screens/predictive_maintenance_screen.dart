@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../core/layout/spp_layout.dart';
 import '../core/theme/app_colors.dart';
 import '../models/platform_data.dart';
 import '../providers/app_state.dart';
 import '../widgets/decision_card.dart';
 import '../widgets/glass_card.dart';
+import '../widgets/spp_safe_text.dart';
 
 class PredictiveMaintenanceScreen extends StatelessWidget {
   const PredictiveMaintenanceScreen({super.key});
@@ -22,26 +24,26 @@ class PredictiveMaintenanceScreen extends StatelessWidget {
       color: AppColors.accent,
       onRefresh: () => context.read<AppState>().refresh(),
       child: ListView(
-        padding: const EdgeInsets.all(20),
+        padding: SppLayout.screenPadding(),
         children: [
-          SectionHeader(
-            title: 'Predictive Maintenance',
-            subtitle: 'صيانة استباقية — ليس مجرد بلاغات',
+          const SectionHeader(
+            title: 'صيانة استباقية',
+            subtitle: 'Predictive Maintenance',
           ),
           GlassCard(
             child: Row(
               children: [
                 _StatBubble(label: 'مفتوح', value: '${open.length}', color: AppColors.warning),
-                const SizedBox(width: 12),
+                const SizedBox(width: 10),
                 _StatBubble(label: 'عاجل', value: '$urgent', color: AppColors.danger),
-                const SizedBox(width: 12),
+                const SizedBox(width: 10),
                 _StatBubble(label: 'فنيين', value: '${data.technicians.length}', color: AppColors.accent),
               ],
             ),
           ),
           const SizedBox(height: 16),
           if (open.isEmpty)
-            const GlassCard(child: Text('✅ لا بلاغات مفتوحة — الوضع مستقر'))
+            const GlassCard(child: SppSafeText('✅ لا بلاغات مفتوحة — الوضع مستقر'))
           else
             ...open.map((m) => Padding(
                   padding: const EdgeInsets.only(bottom: 10),
@@ -49,7 +51,7 @@ class PredictiveMaintenanceScreen extends StatelessWidget {
                 )),
           if (data.predictions.any((p) => p.title.contains('صيان') || p.description.contains('صيان'))) ...[
             const SizedBox(height: 8),
-            SectionHeader(title: 'تنبؤات الصيانة'),
+            const SectionHeader(title: 'تنبؤات الصيانة', subtitle: 'Maintenance Forecast'),
             ...data.predictions
                 .where((p) => p.title.contains('صيان') || p.description.contains('صيان'))
                 .map((p) => Padding(
@@ -58,9 +60,9 @@ class PredictiveMaintenanceScreen extends StatelessWidget {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Text(p.title, style: const TextStyle(fontWeight: FontWeight.w800)),
+                            SppSafeText(p.title, maxLines: 2, style: const TextStyle(fontWeight: FontWeight.w800)),
                             const SizedBox(height: 6),
-                            Text(p.recommendation, style: const TextStyle(color: AppColors.accent)),
+                            SppSafeText(p.recommendation, maxLines: 3, style: const TextStyle(color: AppColors.accent)),
                           ],
                         ),
                       ),
@@ -83,15 +85,19 @@ class _StatBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     return Expanded(
       child: Container(
-        padding: const EdgeInsets.all(14),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 12),
         decoration: BoxDecoration(
           color: color.withValues(alpha: 0.12),
           borderRadius: BorderRadius.circular(16),
         ),
         child: Column(
           children: [
-            Text(value, style: TextStyle(fontWeight: FontWeight.w900, fontSize: 22, color: color)),
-            Text(label, style: const TextStyle(fontSize: 12, color: AppColors.textMuted)),
+            FittedBox(
+              fit: BoxFit.scaleDown,
+              child: SppSafeText(value, maxLines: 1, minFontSize: 14, style: TextStyle(fontWeight: FontWeight.w900, fontSize: 20, color: color)),
+            ),
+            const SizedBox(height: 2),
+            SppSafeText(label, maxLines: 1, minFontSize: 9, style: const TextStyle(fontSize: 11, color: AppColors.textMuted)),
           ],
         ),
       ),
@@ -112,30 +118,39 @@ class _MaintCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Expanded(child: Text(item.type, style: const TextStyle(fontWeight: FontWeight.w800))),
+              Expanded(child: SppSafeText(item.type, maxLines: 2, style: const TextStyle(fontWeight: FontWeight.w800))),
+              const SizedBox(width: 8),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                 decoration: BoxDecoration(
                   color: color.withValues(alpha: 0.15),
                   borderRadius: BorderRadius.circular(20),
                 ),
-                child: Text(item.risk, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w700)),
+                child: SppSafeText(item.risk, maxLines: 1, minFontSize: 8, style: TextStyle(color: color, fontSize: 10, fontWeight: FontWeight.w700)),
               ),
             ],
           ),
           const SizedBox(height: 8),
-          Text('${item.unit} — ${item.tenant}', style: const TextStyle(color: AppColors.textSecondary)),
+          SppSafeText('${item.unit} — ${item.tenant}', maxLines: 2, style: const TextStyle(color: AppColors.textSecondary, fontSize: 13)),
           const SizedBox(height: 8),
           Row(
             children: [
-              Chip(
-                label: Text(item.status, style: const TextStyle(fontSize: 11)),
-                backgroundColor: AppColors.primary.withValues(alpha: 0.12),
-                visualDensity: VisualDensity.compact,
+              Flexible(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(16),
+                  ),
+                  child: SppSafeText(item.status, maxLines: 1, minFontSize: 9, style: const TextStyle(fontSize: 11)),
+                ),
               ),
-              const Spacer(),
-              Text(item.ticketNo, style: const TextStyle(color: AppColors.textMuted, fontSize: 11)),
+              const SizedBox(width: 8),
+              Flexible(
+                child: SppSafeText(item.ticketNo, maxLines: 1, minFontSize: 9, textAlign: TextAlign.end, style: const TextStyle(color: AppColors.textMuted, fontSize: 11)),
+              ),
             ],
           ),
         ],

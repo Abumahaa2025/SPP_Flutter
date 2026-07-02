@@ -51,7 +51,7 @@ class _Root extends StatelessWidget {
         return const LoginScreen();
       case AppLoadState.loading:
         return const AnimatedBackground(
-          child: LoadingBrain(message: 'جاري إيقاظ الموظف الذكي...'),
+          child: LoadingBrain(message: 'جاري الاتصال بالمنصة...'),
         );
       case AppLoadState.ready:
         return HomeShell(onLogout: () => context.read<AppState>().logout());

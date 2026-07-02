@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:provider/provider.dart';
 
+import '../core/layout/spp_layout.dart';
 import '../core/theme/app_colors.dart';
 import '../core/theme/premium_icons.dart';
 import '../models/platform_data.dart';
@@ -41,7 +42,7 @@ class _SmartInboxScreenState extends State<SmartInboxScreen> {
         color: AppColors.teal,
         onRefresh: () => context.read<AppState>().refresh(),
         child: ListView(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 110),
+          padding: SppLayout.listPadding(light: true),
           children: [
             const Text(
               'الإشعارات الذكية',

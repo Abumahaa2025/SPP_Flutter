@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:provider/provider.dart';
 
+import '../core/layout/spp_layout.dart';
 import '../core/theme/app_colors.dart';
 import '../core/theme/premium_icons.dart';
 import '../models/platform_data.dart';
@@ -18,13 +19,13 @@ class PropertyMemoryScreen extends StatelessWidget {
     final records = context.watch<AppState>().platform?.aiRecords ?? [];
 
     return Scaffold(
-      appBar: AppBar(title: const Text('Property Memory')),
+      appBar: AppBar(title: const Text('ذاكرة العقار')),
       body: ListView(
-        padding: const EdgeInsets.all(20),
+        padding: SppLayout.screenPadding(top: 12),
         children: [
-          SectionHeader(
+          const SectionHeader(
             title: 'ذاكرة العقار',
-            subtitle: 'كل ما تعلمه النظام عن عقارك',
+            subtitle: 'Property Memory',
           ),
           if (records.isEmpty)
             const EmptyState(

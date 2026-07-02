@@ -121,8 +121,27 @@ class EmployeeBriefingCard extends StatelessWidget {
   }
 }
 
-class _LiveDot extends StatelessWidget {
+class _LiveDot extends StatefulWidget {
   const _LiveDot();
+
+  @override
+  State<_LiveDot> createState() => _LiveDotState();
+}
+
+class _LiveDotState extends State<_LiveDot> with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(vsync: this, duration: const Duration(milliseconds: 1400))..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -135,7 +154,10 @@ class _LiveDot extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(width: 6, height: 6, decoration: const BoxDecoration(color: AppColors.success, shape: BoxShape.circle)),
+          ScaleTransition(
+            scale: Tween<double>(begin: 0.85, end: 1.15).animate(CurvedAnimation(parent: _controller, curve: Curves.easeInOut)),
+            child: Container(width: 6, height: 6, decoration: const BoxDecoration(color: AppColors.success, shape: BoxShape.circle)),
+          ),
           const SizedBox(width: 6),
           const Text('LIVE', style: TextStyle(color: AppColors.success, fontSize: 10, fontWeight: FontWeight.w800)),
         ],
@@ -179,9 +201,10 @@ class TodayDecisionHero extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text("TODAY'S DECISION", style: AppTypography.englishCaps.copyWith(fontSize: 9, color: _accent)),
-            const SizedBox(height: 12),
-            Text(decision.title, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, height: 1.3)),
+            Text('قرار اليوم', style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 12, color: AppColors.brandGlow)),
+            Text("TODAY'S DECISION", style: AppTypography.englishCaps.copyWith(fontSize: 8, color: _accent)),
+            const SizedBox(height: 10),
+            Text(decision.title, maxLines: 3, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, height: 1.3)),
             const SizedBox(height: 8),
             Text(decision.subtitle, style: const TextStyle(color: AppColors.textSecondary, height: 1.5, fontSize: 14)),
             const SizedBox(height: 18),
@@ -215,7 +238,8 @@ class VirtualSensorStrip extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text('VIRTUAL SENSORS', style: AppTypography.englishCaps.copyWith(fontSize: 9)),
+        Text('حساسات افتراضية', style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+        Text('VIRTUAL SENSORS', style: AppTypography.englishCaps.copyWith(fontSize: 8)),
         const SizedBox(height: 10),
         SingleChildScrollView(
           scrollDirection: Axis.horizontal,
@@ -358,7 +382,8 @@ class PropertyPulseCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Property Health', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                const Text('صحة العقار', style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
+                const Text('Property Health', style: TextStyle(color: AppColors.textMuted, fontSize: 9, letterSpacing: 0.6)),
                 Text(level, style: const TextStyle(color: AppColors.textSecondary, fontSize: 12)),
                 const SizedBox(height: 4),
                 Text('تحصيل ${collectionRate.toStringAsFixed(0)}%', style: TextStyle(color: AppColors.brandGlow, fontSize: 12, fontWeight: FontWeight.w700)),
@@ -372,3 +397,32 @@ class PropertyPulseCard extends StatelessWidget {
 }
 
 void pushSpp(BuildContext context, Widget page) => pushLuxury(context, page);
+
+/// شارة اتصال المنصة — live أو محلي.
+class DataConnectionBadge extends StatelessWidget {
+  const DataConnectionBadge({super.key, required this.isLive, this.notice});
+
+  final bool isLive;
+  final String? notice;
+
+  @override
+  Widget build(BuildContext context) {
+    final color = isLive ? AppColors.success : AppColors.warning;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.12),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(isLive ? Icons.cloud_done_rounded : Icons.cloud_off_rounded, size: 14, color: color),
+          const SizedBox(width: 6),
+          Text(isLive ? 'متصل' : 'محلي', style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.w800)),
+        ],
+      ),
+    );
+  }
+}

@@ -2,6 +2,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../core/layout/spp_layout.dart';
 import '../core/theme/app_colors.dart';
 import '../providers/app_state.dart';
 import '../widgets/reference_widgets.dart';
@@ -21,7 +22,7 @@ class AnalyticsScreen extends StatelessWidget {
     return ColoredBox(
       color: AppColors.bgLight,
       child: ListView(
-        padding: const EdgeInsets.fromLTRB(20, 16, 20, 32),
+        padding: SppLayout.listPadding(light: true),
         children: [
           const Text(
             'تحليلات الأداء',

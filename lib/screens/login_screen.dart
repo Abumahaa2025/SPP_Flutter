@@ -55,7 +55,7 @@ class LoginScreen extends StatelessWidget {
               ).animate().fadeIn(delay: 500.ms).slideY(begin: 0.06),
               const Spacer(flex: 3),
               LuxuryButton(
-                label: 'إيقاظ الموظف الذكي',
+                label: 'الاتصال بالمنصة',
                 icon: PremiumIcons.decision,
                 onPressed: () => context.read<AppState>().enterExperience(),
               ).animate().fadeIn(delay: 650.ms),

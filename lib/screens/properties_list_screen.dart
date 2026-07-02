@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:provider/provider.dart';
 
+import '../core/layout/spp_layout.dart';
 import '../core/navigation/luxury_route.dart';
 import '../core/theme/app_colors.dart';
 import '../core/theme/premium_icons.dart';
@@ -22,7 +23,7 @@ class PropertiesListScreen extends StatelessWidget {
     return Stack(
       children: [
         ListView.builder(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 110),
+          padding: SppLayout.listPadding(),
           itemCount: properties.length,
           itemBuilder: (context, i) {
             final p = properties[i];
@@ -57,13 +58,29 @@ class PropertiesListScreen extends StatelessWidget {
   }
 
   static List<_PropertyItem> _buildPortfolio(PlatformData data) {
-    final main = data.propertyHealth.score;
-    return [
-      _PropertyItem(name: data.propertyName, location: 'الرياض — حي النرجس', score: main, color: AppColors.teal),
-      _PropertyItem(name: 'برج الأعمال', location: 'جدة — طريق الملك', score: 88, color: AppColors.aiIndigo),
-      _PropertyItem(name: 'فلل النخيل', location: 'الدمام — الشاطئ', score: 91, color: AppColors.success),
-      _PropertyItem(name: 'مكاتب التقنية', location: 'الرياض — العليا', score: 76, color: AppColors.warning),
+    final score = data.propertyHealth.score;
+    final summary = data.dashboard.summary;
+    final items = <_PropertyItem>[
+      _PropertyItem(
+        name: data.propertyName,
+        location: '${summary.rented} مؤجرة · ${summary.vacant} شاغرة · ${summary.totalUnits} وحدة',
+        score: score,
+        color: AppColors.brand,
+      ),
     ];
+
+    for (final u in data.dashboard.units.take(6)) {
+      final late = u.payStatus?.contains('متأخر') == true;
+      items.add(
+        _PropertyItem(
+          name: u.unit,
+          location: u.tenant.isNotEmpty ? u.tenant : 'بدون مستأجر',
+          score: late ? 68 : 88,
+          color: late ? AppColors.warning : AppColors.success,
+        ),
+      );
+    }
+    return items;
   }
 }
 

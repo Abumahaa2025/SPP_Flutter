@@ -1,19 +1,26 @@
 import 'package:flutter/foundation.dart';
 
-import '../data/luxury_mock.dart';
 import '../models/platform_data.dart';
+import '../repositories/platform_repository.dart';
 import '../services/platform_brain.dart';
 
 enum AppLoadState { splash, onboarding, login, loading, ready }
 
-/// وضع العرض الفاخر — بدون API أو Backend.
 class AppState extends ChangeNotifier {
+  AppState({PlatformRepository? repository}) : _repository = repository ?? PlatformRepository();
+
+  final PlatformRepository _repository;
+
   AppLoadState flow = AppLoadState.splash;
   PlatformData? platform;
   List<BrainMessage> chat = [];
+  DataSource dataSource = DataSource.cached;
+  String? connectionNotice;
+  bool isRefreshing = false;
 
   bool get isLoading => flow == AppLoadState.loading;
   bool get authenticated => flow == AppLoadState.ready;
+  bool get isLiveData => dataSource == DataSource.live;
 
   void finishSplash() {
     flow = AppLoadState.onboarding;
@@ -29,18 +36,30 @@ class AppState extends ChangeNotifier {
     flow = AppLoadState.loading;
     notifyListeners();
 
-    await Future<void>.delayed(const Duration(milliseconds: 1800));
+    final result = await _repository.loadPlatform();
+    _applyLoadResult(result);
 
-    platform = LuxuryMock.build();
     chat = PlatformBrain.initialBriefing(platform!);
     flow = AppLoadState.ready;
     notifyListeners();
   }
 
   Future<void> refresh() async {
-    await Future<void>.delayed(const Duration(milliseconds: 600));
-    platform = LuxuryMock.build();
+    if (isRefreshing) return;
+    isRefreshing = true;
     notifyListeners();
+
+    final result = await _repository.loadPlatform(forceRefresh: true);
+    _applyLoadResult(result);
+
+    isRefreshing = false;
+    notifyListeners();
+  }
+
+  void _applyLoadResult(LoadResult result) {
+    platform = result.data;
+    dataSource = result.source;
+    connectionNotice = result.notice;
   }
 
   void askBrain(String question) {
@@ -56,8 +75,16 @@ class AppState extends ChangeNotifier {
   void logout() {
     platform = null;
     chat = [];
+    dataSource = DataSource.cached;
+    connectionNotice = null;
     flow = AppLoadState.login;
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _repository.dispose();
+    super.dispose();
   }
 }
 
