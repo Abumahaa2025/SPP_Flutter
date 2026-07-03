@@ -244,10 +244,10 @@ def _seed_dataset() -> Dict[str, List[dict]]:
     ]
 
     contracts = [
-        {"id": "ct_1", "tenant_id": "ten_1", "property_id": "prop_1", "start": "2023-06-01", "end": "2026-06-01", "monthly_rent": 24_000, "status": "active"},
-        {"id": "ct_2", "tenant_id": "ten_2", "property_id": "prop_1", "start": "2024-02-15", "end": "2026-02-15", "monthly_rent": 22_500, "status": "expiring"},
-        {"id": "ct_3", "tenant_id": "ten_3", "property_id": "prop_2", "start": "2022-09-01", "end": "2025-09-01", "monthly_rent": 8_400, "status": "expiring"},
-        {"id": "ct_4", "tenant_id": "ten_4", "property_id": "prop_3", "start": "2021-04-10", "end": "2027-04-10", "monthly_rent": 55_000, "status": "active"},
+        {"id": "ct_1", "tenant_id": "ten_1", "property_id": "prop_1", "start": "2023-06-01", "end": "2028-06-01", "monthly_rent": 24_000, "status": "active"},
+        {"id": "ct_2", "tenant_id": "ten_2", "property_id": "prop_1", "start": "2024-02-15", "end": _iso(now + timedelta(days=34))[:10], "monthly_rent": 22_500, "status": "expiring"},
+        {"id": "ct_3", "tenant_id": "ten_3", "property_id": "prop_2", "start": "2022-09-01", "end": _iso(now + timedelta(days=58))[:10], "monthly_rent": 8_400, "status": "expiring"},
+        {"id": "ct_4", "tenant_id": "ten_4", "property_id": "prop_3", "start": "2021-04-10", "end": "2029-04-10", "monthly_rent": 55_000, "status": "active"},
     ]
 
     decisions = [
@@ -430,10 +430,12 @@ async def briefing():
     lines: List[str] = []
     if critical:
         top = critical[0]
-        lines.append(
-            f"I reviewed your portfolio overnight. {top['title']}"
-            + (f" — {top['impact'].lower()}" if top.get("impact") else "") + "."
-        )
+        impact = (top.get("impact") or "").rstrip(".")
+        title = top["title"].rstrip(".")
+        if impact:
+            lines.append(f"I reviewed your portfolio overnight. {title} — {impact}.")
+        else:
+            lines.append(f"I reviewed your portfolio overnight. {title}.")
     else:
         lines.append("I reviewed your portfolio overnight. Everything is stable.")
 

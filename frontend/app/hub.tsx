@@ -67,7 +67,7 @@ export default function Hub() {
 
   let idx = 0;
   return (
-    <ScreenScaffold testID="hub-screen">
+    <ScreenScaffold testID="hub-screen" contentStyle={{ paddingBottom: 220 }}>
       <ScreenHeader
         eyebrow={t('nav.hub')}
         title={t('hub.title')}

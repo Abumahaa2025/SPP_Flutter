@@ -55,10 +55,22 @@ Hub is reachable from Home via a new fourth quick-nav tile.
 
 ---
 
-## Phase 4 — real integrations (next)
-The visual language is stable. Next we swap the data sources without touching a single frontend file:
-- Google Apps Script + Google Sheets
-- Home Assistant
-- Green API (WhatsApp)
-- Property Memory, Predictive Maintenance Engine, Sensor Engine, Technician Engine
-- Production OpenAI layer
+## Phase 3 — Advisor voice · OS surfaces · Brand identity ✅ (final)
+
+Verified end-to-end by the testing_agent (`iteration_2.json`) — backend 19/19 pytest passed, all 14 frontend surfaces render cleanly, GPT-5.2 replies live, zero worklet errors, all navigation routes work.
+
+Follow-ups applied post-test:
+- Narrative sentence now preserves "AED" case; no double period.
+- Contract countdowns computed from live seed dates (34d / 58d).
+- Hub scroll padding raised to 220 px so the last row of tiles clears the floating tab bar and is tappable.
+
+## Phase 4 — real integrations (blocked on credentials)
+The visual language is stable. To swap the seeded data for the real SPP platform, the following credentials & endpoints are needed:
+1. **Google Apps Script** — deployed Web App URL + service account (or user OAuth) for read/write.
+2. **Google Sheets** — spreadsheet IDs for Properties · Tenants · Contracts · Sensors · Timeline · Reports (or a single master).
+3. **Home Assistant** — base URL of the HA instance + long-lived access token; entity IDs to bridge into the Sensor Engine.
+4. **Green API (WhatsApp)** — instance ID + API token for outbound notifications and tenant threads.
+5. **Property Memory / Predictive Maintenance / Sensor / Technician engines** — endpoint URLs and auth headers (or a dedicated adapter package).
+6. **Production OpenAI key** (if we're moving off the Emergent Universal Key).
+
+Once these are supplied, no frontend change is required — every screen consumes stable `api.*` endpoints, and the `get_llm_chat()` factory is provider-agnostic.
