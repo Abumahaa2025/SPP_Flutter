@@ -18,9 +18,10 @@ import { GlassCard } from '@/src/components/GlassCard';
 import { HealthRing } from '@/src/components/HealthRing';
 import { ActionCard } from '@/src/components/ActionCard';
 import { GlassTabBar } from '@/src/components/GlassTabBar';
-import { LoadingOrb } from '@/src/components/LoadingOrb';
+import { BrandOrb, Wordmark } from '@/src/components/BrandOrb';
 import { api, type Briefing } from '@/src/api/client';
 import { colors, spacing, typography, radius } from '@/src/theme';
+import { useI18n } from '@/src/i18n';
 
 const AnimatedScroll = Animated.ScrollView;
 
@@ -104,6 +105,7 @@ function useDateEyebrow() {
 export default function Home() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
+  const { t } = useI18n();
   const [briefing, setBriefing] = useState<Briefing | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -157,7 +159,8 @@ export default function Home() {
 
       {loading && !briefing ? (
         <View style={styles.loading}>
-          <LoadingOrb size={72} />
+          <BrandOrb size={64} />
+          <Wordmark size="sm" color={colors.textMuted} />
           <Text style={styles.loadingText}>Preparing your briefing…</Text>
         </View>
       ) : (
@@ -182,7 +185,9 @@ export default function Home() {
           <Animated.View entering={FadeIn.duration(500)} style={styles.topRow}>
             <View style={styles.brandRow}>
               <Pulse color={colors.emerald} />
-              <Text style={styles.brandName}>S P P</Text>
+              <View>
+                <Wordmark size="sm" />
+              </View>
             </View>
             <Pressable
               testID="notifications-btn"
@@ -210,9 +215,31 @@ export default function Home() {
               {briefing?.headline}
             </Text>
             <Text style={styles.subhead}>
-              I&apos;ve reviewed your portfolio overnight. Here is what matters today.
+              {t('home.subhead')}
             </Text>
           </Animated.View>
+
+          {/* ============ MORNING BRIEF (advisor voice) ============ */}
+          {briefing?.narrative?.length ? (
+            <Animated.View entering={FadeInDown.duration(750).delay(140)}>
+              <GlassCard padding={22} radiusToken="lg" testID="brief-card">
+                <View style={styles.briefTop}>
+                  <View style={styles.briefIcon}>
+                    <Feather name="edit-3" size={13} color={colors.gold} />
+                  </View>
+                  <Text style={styles.briefEyebrow}>Morning brief · from your AI executive</Text>
+                </View>
+                <View style={{ marginTop: 14, gap: 10 }}>
+                  {briefing.narrative.map((line, i) => (
+                    <View key={i} style={styles.briefLine}>
+                      <View style={styles.briefDot} />
+                      <Text style={styles.briefText}>{line}</Text>
+                    </View>
+                  ))}
+                </View>
+              </GlassCard>
+            </Animated.View>
+          ) : null}
 
           {/* ============ PORTFOLIO HEALTH ============ */}
           <Animated.View entering={FadeInDown.duration(750).delay(200)}>
@@ -288,8 +315,8 @@ export default function Home() {
               onPress={() => { Haptics.selectionAsync(); router.push('/maintenance'); }}
               style={{ flex: 1 }}
             >
-              <Text style={styles.sectionTitle}>Today&apos;s priorities</Text>
-              <Text style={styles.sectionSub}>Ranked by projected impact</Text>
+              <Text style={styles.sectionTitle}>{t('home.priorities.title')}</Text>
+              <Text style={styles.sectionSub}>{t('home.priorities.sub')}</Text>
             </Pressable>
             <View style={styles.countBadge}>
               <Text style={styles.countBadgeText}>{briefing?.decisions.length ?? 0}</Text>
@@ -331,10 +358,10 @@ export default function Home() {
                     <Feather name="message-circle" size={18} color={colors.gold} />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={styles.brainTitle}>Ask the Unified Brain</Text>
-                    <Text style={styles.brainSub}>
-                      &ldquo;Should I renew Marcus Reed at 4%?&rdquo;
-                    </Text>
+                    <Text style={styles.brainTitle}>{t('home.brainCard.title')}</Text>
+                  <Text style={styles.brainSub}>
+                    {t('home.brainCard.example')}
+                  </Text>
                   </View>
                   <View style={styles.brainArrow}>
                     <Feather name="arrow-up-right" size={16} color={colors.textDim} />
@@ -346,6 +373,7 @@ export default function Home() {
 
           {/* ============ QUICK NAV ============ */}
           <Animated.View entering={FadeIn.duration(700).delay(820)} style={styles.quickNav}>
+            <QuickLink icon="grid" label="Hub" onPress={() => router.push('/hub')} testID="qn-hub" />
             <QuickLink icon="activity" label="Sensors" onPress={() => router.push('/sensors')} testID="qn-sensors" />
             <QuickLink icon="heart" label="Health" onPress={() => router.push('/health')} testID="qn-health" />
             <QuickLink icon="settings" label="Settings" onPress={() => router.push('/settings')} testID="qn-settings" />
@@ -354,7 +382,7 @@ export default function Home() {
           {/* ============ FOOTER SIGNATURE ============ */}
           <Animated.View entering={FadeIn.duration(700).delay(900)} style={styles.footer}>
             <View style={styles.footerLine} />
-            <Text style={styles.footerText}>SPP · your AI employee, always working</Text>
+            <Text style={styles.footerText}>{t('home.footer')}</Text>
           </Animated.View>
         </AnimatedScroll>
       )}
@@ -593,7 +621,30 @@ const styles = StyleSheet.create({
   quickNav: {
     marginTop: spacing.xl,
     flexDirection: 'row',
-    gap: spacing.md,
+    gap: 10,
+  },
+  briefTop: {
+    flexDirection: 'row', alignItems: 'center', gap: 10,
+  },
+  briefIcon: {
+    width: 26, height: 26, borderRadius: 13,
+    borderWidth: StyleSheet.hairlineWidth, borderColor: colors.goldEdge,
+    backgroundColor: colors.goldSoft,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  briefEyebrow: {
+    color: colors.textMuted, fontSize: 10.5, letterSpacing: 1.8,
+    textTransform: 'uppercase', fontWeight: typography.weight.medium,
+    flex: 1,
+  },
+  briefLine: { flexDirection: 'row', gap: 10, alignItems: 'flex-start' },
+  briefDot: {
+    width: 4, height: 4, borderRadius: 2, backgroundColor: colors.gold,
+    marginTop: 8,
+    shadowColor: colors.gold, shadowOpacity: 0.6, shadowRadius: 4, shadowOffset: { width: 0, height: 0 },
+  },
+  briefText: {
+    flex: 1, color: colors.textDim, fontSize: 14, lineHeight: 21, letterSpacing: -0.1,
   },
   footerLine: {
     width: 40, height: StyleSheet.hairlineWidth,

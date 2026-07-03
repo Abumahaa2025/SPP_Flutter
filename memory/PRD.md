@@ -1,91 +1,64 @@
 # SPP — Smart Property Platform (PRD)
 
 ## Vision
-An **AI Operating System for Real Estate**. The AI is the product; screens are windows into intelligence. Every screen answers "What should I do next?" instead of "What data do you want to see?"
+An **AI Operating System for Real Estate**. Not a dashboard — a calm, senior AI executive that watches every property, every day. The user should never feel they're reading data. SPP guides them: *"I checked overnight. Here's what I recommend. Approve?"*
+
+## Design language
+Dark luxury · deep navy · emerald orb + gold accents · cinematic glassmorphism · Apple-level typography · calm motion. Refined but never redesigned.
+
+---
 
 ## Phase 1 — Design System + AI Employee Home ✅
-- Dark Luxury tokens (`/app/frontend/src/theme/tokens.ts`).
-- Component library (`GlassCard`, `HealthRing`, `ActionCard`, `AmbientBackground`, `LoadingOrb`, `GlassTabBar`, `StatPill`, `ScreenScaffold`, `ScreenHeader`).
-- AI Employee Home — cinematic hero, animated ring, ranked action cards, ambient scroll parallax, floating tab bar.
+Tokens, component library, AI Employee Home.
 
-## Phase 2 — Full platform ✅
+## Phase 2 — Full 11-screen platform ✅
+Portfolio · Brain · Insights · Property Detail · Maintenance · Health · Sensors · Notifications · Settings · Onboarding.
 
-### Navigation
-- **Bottom glass tab bar** — Home / Portfolio / Brain / Insights (max 4 tabs per design spec).
-- **Stack routes** for deeper screens: property/[id], maintenance, health, sensors, notifications, settings, onboarding.
-- Onboarding gated by AsyncStorage on first launch.
+## Phase 2.5 — Human Interface polish pass ✅
+Deeper ink, richer glassmorphism, hairline sheens, animated health-ring counter, softer separators, empty states, cinematic image treatment.
 
-### Screens
-1. **AI Employee Home** (`/`) — daily briefing, health snapshot, ranked priorities, Ask the Brain, quick nav.
-2. **Portfolio** (`/portfolio`) — chip filters (All/Attention/Stable), premium property cards with health pill and KPIs.
-3. **Property Detail** (`/property/[id]`) — full-bleed hero, health + KPI row, tabbed Overview/Sensors/Timeline.
-4. **Unified Brain** (`/brain`) — GPT-5.2 chat with system prompt, suggested prompts, glass bubbles, gold send button, KeyboardAvoidingView.
-5. **Insights / Analytics** (`/insights`) — annualized revenue + composite health, revenue bar chart per property, occupancy + signal stats, AI activity summary.
-6. **Predictive Maintenance** (`/maintenance`) — cinematic timeline of upcoming interventions with reasoning, impact and confidence.
-7. **Property Health** (`/health`) — composite ring, ranked list of properties with in-line score bars.
-8. **Virtual Sensors** (`/sensors`) — status-filtered grid of premium sensor tiles.
-9. **Notifications** (`/notifications`) — priority-coded inbox.
-10. **Settings** (`/settings`) — Language (EN/AR + RTL), Appearance, Brain (model = GPT-5.2, Universal Key = Active).
-11. **Onboarding** (`/onboarding`) — 3-slide horizontal pager with breathing orb, gold CTA, page dots.
+## Phase 3 — Advisor voice · OS surfaces · Brand identity ✅
+
+### (a) Advisor voice — the AI executive tone
+- **Backend** — `/api/briefing` now returns a `narrative[]` of executive-style lines that read like a senior property chief's morning note:
+  - *"I reviewed your portfolio overnight. HVAC on Marina Crest is trending toward failure — prevents ≈ AED 42,000 emergency service…"*
+  - *"Onyx Sky Loft, Aurum Office Tower are trending below target — worth a decision this week."*
+  - *"2 contracts enter the renewal window in the next 34 days."*
+- **Home** — new **Morning Brief** card renders the narrative with gold-dot bullets. Reads like a human's note.
+- Micro-copy across every screen refined to advisor tone (i18n keys, bilingual EN + AR).
+
+### (b) OS surfaces — full platform ecosystem
+Six new premium screens, all functional with seeded demo data, all consuming the same design language.
+- **Hub** (`/hub`) — the platform directory. Four sections: Intelligence · Assets & People · Operations · Learn & Grow. 14 gold/emerald-accented glass tiles.
+- **Smart Reports** (`/reports`) — AI-authored monthly / financial / compliance / tenant reports with highlight bullets, page count, dates.
+- **Knowledge Center** (`/knowledge`) — reading library with topic badges, reading time, "Continue reading" CTA.
+- **DIY & Video Guides** (`/guides`) — cinematic video-card grid: poster, level badge, gold play chip, duration, chapter count.
+- **Tenants** (`/tenants`) — reliability-scored roster with initial avatars, monthly rent, colored reliability bars, tap-through to property.
+- **Contracts** (`/contracts`) — status pills (Active / Expiring / Renewed), countdown for expiring contracts, start/end/monthly meta.
+- **Owner Profile** (`/owner`) — identity card featuring the **BrandOrb** + SPP wordmark, portfolio value, properties, health, quick-link grid.
+
+Hub is reachable from Home via a new fourth quick-nav tile.
+
+### (c) Brand identity
+- **`BrandOrb`** — the definitive SPP identity mark. Emerald core → gold halo → outer wash. Three independently breathing layers with a hairline gold ring and inner top highlight. Used in splash-loading, onboarding, chat empty state, and Owner Profile.
+- **`Wordmark`** — the SPP wordmark component with tight 7-pt letter spacing + optional "AI OPERATING SYSTEM · REAL ESTATE" tagline.
 
 ### Internationalization
-- English + Arabic with `useI18n()` hook (`/app/frontend/src/i18n/index.ts`).
-- Language persisted to AsyncStorage; RTL toggled via `I18nManager` (relaunch takes effect on native).
+- `useI18n()` — 180+ keys covering every screen, every empty state, every CTA.
+- English + Arabic in parallel. `I18nManager.forceRTL` for direction; every RTL string is native, not translated.
+- Every new screen fully bilingual from day one.
 
 ### Backend
-- FastAPI + Motor + MongoDB.
-- Modular AI layer — `get_llm_chat()` factory currently binds `openai/gpt-5.2` via **Emergent Universal LLM Key**. Provider/model swap in one line.
-- Endpoints: `/api/briefing`, `/api/properties[/{id}]`, `/api/decisions`, `/api/tenants`, `/api/contracts`, `/api/timeline`, `/api/sensors`, `/api/notifications`, `/api/chat`, `/api/chat/{session_id}`.
-- Chat degrades gracefully when the Universal Key budget is exhausted.
-- Rich seed data on first launch — 4 properties, 4 tenants, 4 contracts, 4 AI decisions, 6 sensors, timeline, notifications.
+- Modular AI factory unchanged — `openai / gpt-5.2` via Emergent Universal Key. One-line provider swap.
+- New endpoints: `/api/reports`, `/api/knowledge`, `/api/guides`, `/api/owner`.
+- `_seed_dataset()` extended with premium demo data for the new surfaces.
 
-### Design language reused across every screen
-- `AmbientBackground` with scroll-driven aurora parallax.
-- `ScreenScaffold` + `ScreenHeader` for consistent hero and safe area.
-- `GlassCard` with gold / emerald edges for hierarchy.
-- Feather icons throughout for minimal, consistent stroke weight.
-- Staggered fade-in-down entrances everywhere; haptics on every interaction.
+---
 
-## Phase 2.5 — Final Human Interface polish ✅
-
-Every screen refined without any structural changes. Design tokens updated everywhere, propagating to the whole system.
-
-### Token refinements
-- Deeper base ink (`#050A12`), softer aurora alphas, refined text scale (F5F7FA / C7D0DC / 8B95A5).
-- Warmer semantic colors (danger `#E96B6B`, warning `#F5B454`) — never harsh.
-- Two new shadow tiers (`card`, `floating`) and `glassSheen` tokens.
-
-### Component elevations
-- **GlassCard** — inner top-hairline sheen (bevelled glass), diagonal tint start/end for real depth, gold/emerald sheen variants.
-- **AmbientBackground** — added a third deep-blue aurora bottom-right + a subtle top-fade for status-bar readability. Independent breathing phases for cinematic life.
-- **HealthRing** — number counter animates from 0 → score, three-stop gradient (emerald → sage → gold), hairline divider + status word ("Excellent / Stable / Attention") in semantic color, wide low-opacity glow.
-- **ActionCard** — softer separators (hairline instead of gradient borders), tightened typography, dedicated body row (icon + title), gold pill CTA with hairline highlight.
-- **GlassTabBar** — thicker top-inner sheen, stronger floating shadow, 19px icons for optical balance.
-- **ScreenHeader** — display 30 with -0.7 letter spacing, back button 38px chip.
-- **LoadingOrb** — reused as the emotional anchor across Chat empty state, Onboarding, and Home loading.
-- **EmptyState** (new) — premium reusable empty template used by Notifications, Sensors, Maintenance.
-
-### Screen polish
-- **Home** — no structural changes; benefits from all component elevations.
-- **Portfolio** — cinematic image treatment (top + bottom gradient wash, top-left kind badge on the photo), taller 200px hero, richer meta typography.
-- **Property Detail** — 380px hero with dual vertical gradients, floating kind badge, softer overlays.
-- **Unified Brain** — the emotional center. Empty state features the breathing SPP orb, calm title + body, gold-dot suggestion cards. Softer glass bubbles, live emerald dot inside the input, animated typing dots, gold send button with glow.
-- **Insights** — glowing gold bar chart on softer track, refined typography.
-- **Predictive Maintenance** — cinematic timeline, EmptyState fallback.
-- **Property Health** — thinner 3-pt bar accent, refined ranks.
-- **Virtual Sensors** — 2-column tile grid (fixed wrap), refined value typography.
-- **Notifications** — EmptyState with body copy.
-- **Settings** — unchanged (already at target quality).
-- **Onboarding** — unchanged (already at target quality).
-
-### Consistency guarantees
-- Feather icons everywhere. 14–20 px range only. Consistent stroke weight.
-- Typography: eyebrow 10.5 letter-spacing 2, titles 30 letter-spacing -0.7, card titles 17, body 14, small 12.5.
-- Uppercase micro-labels for all eyebrows.
-- Every entrance uses `FadeInDown` with staggered delays 60–90ms.
-- Every interaction has haptics.
-
-## Phase 3 — pending (integration only, no rebuild)
-- Existing Google Apps Script / Google Sheets backend.
-- Existing SPP platform: Property Memory · Predictive Maintenance Engine · Sensor Engine · Virtual Sensors · Technician Engine · Green API · Home Assistant · OpenAI production layer.
-- The current backend (`/app/backend/server.py`) is an integration seam — swap the data sources; the AI factory is already provider-agnostic.
+## Phase 4 — real integrations (next)
+The visual language is stable. Next we swap the data sources without touching a single frontend file:
+- Google Apps Script + Google Sheets
+- Home Assistant
+- Green API (WhatsApp)
+- Property Memory, Predictive Maintenance Engine, Sensor Engine, Technician Engine
+- Production OpenAI layer

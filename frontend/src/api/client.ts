@@ -23,6 +23,10 @@ export const api = {
   timeline: () => req<TimelineT[]>('/timeline'),
   sensors: () => req<SensorT[]>('/sensors'),
   notifications: () => req<NotifT[]>('/notifications'),
+  reports: () => req<ReportT[]>('/reports'),
+  knowledge: () => req<KnowledgeT[]>('/knowledge'),
+  guides: () => req<GuideT[]>('/guides'),
+  owner: () => req<OwnerT>('/owner'),
   chatSend: (session_id: string, text: string) =>
     req<{ reply: string; at: string }>('/chat', {
       method: 'POST',
@@ -49,10 +53,13 @@ export type Briefing = {
   salutation: string;
   owner_name: string;
   headline: string;
+  narrative: string[];
   portfolio_annual_revenue: number;
   avg_health: number;
   occupancy: number;
   properties_count: number;
+  tenants_count: number;
+  expiring_contracts: number;
   decisions: DecisionT[];
   sensor_alerts: SensorT[];
 };
@@ -92,4 +99,22 @@ export type NotifT = {
 
 export type ChatMsg = {
   id: string; role: 'user' | 'assistant'; text: string; at: string;
+};
+
+export type ReportT = {
+  id: string; kind: string; title: string; subtitle: string;
+  highlight: string; created_at: string; pages: number; accent: 'gold' | 'emerald';
+};
+
+export type KnowledgeT = {
+  id: string; topic: string; title: string; body: string; reading_minutes: number;
+};
+
+export type GuideT = {
+  id: string; title: string; duration: string; kind: string;
+  level: string; chapters: number; poster: string;
+};
+
+export type OwnerT = {
+  id: string; name: string; portfolio_value: number; properties: number;
 };

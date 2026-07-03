@@ -311,10 +311,64 @@ def _seed_dataset() -> Dict[str, List[dict]]:
         {"id": "n_3", "title": "Occupancy alert", "body": "Aurum Office Tower below target.", "priority": "critical", "at": _iso(now - timedelta(hours=5)), "read": False},
     ]
 
+    reports = [
+        {"id": "r_1", "kind": "monthly", "title": "October Portfolio Review", "subtitle": "AI-authored · 4 properties",
+         "highlight": "Revenue up 6.2% MoM · 1 intervention prevented",
+         "created_at": _iso(now - timedelta(days=2)), "pages": 12, "accent": "gold"},
+        {"id": "r_2", "kind": "financial", "title": "Q3 Yield & Cashflow", "subtitle": "AI analysis",
+         "highlight": "Yield 7.4% · above market by 0.9pt",
+         "created_at": _iso(now - timedelta(days=10)), "pages": 8, "accent": "emerald"},
+        {"id": "r_3", "kind": "compliance", "title": "Compliance & Safety Audit", "subtitle": "Green API + sensor sweep",
+         "highlight": "100% checks passed · next review in 90 days",
+         "created_at": _iso(now - timedelta(days=18)), "pages": 6, "accent": "emerald"},
+        {"id": "r_4", "kind": "tenant", "title": "Tenant Reliability Ledger", "subtitle": "AI scoring",
+         "highlight": "3 of 4 tenants scoring above 90",
+         "created_at": _iso(now - timedelta(days=24)), "pages": 4, "accent": "gold"},
+    ]
+
+    knowledge = [
+        {"id": "k_1", "topic": "Getting started",
+         "title": "How SPP thinks about your portfolio",
+         "body": "SPP watches sensor drift, service history, occupancy patterns and market data — then proposes one clear action.",
+         "reading_minutes": 3},
+        {"id": "k_2", "topic": "Predictive Maintenance",
+         "title": "Why prevention beats emergency repairs",
+         "body": "Ninety percent of costly failures leave a signal weeks in advance. SPP surfaces those signals.",
+         "reading_minutes": 4},
+        {"id": "k_3", "topic": "Contracts",
+         "title": "The renewal window playbook",
+         "body": "How to price, propose and lock a renewal without leaving revenue on the table.",
+         "reading_minutes": 5},
+        {"id": "k_4", "topic": "Virtual Sensors",
+         "title": "What sensors matter most for residential",
+         "body": "Temperature, humidity, occupancy and leak sensors deliver 80% of predictive value.",
+         "reading_minutes": 4},
+        {"id": "k_5", "topic": "Tenant Experience",
+         "title": "Reducing churn through response time",
+         "body": "Tenants who receive a same-day acknowledgement renew 41% more often.",
+         "reading_minutes": 3},
+    ]
+
+    guides = [
+        {"id": "g_1", "title": "Install your first virtual sensor", "duration": "6 min",
+         "kind": "video", "level": "Essential", "chapters": 4,
+         "poster": "https://images.unsplash.com/photo-1518770660439-4636190af475?w=1200&q=80"},
+        {"id": "g_2", "title": "Connect Home Assistant to SPP", "duration": "9 min",
+         "kind": "video", "level": "Intermediate", "chapters": 5,
+         "poster": "https://images.unsplash.com/photo-1558002038-1055907df827?w=1200&q=80"},
+        {"id": "g_3", "title": "Automate tenant renewals with the Brain", "duration": "5 min",
+         "kind": "video", "level": "Essential", "chapters": 3,
+         "poster": "https://images.unsplash.com/photo-1600607687920-4e2a09cf159d?w=1200&q=80"},
+        {"id": "g_4", "title": "Wire Green API to SPP notifications", "duration": "8 min",
+         "kind": "video", "level": "Advanced", "chapters": 6,
+         "poster": "https://images.unsplash.com/photo-1519389950473-47ba0277781c?w=1200&q=80"},
+    ]
+
     return {
         "owners": owners, "properties": properties, "tenants": tenants,
         "contracts": contracts, "decisions": decisions, "timeline": timeline,
         "sensors": sensors, "notifications": notifications,
+        "reports": reports, "knowledge": knowledge, "guides": guides,
     }
 
 
@@ -346,12 +400,17 @@ async def briefing():
     props = [_strip_id(p) async for p in db.properties.find({}, {"_id": 0})]
     decisions = [_strip_id(d) async for d in db.decisions.find({}, {"_id": 0}).sort("created_at", -1)]
     sensors = [_strip_id(s) async for s in db.sensors.find({}, {"_id": 0})]
+    tenants = [_strip_id(t) async for t in db.tenants.find({}, {"_id": 0})]
+    contracts = [_strip_id(c) async for c in db.contracts.find({}, {"_id": 0})]
 
     portfolio_value = sum(p["monthly_revenue"] for p in props) * 12
     avg_health = round(sum(p["health_score"] for p in props) / max(len(props), 1))
     occupancy = round(100 * sum(p["occupancy"] for p in props) / max(len(props), 1))
 
     critical = [d for d in decisions if d["priority"] in ("critical", "high")]
+    attention_props = [p for p in props if p["health_score"] < 80]
+    expiring = [c for c in contracts if c["status"] == "expiring"]
+
     hour = datetime.now(timezone.utc).hour
     if hour < 12:
         salutation = "Good morning"
@@ -367,14 +426,41 @@ async def briefing():
     else:
         headline = f"{len(critical)} actions need your attention."
 
+    # Executive advisor narrative — reads like a senior property chief's morning note.
+    lines: List[str] = []
+    if critical:
+        top = critical[0]
+        lines.append(
+            f"I reviewed your portfolio overnight. {top['title']}"
+            + (f" — {top['impact'].lower()}" if top.get("impact") else "") + "."
+        )
+    else:
+        lines.append("I reviewed your portfolio overnight. Everything is stable.")
+
+    if attention_props:
+        names = ", ".join(p["name"] for p in attention_props[:2])
+        lines.append(
+            f"{names} are trending below target — worth a decision this week."
+        )
+    if expiring:
+        lines.append(
+            f"{len(expiring)} contract{'s' if len(expiring) > 1 else ''} enter the renewal window in the next 34 days."
+        )
+    lines.append(
+        f"Portfolio health is {avg_health}. Occupancy sits at {occupancy}% across {len(props)} properties."
+    )
+
     return {
         "salutation": salutation,
         "owner_name": "Alexander",
         "headline": headline,
+        "narrative": lines,
         "portfolio_annual_revenue": portfolio_value,
         "avg_health": avg_health,
         "occupancy": occupancy,
         "properties_count": len(props),
+        "tenants_count": len(tenants),
+        "expiring_contracts": len(expiring),
         "decisions": decisions[:4],
         "sensor_alerts": [s for s in sensors if s["status"] != "nominal"][:3],
     }
@@ -421,6 +507,27 @@ async def list_sensors():
 @api_router.get("/notifications")
 async def list_notifications():
     return [_strip_id(n) async for n in db.notifications.find({}, {"_id": 0}).sort("at", -1)]
+
+
+@api_router.get("/reports")
+async def list_reports():
+    return [_strip_id(r) async for r in db.reports.find({}, {"_id": 0}).sort("created_at", -1)]
+
+
+@api_router.get("/knowledge")
+async def list_knowledge():
+    return [_strip_id(k) async for k in db.knowledge.find({}, {"_id": 0})]
+
+
+@api_router.get("/guides")
+async def list_guides():
+    return [_strip_id(g) async for g in db.guides.find({}, {"_id": 0})]
+
+
+@api_router.get("/owner")
+async def get_owner():
+    doc = await db.owners.find_one({}, {"_id": 0})
+    return doc or {"id": "own_1", "name": "Alexander Vale", "portfolio_value": 0, "properties": 0}
 
 
 @api_router.post("/chat")

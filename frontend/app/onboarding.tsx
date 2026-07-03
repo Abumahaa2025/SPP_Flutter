@@ -10,7 +10,7 @@ import { Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 
 import { AmbientBackground } from '@/src/components/AmbientBackground';
-import { LoadingOrb } from '@/src/components/LoadingOrb';
+import { BrandOrb, Wordmark } from '@/src/components/BrandOrb';
 import { colors, spacing, typography, radius } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
 import { storage } from '@/src/utils/storage';
@@ -51,8 +51,11 @@ export default function Onboarding() {
       <StatusBar style="light" />
       <AmbientBackground />
 
-      <View style={[styles.orbWrap, { top: insets.top + 40 }]} pointerEvents="none">
-        <LoadingOrb size={54} />
+      <View style={[styles.orbWrap, { top: insets.top + 32 }]} pointerEvents="none">
+        <BrandOrb size={56} />
+        <View style={{ marginTop: 12 }}>
+          <Wordmark size="sm" color={colors.textMuted} showTagline />
+        </View>
       </View>
 
       <ScrollView
@@ -65,10 +68,10 @@ export default function Onboarding() {
         contentContainerStyle={{ alignItems: 'center' }}
       >
         {slides.map((s, i) => (
-          <View key={i} style={[styles.slide, { width, paddingTop: insets.top + 200 }]}>
+          <View key={i} style={[styles.slide, { width, paddingTop: insets.top + 240 }]}>
             <Animated.View entering={FadeIn.duration(600)} style={styles.iconChip}>
-              <Feather name={s.icon} size={14} color={colors.gold} />
-              <Text style={styles.iconChipText}>SPP</Text>
+              <Feather name={s.icon} size={12} color={colors.gold} />
+              <Text style={styles.iconChipText}>SPP · {t('app.tagline')}</Text>
             </Animated.View>
             <Animated.Text entering={FadeInDown.duration(700).delay(120)} style={styles.title}>
               {s.title}
@@ -92,7 +95,7 @@ export default function Onboarding() {
           style={({ pressed }) => [styles.cta, pressed && { opacity: 0.85 }]}
         >
           <Text style={styles.ctaText}>
-            {idx === slides.length - 1 ? t('onboarding.cta') : 'Continue'}
+            {idx === slides.length - 1 ? t('onboarding.cta') : t('onboarding.continue')}
           </Text>
           <Feather name="arrow-right" size={16} color={colors.bg} />
         </Pressable>

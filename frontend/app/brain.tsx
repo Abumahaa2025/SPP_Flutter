@@ -13,7 +13,7 @@ import { AmbientBackground } from '@/src/components/AmbientBackground';
 import { GlassTabBar } from '@/src/components/GlassTabBar';
 import { GlassCard } from '@/src/components/GlassCard';
 import { ScreenHeader } from '@/src/components/ScreenHeader';
-import { LoadingOrb } from '@/src/components/LoadingOrb';
+import { BrandOrb } from '@/src/components/BrandOrb';
 import { api, type ChatMsg } from '@/src/api/client';
 import { colors, spacing, typography, radius } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
@@ -88,13 +88,13 @@ export default function Brain() {
               {/* Ambient emotional entry */}
               <Animated.View entering={FadeIn.duration(700)} style={styles.emptyHero}>
                 <View style={styles.orbBed}>
-                  <LoadingOrb size={68} />
+                  <BrandOrb size={72} />
                 </View>
                 <Animated.Text entering={FadeInDown.duration(700).delay(150)} style={styles.emptyTitle}>
-                  {t('brain.title')}
+                  {t('brain.empty.title')}
                 </Animated.Text>
                 <Animated.Text entering={FadeInDown.duration(700).delay(250)} style={styles.emptyBody}>
-                  I remember every property, every decision, every signal. Ask me anything.
+                  {t('brain.empty.body')}
                 </Animated.Text>
               </Animated.View>
 
