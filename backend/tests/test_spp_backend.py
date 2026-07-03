@@ -146,6 +146,36 @@ class TestOwner:
         assert data["name"] == "Alexander Vale"
 
 
+# ---------------- verdicts (Unified Brain contextual verdicts) ----------------
+class TestVerdicts:
+    EXPECTED_KEYS = {
+        "home", "portfolio", "insights", "health", "maintenance",
+        "sensors", "tenants", "contracts", "notifications",
+        "reports", "knowledge", "guides", "owner",
+    }
+
+    def test_verdicts_shape(self, api_client):
+        r = api_client.get(f"{API}/verdicts")
+        assert r.status_code == 200
+        data = r.json()
+        # Must be a dict with exactly 13 keyed verdicts
+        assert isinstance(data, dict)
+        assert set(data.keys()) == self.EXPECTED_KEYS, (
+            f"missing/extra keys: {set(data.keys()) ^ self.EXPECTED_KEYS}"
+        )
+        assert len(data) == 13
+
+    def test_verdict_fields(self, api_client):
+        r = api_client.get(f"{API}/verdicts")
+        data = r.json()
+        for key, verdict in data.items():
+            if verdict is None:
+                continue  # some conditional verdicts may be None
+            for k in ("headline", "why", "action", "route"):
+                assert k in verdict, f"{key} missing {k}"
+                assert isinstance(verdict[k], str) and len(verdict[k]) > 0
+
+
 # ---------------- ancillary ----------------
 class TestAncillary:
     def test_decisions(self, api_client):
