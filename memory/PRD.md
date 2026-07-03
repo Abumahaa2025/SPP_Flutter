@@ -89,5 +89,25 @@ Follow-ups applied post-test:
 ### Direction reinforced
 SPP now consistently answers *"What should the owner do next?"* on every surface, before any data is shown. The AI Employee is one feature; the **Operating System is the product**.
 
+## Phase 3.6 — Launch flow + UX polish ✅
+
+### Cold-start ritual — the SPP Intro
+- New **`SplashIntro`** component: full-bleed ink with the breathing BrandOrb, the "S P P" wordmark at large scale, the "AI OPERATING SYSTEM · REAL ESTATE" tagline, and a subtle "Preparing your executive briefing…" footer.
+- New logic in `_layout.tsx` enforces the launch ritual on **every cold start**:
+  1. Restore fonts + language.
+  2. Hold the intro for a minimum **1400 ms** for brand presence.
+  3. **`router.replace('/')`** (or `/onboarding` for first-launch) — the app never opens on the last visited screen, even after deep links.
+  4. Fade the intro out (520 ms cubic ease) to reveal Home.
+  5. Unmount after the fade completes.
+
+### Transitions between sections
+- Stack now uses `animation: 'default'` with `animationDuration: 320` — platform-natural iOS slide / Android push, but faster and softer.
+
+### Verified by testing_agent (iteration_3)
+- **21/21 backend pytest passed** (added `TestVerdicts` covering the 13 keyed verdicts).
+- **Cold-start regression PASSED**: navigating to `/health` then reloading correctly redirects to Home via `router.replace('/')`.
+- First-launch routes to onboarding; onboarded users route to Home.
+- No red screen / worklet errors. GPT-5.2 chat still live.
+
 ## Phase 4 — real integrations (blocked on credentials)
-Still awaiting the integration credentials (Google Apps Script, Sheets, Home Assistant, Green API, engine endpoints). Every screen is ready to swap seed data for live data without redesign.
+No frontend changes will be required — every screen consumes stable `api.*` endpoints.

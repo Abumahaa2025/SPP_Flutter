@@ -66,11 +66,18 @@ export default function RootLayout() {
 
   // Fade the SPP intro out once everything is ready + min hold has passed.
   const readyForHandoff = langReady && (loaded || error) && minHoldElapsed && routed;
+  const [introMounted, setIntroMounted] = useState(true);
   useEffect(() => {
     if (!readyForHandoff) return;
     const t = setTimeout(() => setIntroDone(true), 60);
     return () => clearTimeout(t);
   }, [readyForHandoff]);
+  useEffect(() => {
+    if (!introDone) return;
+    // Give the fade-out animation (~520ms) time to finish before unmounting.
+    const t = setTimeout(() => setIntroMounted(false), 700);
+    return () => clearTimeout(t);
+  }, [introDone]);
 
   if ((!loaded && !error) || !langReady) return null;
 
@@ -86,7 +93,7 @@ export default function RootLayout() {
               contentStyle: { backgroundColor: '#050A12' },
             }}
           />
-          <SplashIntro visible={!introDone} />
+          {introMounted ? <SplashIntro visible={!introDone} /> : null}
         </View>
       </SafeAreaProvider>
     </GestureHandlerRootView>
