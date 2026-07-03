@@ -9,6 +9,7 @@ import { ScreenScaffold } from '@/src/components/ScreenScaffold';
 import { ScreenHeader } from '@/src/components/ScreenHeader';
 import { GlassCard } from '@/src/components/GlassCard';
 import { EmptyState } from '@/src/components/EmptyState';
+import { BrainVerdict } from '@/src/components/BrainVerdict';
 import { api, type GuideT } from '@/src/api/client';
 import { colors, spacing, typography, radius } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
@@ -21,6 +22,7 @@ export default function Guides() {
   return (
     <ScreenScaffold testID="guides-screen">
       <ScreenHeader eyebrow="Install" title={t('guides.title')} sub={t('guides.sub')} showBack />
+      <BrainVerdict screen="guides" />
       {items.length === 0 ? (
         <EmptyState icon="play-circle" title="Video guides landing soon." />
       ) : items.map((g, i) => (

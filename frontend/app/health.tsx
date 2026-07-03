@@ -9,6 +9,7 @@ import { ScreenScaffold } from '@/src/components/ScreenScaffold';
 import { ScreenHeader } from '@/src/components/ScreenHeader';
 import { GlassCard } from '@/src/components/GlassCard';
 import { HealthRing } from '@/src/components/HealthRing';
+import { BrainVerdict } from '@/src/components/BrainVerdict';
 import { api, type Briefing, type PropertyT } from '@/src/api/client';
 import { colors, spacing, typography, radius } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
@@ -34,6 +35,8 @@ export default function Health() {
         sub={t('health.sub')}
         showBack
       />
+
+      <BrainVerdict screen="health" />
 
       {/* Composite score */}
       <Animated.View entering={FadeInDown.duration(650)}>

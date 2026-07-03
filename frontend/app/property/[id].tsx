@@ -11,7 +11,8 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AmbientBackground } from '@/src/components/AmbientBackground';
 import { GlassCard } from '@/src/components/GlassCard';
 import { HealthRing } from '@/src/components/HealthRing';
-import { api, type PropertyT, type SensorT, type TimelineT } from '@/src/api/client';
+import { BrainVerdict } from '@/src/components/BrainVerdict';
+import { api, type PropertyT, type SensorT, type TimelineT, type DecisionT } from '@/src/api/client';
 import { colors, spacing, typography, radius } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
 
@@ -25,6 +26,7 @@ export default function PropertyDetail() {
   const [prop, setProp] = useState<PropertyT | null>(null);
   const [sensors, setSensors] = useState<SensorT[]>([]);
   const [timeline, setTimeline] = useState<TimelineT[]>([]);
+  const [propDecision, setPropDecision] = useState<DecisionT | null>(null);
   const [tab, setTab] = useState<Tab>('overview');
 
   useEffect(() => {
@@ -32,6 +34,10 @@ export default function PropertyDetail() {
     api.property(id).then(setProp).catch(() => {});
     api.sensors().then((all) => setSensors(all.filter((s) => s.property_id === id)));
     api.timeline().then((all) => setTimeline(all.filter((tl) => tl.property_id === id)));
+    api.decisions().then((all) => {
+      const d = all.find((x) => x.property_id === id);
+      if (d) setPropDecision(d);
+    });
   }, [id]);
 
   const tabs: { key: Tab; labelKey: any }[] = [
@@ -77,6 +83,20 @@ export default function PropertyDetail() {
             <Text style={styles.name}>{prop?.name}</Text>
             <Text style={styles.address}>{prop?.address}</Text>
           </Animated.View>
+
+          {propDecision ? (
+            <View style={{ marginTop: spacing.xl }}>
+              <BrainVerdict
+                screen={`property-${id}`}
+                fallback={{
+                  headline: propDecision.title,
+                  why: propDecision.reason,
+                  action: propDecision.recommended_action,
+                  route: '/maintenance',
+                }}
+              />
+            </View>
+          ) : null}
 
           {/* Health & KPI card */}
           <Animated.View entering={FadeInDown.duration(650).delay(100)} style={{ marginTop: spacing.xl }}>

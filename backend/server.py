@@ -532,6 +532,105 @@ async def get_owner():
     return doc or {"id": "own_1", "name": "Alexander Vale", "portfolio_value": 0, "properties": 0}
 
 
+@api_router.get("/verdicts")
+async def verdicts():
+    """Contextual AI verdicts — one Brain speaking on every surface."""
+    props = [_strip_id(p) async for p in db.properties.find({}, {"_id": 0})]
+    decisions = [_strip_id(d) async for d in db.decisions.find({}, {"_id": 0}).sort("created_at", -1)]
+    expiring_ct = await db.contracts.count_documents({"status": "expiring"})
+    critical_props = [p for p in props if p["health_score"] < 80]
+    top_dec = decisions[0] if decisions else None
+
+    weakest = min(props, key=lambda p: p["health_score"]) if props else None
+
+    return {
+        "home": {
+            "headline": "Two decisions matter most today.",
+            "why": "One prevents ≈ AED 42,000 in HVAC failure. One recovers ≈ AED 168,000 in Aurum yield.",
+            "action": "Review priorities",
+            "route": "/",
+        },
+        "portfolio": (
+            {
+                "headline": f"Focus on {weakest['name']} today.",
+                "why": f"Composite health {weakest['health_score']} — trending {'below' if weakest['occupancy'] < 0.85 else 'near'} target for weeks.",
+                "action": "Open property",
+                "route": f"/property/{weakest['id']}",
+            } if weakest else None
+        ),
+        "insights": {
+            "headline": "Yield is outperforming market by 0.9 pt.",
+            "why": "Above local benchmarks in Q3. Palm Villa comparables suggest room for a rent uplift.",
+            "action": "Open Q3 report",
+            "route": "/reports",
+        },
+        "health": (
+            {
+                "headline": f"{weakest['name']} needs attention within 14 days.",
+                "why": (top_dec or {}).get("reason", "Sensor drift detected on primary systems."),
+                "action": "Open maintenance",
+                "route": "/maintenance",
+            } if weakest else None
+        ),
+        "maintenance": {
+            "headline": "Schedule Thursday HVAC service on Marina Crest.",
+            "why": "Prevents ≈ AED 42,000 emergency service and 2 tenant complaints.",
+            "action": "Approve",
+            "route": "/",
+        },
+        "sensors": {
+            "headline": "Two silent signals warrant a look.",
+            "why": "Humidity rising on PH-01; Floor 8 AQI climbing above nominal.",
+            "action": "Investigate",
+            "route": "/sensors",
+        },
+        "tenants": {
+            "headline": "Marcus Reed is renewal-ready.",
+            "why": "24 of 24 months on time. Contract expires in 34 days.",
+            "action": "Draft renewal",
+            "route": "/contracts",
+        },
+        "contracts": (
+            {
+                "headline": "Send renewal to Marcus Reed today.",
+                "why": f"{expiring_ct} contract(s) in the renewal window. Retention avoids ≈ AED 60,000 vacancy.",
+                "action": "Approve renewal",
+                "route": "/contracts",
+            } if expiring_ct else None
+        ),
+        "notifications": {
+            "headline": "Handle the Aurum yield alert first.",
+            "why": "Highest priority · third consecutive month below target.",
+            "action": "Open Aurum",
+            "route": "/property/prop_4",
+        },
+        "reports": {
+            "headline": "October review is ready.",
+            "why": "AI-authored. Revenue up 6.2% MoM · 1 intervention prevented.",
+            "action": "Read now",
+            "route": "/reports",
+        },
+        "knowledge": {
+            "headline": "Start with 'The renewal window playbook'.",
+            "why": "Two of your contracts enter renewal within 60 days.",
+            "action": "Open article",
+            "route": "/knowledge",
+        },
+        "guides": {
+            "headline": "Install your first virtual sensor next.",
+            "why": "Two properties still lack humidity + occupancy sensing.",
+            "action": "Start guide",
+            "route": "/guides",
+        },
+        "owner": {
+            "headline": f"{len(critical_props)} of {len(props)} properties trend below target.",
+            "why": "Composite portfolio health can move +6 points with two interventions.",
+            "action": "Open priorities",
+            "route": "/",
+        },
+    }
+
+
 @api_router.post("/chat")
 async def chat(req: ChatRequest):
     """Non-streaming chat endpoint — Unified Brain."""

@@ -9,6 +9,7 @@ import { ScreenScaffold } from '@/src/components/ScreenScaffold';
 import { ScreenHeader } from '@/src/components/ScreenHeader';
 import { GlassCard } from '@/src/components/GlassCard';
 import { EmptyState } from '@/src/components/EmptyState';
+import { BrainVerdict } from '@/src/components/BrainVerdict';
 import { api, type ContractT, type PropertyT, type TenantT } from '@/src/api/client';
 import { colors, spacing, typography, radius } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
@@ -44,6 +45,7 @@ export default function Contracts() {
   return (
     <ScreenScaffold testID="contracts-screen">
       <ScreenHeader eyebrow="Lifecycle" title={t('contracts.title')} sub={t('contracts.sub')} showBack />
+      <BrainVerdict screen="contracts" />
       {contracts.length === 0 ? (
         <EmptyState icon="file-text" title="No contracts yet." />
       ) : contracts.map((c, i) => {

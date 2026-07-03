@@ -8,6 +8,7 @@ import { ScreenScaffold } from '@/src/components/ScreenScaffold';
 import { ScreenHeader } from '@/src/components/ScreenHeader';
 import { GlassCard } from '@/src/components/GlassCard';
 import { EmptyState } from '@/src/components/EmptyState';
+import { BrainVerdict } from '@/src/components/BrainVerdict';
 import { api, type KnowledgeT } from '@/src/api/client';
 import { colors, spacing, typography, radius } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
@@ -20,6 +21,7 @@ export default function Knowledge() {
   return (
     <ScreenScaffold testID="knowledge-screen">
       <ScreenHeader eyebrow="Learn" title={t('knowledge.title')} sub={t('knowledge.sub')} showBack />
+      <BrainVerdict screen="knowledge" />
       {items.length === 0 ? (
         <EmptyState icon="book-open" title="Building your library." />
       ) : items.map((k, i) => (

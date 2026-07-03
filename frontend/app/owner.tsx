@@ -9,6 +9,7 @@ import { ScreenScaffold } from '@/src/components/ScreenScaffold';
 import { ScreenHeader } from '@/src/components/ScreenHeader';
 import { GlassCard } from '@/src/components/GlassCard';
 import { BrandOrb, Wordmark } from '@/src/components/BrandOrb';
+import { BrainVerdict } from '@/src/components/BrainVerdict';
 import { api, type OwnerT, type Briefing } from '@/src/api/client';
 import { colors, spacing, typography, radius } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
@@ -33,6 +34,8 @@ export default function Owner() {
   return (
     <ScreenScaffold testID="owner-screen">
       <ScreenHeader eyebrow="Identity" title={t('owner.title')} sub={t('owner.sub')} showBack />
+
+      <BrainVerdict screen="owner" />
 
       {/* Identity card */}
       <Animated.View entering={FadeInDown.duration(650)}>

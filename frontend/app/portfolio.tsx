@@ -9,6 +9,7 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import { ScreenScaffold } from '@/src/components/ScreenScaffold';
 import { ScreenHeader } from '@/src/components/ScreenHeader';
 import { GlassCard } from '@/src/components/GlassCard';
+import { BrainVerdict } from '@/src/components/BrainVerdict';
 import { api, type PropertyT } from '@/src/api/client';
 import { colors, spacing, typography, radius } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
@@ -42,6 +43,8 @@ export default function Portfolio() {
         title={t('portfolio.title')}
         sub={t('portfolio.sub')}
       />
+
+      <BrainVerdict screen="portfolio" />
 
       <ScrollView
         horizontal

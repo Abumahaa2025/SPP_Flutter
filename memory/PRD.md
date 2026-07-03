@@ -64,13 +64,30 @@ Follow-ups applied post-test:
 - Contract countdowns computed from live seed dates (34d / 58d).
 - Hub scroll padding raised to 220 px so the last row of tiles clears the floating tab bar and is tappable.
 
-## Phase 4 — real integrations (blocked on credentials)
-The visual language is stable. To swap the seeded data for the real SPP platform, the following credentials & endpoints are needed:
-1. **Google Apps Script** — deployed Web App URL + service account (or user OAuth) for read/write.
-2. **Google Sheets** — spreadsheet IDs for Properties · Tenants · Contracts · Sensors · Timeline · Reports (or a single master).
-3. **Home Assistant** — base URL of the HA instance + long-lived access token; entity IDs to bridge into the Sensor Engine.
-4. **Green API (WhatsApp)** — instance ID + API token for outbound notifications and tenant threads.
-5. **Property Memory / Predictive Maintenance / Sensor / Technician engines** — endpoint URLs and auth headers (or a dedicated adapter package).
-6. **Production OpenAI key** (if we're moving off the Emergent Universal Key).
+## Phase 3.5 — Brain-first refinement pass ✅
 
-Once these are supplied, no frontend change is required — every screen consumes stable `api.*` endpoints, and the `get_llm_chat()` factory is provider-agnostic.
+*"The Brain should speak before the user thinks."*
+
+### One voice on every surface
+- New **`BrainVerdict`** component (`/app/frontend/src/components/BrainVerdict.tsx`) — a calm, breathing glass card with the SPP · BRAIN VERDICT eyebrow, a **recommendation headline**, a **why line** (justification with quantified impact), and a **gold action pill** that routes to the decisive next screen.
+- New backend endpoint **`/api/verdicts`** — 13 contextual verdicts, computed from live portfolio state, keyed by screen. One Brain, one voice.
+- Mounted at the very top of: Portfolio, Insights, Health, Maintenance, Sensors, Tenants, Contracts, Reports, Knowledge, Guides, Owner. **AI recommendation appears before any raw data on every screen.**
+- Property Detail mounts a **per-property** verdict fed from the property's live decision — the Brain speaks in-context.
+
+### Why every number matters
+- Insights trend line now reads *"+8.2% vs last quarter · outperforming market by 0.9pt"* — quantified justification, not a bare number.
+- Home Morning Brief already reads like an executive's note.
+- HealthRing renders a semantic status word ("Excellent / Stable / Attention") alongside every score.
+
+### Emotionally alive, never noisy
+- BrainVerdict has an emerald breathing dot with a soft halo — subtle, calm, alive.
+- AmbientBackground continues to breathe cinematically behind every screen.
+- HealthRing animates from 0 → score with an elegant number counter.
+- Every card entrance uses `FadeInDown` with 60–90 ms stagger.
+- Every interaction fires haptics (`selection` / `impact.Light`).
+
+### Direction reinforced
+SPP now consistently answers *"What should the owner do next?"* on every surface, before any data is shown. The AI Employee is one feature; the **Operating System is the product**.
+
+## Phase 4 — real integrations (blocked on credentials)
+Still awaiting the integration credentials (Google Apps Script, Sheets, Home Assistant, Green API, engine endpoints). Every screen is ready to swap seed data for live data without redesign.

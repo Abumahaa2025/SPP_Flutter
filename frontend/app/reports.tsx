@@ -8,6 +8,7 @@ import { ScreenScaffold } from '@/src/components/ScreenScaffold';
 import { ScreenHeader } from '@/src/components/ScreenHeader';
 import { GlassCard } from '@/src/components/GlassCard';
 import { EmptyState } from '@/src/components/EmptyState';
+import { BrainVerdict } from '@/src/components/BrainVerdict';
 import { api, type ReportT } from '@/src/api/client';
 import { colors, spacing, typography, radius } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
@@ -27,6 +28,8 @@ export default function Reports() {
   return (
     <ScreenScaffold testID="reports-screen">
       <ScreenHeader eyebrow="Intelligence" title={t('reports.title')} sub={t('reports.sub')} showBack />
+
+      <BrainVerdict screen="reports" />
 
       {items.length === 0 ? (
         <EmptyState icon="file" eyebrow="Nothing yet" title="Your first report will land soon." />

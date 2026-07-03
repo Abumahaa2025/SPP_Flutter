@@ -9,6 +9,7 @@ import { ScreenScaffold } from '@/src/components/ScreenScaffold';
 import { ScreenHeader } from '@/src/components/ScreenHeader';
 import { GlassCard } from '@/src/components/GlassCard';
 import { EmptyState } from '@/src/components/EmptyState';
+import { BrainVerdict } from '@/src/components/BrainVerdict';
 import { api, type TenantT, type PropertyT } from '@/src/api/client';
 import { colors, spacing, typography } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
@@ -29,6 +30,7 @@ export default function Tenants() {
   return (
     <ScreenScaffold testID="tenants-screen">
       <ScreenHeader eyebrow="Relationships" title={t('tenants.title')} sub={t('tenants.sub')} showBack />
+      <BrainVerdict screen="tenants" />
       {tenants.length === 0 ? (
         <EmptyState icon="users" title="No tenants yet." />
       ) : tenants.map((tn, i) => {

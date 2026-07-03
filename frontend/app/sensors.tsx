@@ -8,6 +8,7 @@ import { ScreenScaffold } from '@/src/components/ScreenScaffold';
 import { ScreenHeader } from '@/src/components/ScreenHeader';
 import { GlassCard } from '@/src/components/GlassCard';
 import { EmptyState } from '@/src/components/EmptyState';
+import { BrainVerdict } from '@/src/components/BrainVerdict';
 import { api, type PropertyT, type SensorT } from '@/src/api/client';
 import { colors, spacing, typography, radius } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
@@ -54,6 +55,8 @@ export default function Sensors() {
         sub={t('sensors.sub')}
         showBack
       />
+
+      <BrainVerdict screen="sensors" />
 
       <ScrollView
         horizontal

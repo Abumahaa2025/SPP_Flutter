@@ -9,6 +9,7 @@ import { ScreenScaffold } from '@/src/components/ScreenScaffold';
 import { ScreenHeader } from '@/src/components/ScreenHeader';
 import { GlassCard } from '@/src/components/GlassCard';
 import { HealthRing } from '@/src/components/HealthRing';
+import { BrainVerdict } from '@/src/components/BrainVerdict';
 import { api, type Briefing, type PropertyT } from '@/src/api/client';
 import { colors, spacing, typography, radius } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
@@ -43,6 +44,8 @@ export default function Insights() {
         sub={t('insights.sub')}
       />
 
+      <BrainVerdict screen="insights" />
+
       {/* KPI Row */}
       <Animated.View entering={FadeInDown.duration(650).delay(60)}>
         <GlassCard padding={22} radiusToken="lg" edge="emerald">
@@ -55,7 +58,7 @@ export default function Insights() {
               </View>
               <View style={styles.trendRow}>
                 <Feather name="trending-up" size={12} color={colors.emerald} />
-                <Text style={styles.trendText}>+8.2% vs last quarter</Text>
+                <Text style={styles.trendText}>+8.2% vs last quarter · outperforming market by 0.9pt</Text>
               </View>
             </View>
             <HealthRing score={b?.avg_health ?? 0} size={110} stroke={9} label="Health" />

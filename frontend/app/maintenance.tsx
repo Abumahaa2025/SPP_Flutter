@@ -7,6 +7,7 @@ import { ScreenScaffold } from '@/src/components/ScreenScaffold';
 import { ScreenHeader } from '@/src/components/ScreenHeader';
 import { GlassCard } from '@/src/components/GlassCard';
 import { EmptyState } from '@/src/components/EmptyState';
+import { BrainVerdict } from '@/src/components/BrainVerdict';
 import { api, type DecisionT, type PropertyT } from '@/src/api/client';
 import { colors, spacing, typography, radius } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
@@ -35,6 +36,8 @@ export default function Maintenance() {
         sub={t('maintenance.sub')}
         showBack
       />
+
+      <BrainVerdict screen="maintenance" />
 
       {/* Explainer */}
       <Animated.View entering={FadeInDown.duration(650)}>

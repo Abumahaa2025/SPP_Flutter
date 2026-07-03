@@ -27,6 +27,7 @@ export const api = {
   knowledge: () => req<KnowledgeT[]>('/knowledge'),
   guides: () => req<GuideT[]>('/guides'),
   owner: () => req<OwnerT>('/owner'),
+  verdicts: () => req<Record<string, VerdictT | null>>('/verdicts'),
   chatSend: (session_id: string, text: string) =>
     req<{ reply: string; at: string }>('/chat', {
       method: 'POST',
@@ -117,4 +118,11 @@ export type GuideT = {
 
 export type OwnerT = {
   id: string; name: string; portfolio_value: number; properties: number;
+};
+
+export type VerdictT = {
+  headline: string;
+  why: string;
+  action: string;
+  route: string;
 };
