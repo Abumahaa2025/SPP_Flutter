@@ -22,6 +22,15 @@ from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone, timedelta
 
+from adapters.live_data import get_gas_client, resolve_domain
+from adapters.mappers.briefing import build_briefing
+from adapters.mappers.contracts import map_contracts_from_app_data
+from adapters.mappers.decisions import map_decisions_from_app_data
+from adapters.mappers.notifications import map_notifications_from_app_data
+from adapters.mappers.properties import map_properties_from_app_data
+from adapters.mappers.reports import map_reports_from_app_data
+from adapters.mappers.tenants import map_tenants_from_app_data
+
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
 
@@ -386,6 +395,95 @@ def _strip_id(doc: dict) -> dict:
     return doc
 
 
+def _gas_properties() -> List[dict]:
+    return map_properties_from_app_data(get_gas_client().get_properties_lite())
+
+
+def _gas_tenants() -> List[dict]:
+    return map_tenants_from_app_data(get_gas_client().get_tenants_lite())
+
+
+def _gas_contracts() -> List[dict]:
+    return map_contracts_from_app_data(get_gas_client().get_contracts_lite())
+
+
+def _gas_decisions() -> List[dict]:
+    return map_decisions_from_app_data(get_gas_client().get_decisions_lite())
+
+
+def _gas_reports() -> List[dict]:
+    return map_reports_from_app_data(get_gas_client().get_reports_lite())
+
+
+def _gas_notifications() -> List[dict]:
+    return map_notifications_from_app_data(get_gas_client().get_alerts_lite())
+
+
+async def _mongo_properties() -> List[dict]:
+    return [_strip_id(p) async for p in db.properties.find({}, {"_id": 0})]
+
+
+async def _mongo_tenants() -> List[dict]:
+    return [_strip_id(t) async for t in db.tenants.find({}, {"_id": 0})]
+
+
+async def _mongo_contracts() -> List[dict]:
+    return [_strip_id(c) async for c in db.contracts.find({}, {"_id": 0})]
+
+
+async def _mongo_decisions() -> List[dict]:
+    return [
+        _strip_id(d)
+        async for d in db.decisions.find({}, {"_id": 0}).sort("created_at", -1)
+    ]
+
+
+async def _mongo_reports() -> List[dict]:
+    return [
+        _strip_id(r)
+        async for r in db.reports.find({}, {"_id": 0}).sort("created_at", -1)
+    ]
+
+
+async def _mongo_notifications() -> List[dict]:
+    return [
+        _strip_id(n)
+        async for n in db.notifications.find({}, {"_id": 0}).sort("at", -1)
+    ]
+
+
+async def _list_properties_live() -> List[dict]:
+    return await resolve_domain("PROPERTIES", _gas_properties, _mongo_properties)
+
+
+async def _list_tenants_live() -> List[dict]:
+    return await resolve_domain("TENANTS", _gas_tenants, _mongo_tenants)
+
+
+async def _list_contracts_live() -> List[dict]:
+    return await resolve_domain("CONTRACTS", _gas_contracts, _mongo_contracts)
+
+
+async def _list_decisions_live() -> List[dict]:
+    return await resolve_domain("DECISIONS", _gas_decisions, _mongo_decisions)
+
+
+async def _list_reports_live() -> List[dict]:
+    return await resolve_domain("REPORTS", _gas_reports, _mongo_reports)
+
+
+async def _list_notifications_live() -> List[dict]:
+    return await resolve_domain("ALERTS", _gas_notifications, _mongo_notifications)
+
+
+async def _get_property_live(pid: str) -> Optional[dict]:
+    props = await _list_properties_live()
+    for prop in props:
+        if prop.get("id") == pid:
+            return prop
+    return None
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -397,85 +495,37 @@ async def root():
 @api_router.get("/briefing")
 async def briefing():
     """The AI Employee's morning briefing — the heart of the home screen."""
-    props = [_strip_id(p) async for p in db.properties.find({}, {"_id": 0})]
-    decisions = [_strip_id(d) async for d in db.decisions.find({}, {"_id": 0}).sort("created_at", -1)]
+    props = await _list_properties_live()
+    decisions = await _list_decisions_live()
+    tenants = await _list_tenants_live()
+    contracts = await _list_contracts_live()
     sensors = [_strip_id(s) async for s in db.sensors.find({}, {"_id": 0})]
-    tenants = [_strip_id(t) async for t in db.tenants.find({}, {"_id": 0})]
-    contracts = [_strip_id(c) async for c in db.contracts.find({}, {"_id": 0})]
+    sensor_alerts = [s for s in sensors if s["status"] != "nominal"][:3]
 
-    portfolio_value = sum(p["monthly_revenue"] for p in props) * 12
-    avg_health = round(sum(p["health_score"] for p in props) / max(len(props), 1))
-    occupancy = round(100 * sum(p["occupancy"] for p in props) / max(len(props), 1))
+    gas = get_gas_client()
+    app_data: Dict[str, Any] = {}
+    if gas.configured:
+        try:
+            app_data = gas.get_dashboard_lite()
+        except Exception as exc:
+            logger.warning("GAS briefing dashboard lite skipped: %s", exc)
 
-    critical = [d for d in decisions if d["priority"] in ("critical", "high")]
-    attention_props = [p for p in props if p["health_score"] < 80]
-    expiring = [c for c in contracts if c["status"] == "expiring"]
-
-    hour = datetime.now(timezone.utc).hour
-    if hour < 12:
-        salutation = "Good morning"
-    elif hour < 18:
-        salutation = "Good afternoon"
-    else:
-        salutation = "Good evening"
-
-    if not critical:
-        headline = "All properties stable. Nothing urgent today."
-    elif len(critical) == 1:
-        headline = "1 action needs your attention."
-    else:
-        headline = f"{len(critical)} actions need your attention."
-
-    # Executive advisor narrative — reads like a senior property chief's morning note.
-    lines: List[str] = []
-    if critical:
-        top = critical[0]
-        impact = (top.get("impact") or "").rstrip(".")
-        title = top["title"].rstrip(".")
-        if impact:
-            lines.append(f"I reviewed your portfolio overnight. {title} — {impact}.")
-        else:
-            lines.append(f"I reviewed your portfolio overnight. {title}.")
-    else:
-        lines.append("I reviewed your portfolio overnight. Everything is stable.")
-
-    if attention_props:
-        names = ", ".join(p["name"] for p in attention_props[:2])
-        lines.append(
-            f"{names} are trending below target — worth a decision this week."
-        )
-    if expiring:
-        lines.append(
-            f"{len(expiring)} contract{'s' if len(expiring) > 1 else ''} enter the renewal window in the next 34 days."
-        )
-    lines.append(
-        f"Portfolio health is {avg_health}. Occupancy sits at {occupancy}% across {len(props)} properties."
-    )
-
-    return {
-        "salutation": salutation,
-        "owner_name": "Alexander",
-        "headline": headline,
-        "narrative": lines,
-        "portfolio_annual_revenue": portfolio_value,
-        "avg_health": avg_health,
-        "occupancy": occupancy,
-        "properties_count": len(props),
-        "tenants_count": len(tenants),
-        "expiring_contracts": len(expiring),
-        "decisions": decisions[:4],
-        "sensor_alerts": [s for s in sensors if s["status"] != "nominal"][:3],
-    }
+    result = build_briefing(app_data, props, tenants, contracts, decisions, sensor_alerts)
+    if not app_data:
+        owner = await db.owners.find_one({}, {"_id": 0})
+        if owner and owner.get("name"):
+            result["owner_name"] = str(owner["name"]).split()[0]
+    return result
 
 
 @api_router.get("/properties")
 async def list_properties():
-    return [_strip_id(p) async for p in db.properties.find({}, {"_id": 0})]
+    return await _list_properties_live()
 
 
 @api_router.get("/properties/{pid}")
 async def get_property(pid: str):
-    doc = await db.properties.find_one({"id": pid}, {"_id": 0})
+    doc = await _get_property_live(pid)
     if not doc:
         raise HTTPException(404, "property not found")
     return doc
@@ -483,17 +533,17 @@ async def get_property(pid: str):
 
 @api_router.get("/decisions")
 async def list_decisions():
-    return [_strip_id(d) async for d in db.decisions.find({}, {"_id": 0}).sort("created_at", -1)]
+    return await _list_decisions_live()
 
 
 @api_router.get("/tenants")
 async def list_tenants():
-    return [_strip_id(t) async for t in db.tenants.find({}, {"_id": 0})]
+    return await _list_tenants_live()
 
 
 @api_router.get("/contracts")
 async def list_contracts():
-    return [_strip_id(c) async for c in db.contracts.find({}, {"_id": 0})]
+    return await _list_contracts_live()
 
 
 @api_router.get("/timeline")
@@ -508,12 +558,12 @@ async def list_sensors():
 
 @api_router.get("/notifications")
 async def list_notifications():
-    return [_strip_id(n) async for n in db.notifications.find({}, {"_id": 0}).sort("at", -1)]
+    return await _list_notifications_live()
 
 
 @api_router.get("/reports")
 async def list_reports():
-    return [_strip_id(r) async for r in db.reports.find({}, {"_id": 0}).sort("created_at", -1)]
+    return await _list_reports_live()
 
 
 @api_router.get("/knowledge")
