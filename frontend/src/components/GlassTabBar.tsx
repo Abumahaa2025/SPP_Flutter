@@ -1,12 +1,11 @@
 import React from 'react';
-import { View, Text, StyleSheet, Pressable, Platform, ScrollView } from 'react-native';
+import { View, StyleSheet, Pressable, Platform } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import Animated, { FadeIn } from 'react-native-reanimated';
 import { useRouter, usePathname } from 'expo-router';
-import { colors, radius, spacing, typography } from '../theme';
-import { useI18n } from '../i18n';
+import { colors, radius, spacing } from '../theme';
 
 type Tab = { key: string; path: string; icon: keyof typeof Feather.glyphMap; tKey: any };
 

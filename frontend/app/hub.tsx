@@ -8,7 +8,7 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import { ScreenScaffold } from '@/src/components/ScreenScaffold';
 import { ScreenHeader } from '@/src/components/ScreenHeader';
 import { GlassCard } from '@/src/components/GlassCard';
-import { colors, spacing, typography, radius } from '@/src/theme';
+import { colors, spacing, typography } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
 
 type Tile = {

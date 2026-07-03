@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
-import { Feather } from '@expo/vector-icons';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
@@ -47,7 +46,7 @@ export default function Contracts() {
       <ScreenHeader eyebrow="Lifecycle" title={t('contracts.title')} sub={t('contracts.sub')} showBack />
       <BrainVerdict screen="contracts" />
       {contracts.length === 0 ? (
-        <EmptyState icon="file-text" title="No contracts yet." />
+        <EmptyState icon="file-text" eyebrow="All active" title="No contracts yet." body="When you add contracts, they will appear here — ranked by renewal urgency." />
       ) : contracts.map((c, i) => {
         const meta = statusMeta(c.status);
         const tn = tenantMap.get(c.tenant_id);

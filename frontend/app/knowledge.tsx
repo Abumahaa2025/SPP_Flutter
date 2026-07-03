@@ -10,7 +10,7 @@ import { GlassCard } from '@/src/components/GlassCard';
 import { EmptyState } from '@/src/components/EmptyState';
 import { BrainVerdict } from '@/src/components/BrainVerdict';
 import { api, type KnowledgeT } from '@/src/api/client';
-import { colors, spacing, typography, radius } from '@/src/theme';
+import { colors, spacing, typography } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
 
 export default function Knowledge() {
@@ -23,7 +23,7 @@ export default function Knowledge() {
       <ScreenHeader eyebrow="Learn" title={t('knowledge.title')} sub={t('knowledge.sub')} showBack />
       <BrainVerdict screen="knowledge" />
       {items.length === 0 ? (
-        <EmptyState icon="book-open" title="Building your library." />
+        <EmptyState icon="book-open" eyebrow="Curating" title="Building your library." body="Deep dives on how SPP thinks will land here first." />
       ) : items.map((k, i) => (
         <Animated.View key={k.id} entering={FadeInDown.duration(600).delay(50 * i)}>
           <Pressable

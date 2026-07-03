@@ -8,7 +8,7 @@ import { ScreenHeader } from '@/src/components/ScreenHeader';
 import { GlassCard } from '@/src/components/GlassCard';
 import { EmptyState } from '@/src/components/EmptyState';
 import { api, type NotifT } from '@/src/api/client';
-import { colors, spacing, typography, radius } from '@/src/theme';
+import { colors, spacing, typography } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
 
 const priorityColor = (p: string) => p === 'critical' ? colors.danger : p === 'high' ? colors.gold : p === 'medium' ? colors.emerald : colors.textMuted;

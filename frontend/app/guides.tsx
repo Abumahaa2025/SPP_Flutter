@@ -24,7 +24,7 @@ export default function Guides() {
       <ScreenHeader eyebrow="Install" title={t('guides.title')} sub={t('guides.sub')} showBack />
       <BrainVerdict screen="guides" />
       {items.length === 0 ? (
-        <EmptyState icon="play-circle" title="Video guides landing soon." />
+        <EmptyState icon="play-circle" eyebrow="Filming" title="Video guides landing soon." body="Install, integrate and master — one calm chapter at a time." />
       ) : items.map((g, i) => (
         <Animated.View key={g.id} entering={FadeInDown.duration(600).delay(60 * i)}>
           <Pressable

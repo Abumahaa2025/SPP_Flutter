@@ -11,7 +11,7 @@ import { GlassCard } from '@/src/components/GlassCard';
 import { HealthRing } from '@/src/components/HealthRing';
 import { BrainVerdict } from '@/src/components/BrainVerdict';
 import { api, type Briefing, type PropertyT } from '@/src/api/client';
-import { colors, spacing, typography, radius } from '@/src/theme';
+import { colors, spacing, typography } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
 
 export default function Health() {

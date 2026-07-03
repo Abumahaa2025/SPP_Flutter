@@ -3,12 +3,11 @@ import { View, Text, StyleSheet } from 'react-native';
 import Svg, { Circle, Defs, LinearGradient as SvgGradient, Stop } from 'react-native-svg';
 import Animated, {
   useSharedValue, useAnimatedProps, withTiming, Easing,
-  interpolate, useDerivedValue,
+  useDerivedValue,
 } from 'react-native-reanimated';
 import { colors, typography } from '../theme';
 
 const AnimatedCircle = Animated.createAnimatedComponent(Circle);
-const AnimatedText = Animated.createAnimatedComponent(Text);
 
 type Props = {
   score: number;

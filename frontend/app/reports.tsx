@@ -10,7 +10,7 @@ import { GlassCard } from '@/src/components/GlassCard';
 import { EmptyState } from '@/src/components/EmptyState';
 import { BrainVerdict } from '@/src/components/BrainVerdict';
 import { api, type ReportT } from '@/src/api/client';
-import { colors, spacing, typography, radius } from '@/src/theme';
+import { colors, spacing, typography } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
 
 const kindIcon: Record<string, keyof typeof Feather.glyphMap> = {

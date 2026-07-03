@@ -7,7 +7,7 @@ import * as Haptics from 'expo-haptics';
 import { ScreenScaffold } from '@/src/components/ScreenScaffold';
 import { ScreenHeader } from '@/src/components/ScreenHeader';
 import { GlassCard } from '@/src/components/GlassCard';
-import { colors, spacing, typography, radius } from '@/src/theme';
+import { colors, spacing, typography } from '@/src/theme';
 
 const channels = [
   { icon: 'message-circle' as const, label: 'WhatsApp priority line', hint: 'Reply within 15 min', href: 'https://wa.me/971000000000', accent: 'emerald' },

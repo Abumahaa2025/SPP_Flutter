@@ -1,6 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
-import { Feather } from '@expo/vector-icons';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
@@ -32,7 +31,7 @@ export default function Tenants() {
       <ScreenHeader eyebrow="Relationships" title={t('tenants.title')} sub={t('tenants.sub')} showBack />
       <BrainVerdict screen="tenants" />
       {tenants.length === 0 ? (
-        <EmptyState icon="users" title="No tenants yet." />
+        <EmptyState icon="users" eyebrow="No relationships yet" title="No tenants yet." body="Tenants will appear here once contracts are active." />
       ) : tenants.map((tn, i) => {
         const prop = propMap.get(tn.property_id);
         const rel = tn.reliability;

@@ -144,6 +144,7 @@ export default function Home() {
       }
       load();
     })();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const onRefresh = () => {

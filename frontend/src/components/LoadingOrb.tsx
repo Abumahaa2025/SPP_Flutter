@@ -4,7 +4,6 @@ import { LinearGradient } from 'expo-linear-gradient';
 import Animated, {
   useSharedValue, useAnimatedStyle, withRepeat, withTiming, Easing,
 } from 'react-native-reanimated';
-import { colors } from '../theme';
 
 type Props = { size?: number };
 
