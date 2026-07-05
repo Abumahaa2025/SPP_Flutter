@@ -688,7 +688,28 @@ async def _portfolio_live_context() -> Dict[str, Any]:
     if _portfolio_cache and (now - _portfolio_cache_at) < _PORTFOLIO_CACHE_TTL_SEC:
         return _portfolio_cache
 
-    if beta_mode_enabled() or not _gas_live_mode():
+    if beta_mode_enabled():
+        props = _memory_find("properties")
+        if props:
+            ctx = {
+                "settings": {},
+                "properties": props,
+                "tenants": _memory_find("tenants"),
+                "contracts": _memory_find("contracts"),
+                "decisions": _memory_find("decisions"),
+                "reports": _memory_find("reports"),
+            }
+        else:
+            data = beta_dataset("owner")
+            ctx = {
+                "settings": {},
+                "properties": data.get("properties", []),
+                "tenants": data.get("tenants", []),
+                "contracts": data.get("contracts", []),
+                "decisions": data.get("decisions", []),
+                "reports": data.get("reports", []),
+            }
+    elif not _gas_live_mode():
         ctx = await asyncio.to_thread(_gas_canonical_context)
     else:
         props, decisions, tenants, contracts, reports = await asyncio.gather(
