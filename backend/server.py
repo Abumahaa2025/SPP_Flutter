@@ -993,6 +993,7 @@ class UploadFileMeta(BaseModel):
     name: str
     mimeType: Optional[str] = None
     size: Optional[int] = None
+    textSnippet: Optional[str] = None
 
 
 class UploadPortfolioRequest(BaseModel):
