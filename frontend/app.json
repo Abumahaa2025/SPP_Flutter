@@ -1,20 +1,23 @@
 {
   "expo": {
-    "name": "frontend",
-    "slug": "frontend",
-    "version": "1.0.0",
+    "name": "SPP",
+    "slug": "spp-beta",
+    "owner": "abumahaa2025",
+    "version": "1.0.0-beta.1",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "frontend",
+    "scheme": "spp",
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "ai.spp.beta"
     },
     "android": {
+      "package": "ai.spp.beta",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
-        "backgroundColor": "#000000"
+        "backgroundColor": "#050A12"
       },
       "edgeToEdgeEnabled": true
     },
@@ -37,6 +40,12 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "405761ee-fac3-4b25-9784-23f7441535e3"
+      }
     }
   }
 }
