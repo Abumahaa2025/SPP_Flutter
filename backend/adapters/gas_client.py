@@ -110,6 +110,9 @@ class GasClient:
     def get_alerts_lite(self) -> Dict[str, Any]:
         return self._get_lite("getAlertsLite")
 
+    def get_memory_lite(self) -> Dict[str, Any]:
+        return self._get_lite("getPropertyMemoryLite")
+
     def get_app_data(self, force_refresh: bool = False) -> Dict[str, Any]:
         """Legacy alias — returns dashboard lite bundle only."""
         if force_refresh:

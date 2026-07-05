@@ -17,29 +17,79 @@ import os
 import logging
 import uuid
 import json
+import time
+import asyncio
 from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone, timedelta
 
-from adapters.live_data import get_gas_client, resolve_domain
+from adapters.live_data import domain_source, get_gas_client, resolve_domain, beta_mode_enabled
+from adapters.executive.brain import build_executive_brain
+from adapters.canonical.pipeline import (
+    insights_to_api,
+    legacy_api_payload,
+    memory_graph_to_dict,
+    portfolio_from_bundles,
+)
+from adapters.executive_intelligence.engine import generate_insights
 from adapters.mappers.briefing import build_briefing
-from adapters.mappers.contracts import map_contracts_from_app_data
+from adapters.mappers.verdicts import build_verdicts
+from adapters.mappers.contracts import map_contracts_from_app_data, reconcile_contracts
 from adapters.mappers.decisions import map_decisions_from_app_data
 from adapters.mappers.notifications import map_notifications_from_app_data
 from adapters.mappers.properties import map_properties_from_app_data
 from adapters.mappers.reports import map_reports_from_app_data
 from adapters.mappers.tenants import map_tenants_from_app_data
+from beta_seed import beta_dataset, verify_beta_login, BETA_ACCOUNTS
+
+# In-memory portfolio for beta builds when Mongo is unavailable
+_memory_db: Dict[str, List[dict]] = {}
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / ".env")
 
 # ---------------------------------------------------------------------------
-# Mongo
+# Mongo (optional — required only when SPP_*_SOURCE=mongo without GAS)
 # ---------------------------------------------------------------------------
-mongo_url = os.environ["MONGO_URL"]
-client = AsyncIOMotorClient(mongo_url)
-db = client[os.environ["DB_NAME"]]
+_mongo_client: Optional[AsyncIOMotorClient] = None
+_mongo_available = False
+_MONGO_TIMEOUT_MS = 3000
+
+
+def _get_db():
+    global _mongo_client
+    name = os.environ.get("DB_NAME", "spp")
+    if _mongo_client is None:
+        url = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
+        _mongo_client = AsyncIOMotorClient(
+            url,
+            serverSelectionTimeoutMS=_MONGO_TIMEOUT_MS,
+            connectTimeoutMS=_MONGO_TIMEOUT_MS,
+        )
+    return _mongo_client[name]
+
+
+async def _mongo_ping() -> bool:
+    try:
+        await _get_db().command("ping")
+        return True
+    except Exception:
+        return False
+
+
+def _gas_live_mode() -> bool:
+    if beta_mode_enabled():
+        return False
+    gas = get_gas_client()
+    if not gas.configured:
+        return False
+    if os.environ.get("SPP_DATA_SOURCE", "mongo").lower() in ("gas", "hybrid"):
+        return True
+    for domain in ("PROPERTIES", "TENANTS", "CONTRACTS", "DECISIONS", "REPORTS", "ALERTS"):
+        if domain_source(domain) in ("gas", "hybrid"):
+            return True
+    return False
 
 # ---------------------------------------------------------------------------
 # App
@@ -382,17 +432,162 @@ def _seed_dataset() -> Dict[str, List[dict]]:
 
 
 async def _reseed_if_empty():
-    if await db.properties.count_documents({}) > 0:
+    if beta_mode_enabled():
+        logger.info("Beta mode — auto-seed disabled; use /api/beta/login.")
         return
-    data = _seed_dataset()
-    for coll, rows in data.items():
-        if rows:
-            await db[coll].insert_many([dict(r) for r in rows])
+    if not _mongo_available:
+        return
+    if not _demo_mode_enabled():
+        logger.info("Demo seed skipped — SPP_DEMO_MODE is off (default: empty portfolio).")
+        return
+    try:
+        if await _get_db().properties.count_documents({}) > 0:
+            return
+        data = _seed_dataset()
+        for coll, rows in data.items():
+            if rows:
+                await _get_db()[coll].insert_many([dict(r) for r in rows])
+    except Exception as exc:
+        logger.warning("Mongo reseed skipped: %s", exc)
+
+
+def _demo_mode_enabled() -> bool:
+    return os.getenv("SPP_DEMO_MODE", "false").lower() in ("1", "true", "yes")
+
+
+def _use_memory_store() -> bool:
+    return beta_mode_enabled() and not _mongo_available
+
+
+def _memory_find(collection: str, query: Optional[dict] = None) -> List[dict]:
+    rows = _memory_db.get(collection, [])
+    if not query:
+        return list(rows)
+    return [r for r in rows if all(r.get(k) == v for k, v in query.items())]
+
+
+def _memory_find_one(collection: str, query: Optional[dict] = None) -> Optional[dict]:
+    matches = _memory_find(collection, query)
+    return matches[0] if matches else None
+
+
+def _memory_insert_all(data: Dict[str, List[dict]]) -> None:
+    global _memory_db
+    _memory_db = {k: [dict(r) for r in v] for k, v in data.items()}
+
+
+def _memory_clear() -> None:
+    global _memory_db
+    _memory_db = {}
+
+
+async def _clear_all_collections():
+    if _use_memory_store() or (beta_mode_enabled() and not _mongo_available):
+        _memory_clear()
+        return
+    if not _mongo_available:
+        return
+    cols = [
+        "owners", "properties", "tenants", "contracts", "decisions", "timeline",
+        "sensors", "notifications", "reports", "knowledge", "guides",
+    ]
+    for c in cols:
+        await _get_db()[c].delete_many({})
+
+
+async def _load_demo_seed(persona: str = "owner"):
+    data = beta_dataset(persona) if beta_mode_enabled() else _seed_dataset()
+    if _mongo_available:
+        await _clear_all_collections()
+        for coll, rows in data.items():
+            if rows:
+                await _get_db()[coll].insert_many([dict(r) for r in rows])
+    elif _use_memory_store() or beta_mode_enabled():
+        _memory_insert_all(data)
+    else:
+        raise HTTPException(503, "Database unavailable for demo load")
 
 
 def _strip_id(doc: dict) -> dict:
     doc.pop("_id", None)
     return doc
+
+
+async def _safe_mongo_find(
+    collection: str,
+    query: Optional[dict] = None,
+    *,
+    sort: Optional[tuple] = None,
+) -> List[dict]:
+    if _use_memory_store():
+        rows = _memory_find(collection, query)
+        if sort:
+            key, direction = sort
+            rows = sorted(rows, key=lambda r: r.get(key, ""), reverse=direction < 0)
+        return rows
+    if not _mongo_available:
+        return []
+    try:
+        cursor = _get_db()[collection].find(query or {}, {"_id": 0})
+        if sort:
+            cursor = cursor.sort(sort[0], sort[1])
+        return [_strip_id(doc) async for doc in cursor]
+    except Exception as exc:
+        logger.warning("Mongo read %s failed: %s", collection, exc)
+        return []
+
+
+async def _safe_mongo_find_one(collection: str, query: Optional[dict] = None) -> Optional[dict]:
+    if _use_memory_store():
+        return _memory_find_one(collection, query)
+    if not _mongo_available:
+        return None
+    try:
+        doc = await _get_db()[collection].find_one(query or {}, {"_id": 0})
+        return _strip_id(doc) if doc else None
+    except Exception as exc:
+        logger.warning("Mongo find_one %s failed: %s", collection, exc)
+        return None
+
+
+def _gas_memory_bundle() -> Optional[Dict[str, Any]]:
+    gas = get_gas_client()
+    if not gas.configured:
+        return None
+    try:
+        return gas.get_memory_lite()
+    except Exception as exc:
+        logger.debug("GAS memory lite unavailable: %s", exc)
+        return None
+
+
+def _gas_canonical_context() -> Dict[str, Any]:
+    """Single GAS load → canonical model → legacy API shapes + memory + intelligence."""
+    gas = get_gas_client()
+    dashboard = gas.get_dashboard_lite()
+    decisions_bundle = gas.get_decisions_lite()
+    memory_bundle = _gas_memory_bundle()
+
+    portfolio = portfolio_from_bundles(
+        dashboard=dashboard,
+        decisions=decisions_bundle,
+        memory=memory_bundle,
+    )
+    health = (dashboard or {}).get("propertyHealth") or {}
+    base_health = int(health.get("score") or 75)
+    payload = legacy_api_payload(portfolio, base_health=base_health, merge_intelligence=True)
+    reports = map_reports_from_app_data(dashboard)
+
+    return {
+        "settings": (dashboard or {}).get("settings") or {},
+        "properties": payload["properties"],
+        "tenants": payload["tenants"],
+        "contracts": payload["contracts"],
+        "decisions": payload["decisions"],
+        "reports": reports,
+        "memory": payload["memory"],
+        "portfolio": payload["portfolio"],
+    }
 
 
 def _gas_properties() -> List[dict]:
@@ -404,7 +599,12 @@ def _gas_tenants() -> List[dict]:
 
 
 def _gas_contracts() -> List[dict]:
-    return map_contracts_from_app_data(get_gas_client().get_contracts_lite())
+    gas = get_gas_client()
+    for loader in (gas.get_contracts_lite, gas.get_properties_lite, gas.get_dashboard_lite):
+        contracts = map_contracts_from_app_data(loader())
+        if contracts:
+            return contracts
+    return []
 
 
 def _gas_decisions() -> List[dict]:
@@ -420,36 +620,27 @@ def _gas_notifications() -> List[dict]:
 
 
 async def _mongo_properties() -> List[dict]:
-    return [_strip_id(p) async for p in db.properties.find({}, {"_id": 0})]
+    return await _safe_mongo_find("properties")
 
 
 async def _mongo_tenants() -> List[dict]:
-    return [_strip_id(t) async for t in db.tenants.find({}, {"_id": 0})]
+    return await _safe_mongo_find("tenants")
 
 
 async def _mongo_contracts() -> List[dict]:
-    return [_strip_id(c) async for c in db.contracts.find({}, {"_id": 0})]
+    return await _safe_mongo_find("contracts")
 
 
 async def _mongo_decisions() -> List[dict]:
-    return [
-        _strip_id(d)
-        async for d in db.decisions.find({}, {"_id": 0}).sort("created_at", -1)
-    ]
+    return await _safe_mongo_find("decisions", sort=("created_at", -1))
 
 
 async def _mongo_reports() -> List[dict]:
-    return [
-        _strip_id(r)
-        async for r in db.reports.find({}, {"_id": 0}).sort("created_at", -1)
-    ]
+    return await _safe_mongo_find("reports", sort=("created_at", -1))
 
 
 async def _mongo_notifications() -> List[dict]:
-    return [
-        _strip_id(n)
-        async for n in db.notifications.find({}, {"_id": 0}).sort("at", -1)
-    ]
+    return await _safe_mongo_find("notifications", sort=("at", -1))
 
 
 async def _list_properties_live() -> List[dict]:
@@ -484,6 +675,54 @@ async def _get_property_live(pid: str) -> Optional[dict]:
     return None
 
 
+_portfolio_cache: Optional[Dict[str, Any]] = None
+_portfolio_cache_at: float = 0.0
+_PORTFOLIO_CACHE_TTL_SEC = 25.0
+
+
+async def _portfolio_live_context() -> Dict[str, Any]:
+    """Load portfolio domains in parallel; short TTL cache avoids duplicate GAS round-trips."""
+    global _portfolio_cache, _portfolio_cache_at
+    now = time.time()
+    if _portfolio_cache and (now - _portfolio_cache_at) < _PORTFOLIO_CACHE_TTL_SEC:
+        return _portfolio_cache
+
+    if beta_mode_enabled() or not _gas_live_mode():
+        ctx = await asyncio.to_thread(_gas_canonical_context)
+    else:
+        props, decisions, tenants, contracts, reports = await asyncio.gather(
+            _list_properties_live(),
+            _list_decisions_live(),
+            _list_tenants_live(),
+            _list_contracts_live(),
+            _list_reports_live(),
+        )
+        contracts = reconcile_contracts(contracts, decisions, tenants, props)
+
+        settings: Dict[str, Any] = {}
+        gas = get_gas_client()
+        if gas.configured and not beta_mode_enabled():
+            try:
+                settings = await asyncio.to_thread(
+                    lambda: (gas.get_dashboard_lite() or {}).get("settings") or {}
+                )
+            except Exception as exc:
+                logger.warning("GAS portfolio settings skipped: %s", exc)
+
+        ctx = {
+            "settings": settings,
+            "properties": props,
+            "tenants": tenants,
+            "contracts": contracts,
+            "decisions": decisions,
+            "reports": reports,
+        }
+
+    _portfolio_cache = ctx
+    _portfolio_cache_at = now
+    return _portfolio_cache
+
+
 # ---------------------------------------------------------------------------
 # Routes
 # ---------------------------------------------------------------------------
@@ -495,37 +734,69 @@ async def root():
 @api_router.get("/briefing")
 async def briefing():
     """The AI Employee's morning briefing — the heart of the home screen."""
-    props = await _list_properties_live()
-    decisions = await _list_decisions_live()
-    tenants = await _list_tenants_live()
-    contracts = await _list_contracts_live()
-    sensors = [_strip_id(s) async for s in db.sensors.find({}, {"_id": 0})]
-    sensor_alerts = [s for s in sensors if s["status"] != "nominal"][:3]
+    ctx = await _portfolio_live_context()
+    return build_briefing(
+        ctx["settings"],
+        ctx["properties"],
+        ctx["tenants"],
+        ctx["contracts"],
+        ctx["decisions"],
+        ctx["reports"],
+    )
 
-    gas = get_gas_client()
-    app_data: Dict[str, Any] = {}
-    if gas.configured:
-        try:
-            app_data = gas.get_dashboard_lite()
-        except Exception as exc:
-            logger.warning("GAS briefing dashboard lite skipped: %s", exc)
 
-    result = build_briefing(app_data, props, tenants, contracts, decisions, sensor_alerts)
-    if not app_data:
-        owner = await db.owners.find_one({}, {"_id": 0})
-        if owner and owner.get("name"):
-            result["owner_name"] = str(owner["name"]).split()[0]
-    return result
+@api_router.get("/executive")
+async def executive_brain():
+    """Executive Brain V2 — daily agenda, ranked decisions, opportunities."""
+    ctx = await _portfolio_live_context()
+    return build_executive_brain(
+        ctx["settings"],
+        ctx["properties"],
+        ctx["tenants"],
+        ctx["contracts"],
+        ctx["decisions"],
+        ctx["reports"],
+    )
+
+
+@api_router.get("/portfolio-memory")
+async def portfolio_memory():
+    """Portfolio Memory graph — canonical asset life profiles."""
+    ctx = await _portfolio_live_context()
+    memory = ctx.get("memory")
+    if memory is None:
+        portfolio = portfolio_from_bundles()
+        from adapters.portfolio_memory.graph import build_memory_graph
+
+        memory = build_memory_graph(portfolio)
+    return memory_graph_to_dict(memory)
+
+
+@api_router.get("/intelligence")
+async def executive_intelligence():
+    """Executive Intelligence — pattern-based insights from canonical memory."""
+    ctx = await _portfolio_live_context()
+    portfolio = ctx.get("portfolio")
+    memory = ctx.get("memory")
+    if portfolio is None:
+        return {"insights": [], "count": 0}
+    insights = generate_insights(portfolio, memory)
+    return {"insights": insights_to_api(insights), "count": len(insights)}
 
 
 @api_router.get("/properties")
 async def list_properties():
-    return await _list_properties_live()
+    ctx = await _portfolio_live_context()
+    return ctx["properties"]
 
 
 @api_router.get("/properties/{pid}")
 async def get_property(pid: str):
-    doc = await _get_property_live(pid)
+    ctx = await _portfolio_live_context()
+    for prop in ctx["properties"]:
+        if prop.get("id") == pid:
+            return prop
+    doc = await _safe_mongo_find_one("properties", {"id": pid})
     if not doc:
         raise HTTPException(404, "property not found")
     return doc
@@ -533,27 +804,30 @@ async def get_property(pid: str):
 
 @api_router.get("/decisions")
 async def list_decisions():
-    return await _list_decisions_live()
+    ctx = await _portfolio_live_context()
+    return ctx["decisions"]
 
 
 @api_router.get("/tenants")
 async def list_tenants():
-    return await _list_tenants_live()
+    ctx = await _portfolio_live_context()
+    return ctx["tenants"]
 
 
 @api_router.get("/contracts")
 async def list_contracts():
-    return await _list_contracts_live()
+    ctx = await _portfolio_live_context()
+    return ctx["contracts"]
 
 
 @api_router.get("/timeline")
 async def list_timeline():
-    return [_strip_id(t) async for t in db.timeline.find({}, {"_id": 0}).sort("at", -1)]
+    return await _safe_mongo_find("timeline", sort=("at", -1))
 
 
 @api_router.get("/sensors")
 async def list_sensors():
-    return [_strip_id(s) async for s in db.sensors.find({}, {"_id": 0})]
+    return await _safe_mongo_find("sensors")
 
 
 @api_router.get("/notifications")
@@ -563,122 +837,94 @@ async def list_notifications():
 
 @api_router.get("/reports")
 async def list_reports():
-    return await _list_reports_live()
+    ctx = await _portfolio_live_context()
+    return ctx["reports"]
 
 
 @api_router.get("/knowledge")
 async def list_knowledge():
-    return [_strip_id(k) async for k in db.knowledge.find({}, {"_id": 0})]
+    return await _safe_mongo_find("knowledge")
 
 
 @api_router.get("/guides")
 async def list_guides():
-    return [_strip_id(g) async for g in db.guides.find({}, {"_id": 0})]
+    return await _safe_mongo_find("guides")
 
 
 @api_router.get("/owner")
 async def get_owner():
-    doc = await db.owners.find_one({}, {"_id": 0})
-    return doc or {"id": "own_1", "name": "Alexander Vale", "portfolio_value": 0, "properties": 0}
+    doc = await _safe_mongo_find_one("owners")
+    return doc or {"id": "own_1", "name": "", "portfolio_value": 0, "properties": 0}
+
+
+class BetaLoginRequest(BaseModel):
+    email: str
+    password: str
+
+
+@api_router.get("/beta/info")
+async def beta_info():
+    """Public beta metadata — no secrets."""
+    return {
+        "beta": beta_mode_enabled(),
+        "personas": [
+            {"id": "owner", "email": "demo.owner@spp.beta", "label": "Owner"},
+            {"id": "tenant", "email": "demo.tenant@spp.beta", "label": "Tenant"},
+            {"id": "technician", "email": "demo.tech@spp.beta", "label": "Technician"},
+        ],
+        "data_source": "fictional_beta_seed",
+        "gas_disabled": beta_mode_enabled(),
+    }
+
+
+@api_router.post("/beta/login")
+async def beta_login(req: BetaLoginRequest):
+    """Beta tester login — loads fictional portfolio, never Google Sheets."""
+    if not beta_mode_enabled():
+        raise HTTPException(404, "Beta mode is not enabled on this server")
+    persona = verify_beta_login(req.email, req.password)
+    if not persona:
+        raise HTTPException(401, "Invalid beta credentials")
+    await _load_demo_seed(persona)
+    global _portfolio_cache, _portfolio_cache_at
+    _portfolio_cache = None
+    _portfolio_cache_at = 0.0
+    return {"ok": True, "persona": persona, "email": req.email.strip().lower()}
+
+
+@api_router.post("/demo/load")
+async def load_demo():
+    """Load sample portfolio — opt-in only, never default."""
+    await _load_demo_seed("owner")
+    global _portfolio_cache, _portfolio_cache_at
+    _portfolio_cache = None
+    _portfolio_cache_at = 0.0
+    return {"ok": True, "mode": "demo", "beta": beta_mode_enabled()}
+
+
+@api_router.post("/demo/clear")
+async def clear_demo():
+    """Remove all seeded data — return to empty portfolio."""
+    await _clear_all_collections()
+    global _portfolio_cache, _portfolio_cache_at
+    _portfolio_cache = None
+    _portfolio_cache_at = 0.0
+    return {"ok": True, "mode": "empty"}
 
 
 @api_router.get("/verdicts")
 async def verdicts():
     """Contextual AI verdicts — one Brain speaking on every surface."""
-    props = [_strip_id(p) async for p in db.properties.find({}, {"_id": 0})]
-    decisions = [_strip_id(d) async for d in db.decisions.find({}, {"_id": 0}).sort("created_at", -1)]
-    expiring_ct = await db.contracts.count_documents({"status": "expiring"})
-    critical_props = [p for p in props if p["health_score"] < 80]
-    top_dec = decisions[0] if decisions else None
-
-    weakest = min(props, key=lambda p: p["health_score"]) if props else None
-
-    return {
-        "home": {
-            "headline": "Two decisions matter most today.",
-            "why": "One prevents ≈ AED 42,000 in HVAC failure. One recovers ≈ AED 168,000 in Aurum yield.",
-            "action": "Review priorities",
-            "route": "/",
-        },
-        "portfolio": (
-            {
-                "headline": f"Focus on {weakest['name']} today.",
-                "why": f"Composite health {weakest['health_score']} — trending {'below' if weakest['occupancy'] < 0.85 else 'near'} target for weeks.",
-                "action": "Open property",
-                "route": f"/property/{weakest['id']}",
-            } if weakest else None
-        ),
-        "insights": {
-            "headline": "Yield is outperforming market by 0.9 pt.",
-            "why": "Above local benchmarks in Q3. Palm Villa comparables suggest room for a rent uplift.",
-            "action": "Open Q3 report",
-            "route": "/reports",
-        },
-        "health": (
-            {
-                "headline": f"{weakest['name']} needs attention within 14 days.",
-                "why": (top_dec or {}).get("reason", "Sensor drift detected on primary systems."),
-                "action": "Open maintenance",
-                "route": "/maintenance",
-            } if weakest else None
-        ),
-        "maintenance": {
-            "headline": "Schedule Thursday HVAC service on Marina Crest.",
-            "why": "Prevents ≈ AED 42,000 emergency service and 2 tenant complaints.",
-            "action": "Approve",
-            "route": "/",
-        },
-        "sensors": {
-            "headline": "Two silent signals warrant a look.",
-            "why": "Humidity rising on PH-01; Floor 8 AQI climbing above nominal.",
-            "action": "Investigate",
-            "route": "/sensors",
-        },
-        "tenants": {
-            "headline": "Marcus Reed is renewal-ready.",
-            "why": "24 of 24 months on time. Contract expires in 34 days.",
-            "action": "Draft renewal",
-            "route": "/contracts",
-        },
-        "contracts": (
-            {
-                "headline": "Send renewal to Marcus Reed today.",
-                "why": f"{expiring_ct} contract(s) in the renewal window. Retention avoids ≈ AED 60,000 vacancy.",
-                "action": "Approve renewal",
-                "route": "/contracts",
-            } if expiring_ct else None
-        ),
-        "notifications": {
-            "headline": "Handle the Aurum yield alert first.",
-            "why": "Highest priority · third consecutive month below target.",
-            "action": "Open Aurum",
-            "route": "/property/prop_4",
-        },
-        "reports": {
-            "headline": "October review is ready.",
-            "why": "AI-authored. Revenue up 6.2% MoM · 1 intervention prevented.",
-            "action": "Read now",
-            "route": "/reports",
-        },
-        "knowledge": {
-            "headline": "Start with 'The renewal window playbook'.",
-            "why": "Two of your contracts enter renewal within 60 days.",
-            "action": "Open article",
-            "route": "/knowledge",
-        },
-        "guides": {
-            "headline": "Install your first virtual sensor next.",
-            "why": "Two properties still lack humidity + occupancy sensing.",
-            "action": "Start guide",
-            "route": "/guides",
-        },
-        "owner": {
-            "headline": f"{len(critical_props)} of {len(props)} properties trend below target.",
-            "why": "Composite portfolio health can move +6 points with two interventions.",
-            "action": "Open priorities",
-            "route": "/",
-        },
-    }
+    ctx = await _portfolio_live_context()
+    notifications = await _list_notifications_live()
+    return build_verdicts(
+        ctx["properties"],
+        ctx["tenants"],
+        ctx["contracts"],
+        ctx["decisions"],
+        ctx["reports"],
+        notifications,
+    )
 
 
 @api_router.post("/chat")
@@ -703,13 +949,19 @@ async def chat(req: ChatRequest):
         else:
             reply = "I couldn't reach the Brain just now. Try again in a moment."
     msg = {"id": str(uuid.uuid4()), "session_id": req.session_id, "role": "assistant", "text": reply, "at": now}
-    await db.chat_messages.insert_many([dict(user_msg), dict(msg)])
+    if _mongo_available:
+        try:
+            await _get_db().chat_messages.insert_many([dict(user_msg), dict(msg)])
+        except Exception as exc:
+            logger.warning("Chat history not saved (Mongo unavailable): %s", exc)
     return {"reply": reply, "at": now}
 
 
 @api_router.get("/chat/{session_id}")
 async def chat_history(session_id: str):
-    return [_strip_id(m) async for m in db.chat_messages.find({"session_id": session_id}, {"_id": 0}).sort("at", 1)]
+    return await _safe_mongo_find(
+        "chat_messages", {"session_id": session_id}, sort=("at", 1)
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -734,10 +986,23 @@ logger = logging.getLogger(__name__)
 
 @app.on_event("startup")
 async def _startup():
-    await _reseed_if_empty()
+    global _mongo_available
+    _mongo_available = await _mongo_ping()
+    if beta_mode_enabled():
+        logger.info("SPP BETA MODE — Google Sheets disabled; fictional seed only.")
+        if not _mongo_available:
+            logger.info("Mongo unavailable — using in-memory beta store.")
+    if _mongo_available:
+        await _reseed_if_empty()
+        logger.info("Mongo connected — seed check complete.")
+    elif _gas_live_mode():
+        logger.warning("Mongo unavailable — starting with GAS/hybrid live data.")
+    else:
+        logger.warning("Mongo unavailable and GAS not configured — some endpoints may return empty data.")
     logger.info("SPP backend ready.")
 
 
 @app.on_event("shutdown")
 async def shutdown_db_client():
-    client.close()
+    if _mongo_client:
+        _mongo_client.close()
