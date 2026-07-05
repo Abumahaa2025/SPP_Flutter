@@ -887,6 +887,8 @@ class BetaLoginRequest(BaseModel):
 @api_router.get("/beta/info")
 async def beta_info():
     """Public beta metadata — no secrets."""
+    import os
+
     return {
         "beta": beta_mode_enabled(),
         "personas": [
@@ -896,6 +898,8 @@ async def beta_info():
         ],
         "data_source": "fictional_beta_seed",
         "gas_disabled": beta_mode_enabled(),
+        "intake_engine": "property_intake_v2",
+        "deploy_commit": os.environ.get("RENDER_GIT_COMMIT", "local"),
     }
 
 
