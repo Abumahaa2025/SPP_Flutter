@@ -42,6 +42,7 @@ from adapters.mappers.properties import map_properties_from_app_data
 from adapters.mappers.reports import map_reports_from_app_data
 from adapters.mappers.tenants import map_tenants_from_app_data
 from beta_seed import beta_dataset, verify_beta_login, BETA_ACCOUNTS
+from adapters.upload_analysis import analyze_upload_portfolio
 
 # In-memory portfolio for beta builds when Mongo is unavailable
 _memory_db: Dict[str, List[dict]] = {}
@@ -962,6 +963,55 @@ async def chat_history(session_id: str):
     return await _safe_mongo_find(
         "chat_messages", {"session_id": session_id}, sort=("at", 1)
     )
+
+
+# ---------------------------------------------------------------------------
+# Upload → portfolio analysis (additive — files + live domain)
+# ---------------------------------------------------------------------------
+class UploadFileMeta(BaseModel):
+    name: str
+    mimeType: Optional[str] = None
+    size: Optional[int] = None
+
+
+class UploadPortfolioRequest(BaseModel):
+    files: List[UploadFileMeta]
+    lang: str = "ar"
+
+
+class UploadApplyRequest(BaseModel):
+    analysis_id: str
+
+
+_last_applied_analysis: Optional[str] = None
+
+
+@api_router.post("/upload/portfolio-analysis")
+async def upload_portfolio_analysis(req: UploadPortfolioRequest):
+    """Analyze uploaded file manifest against live portfolio — executive report & decisions."""
+    if not req.files:
+        raise HTTPException(400, "No files provided")
+    lang = "ar" if req.lang.startswith("ar") else "en"
+    ctx = await _portfolio_live_context()
+    payload = analyze_upload_portfolio(
+        [f.model_dump() for f in req.files],
+        ctx,
+        lang=lang,  # type: ignore[arg-type]
+    )
+    return payload
+
+
+@api_router.post("/upload/apply-analysis")
+async def upload_apply_analysis(req: UploadApplyRequest):
+    """Mark analysis as applied — beta stores reference only; no destructive writes."""
+    global _last_applied_analysis
+    _last_applied_analysis = req.analysis_id
+    return {"ok": True, "analysis_id": req.analysis_id, "applied_at": _iso(datetime.now(timezone.utc))}
+
+
+@api_router.get("/upload/last-applied")
+async def upload_last_applied():
+    return {"analysis_id": _last_applied_analysis}
 
 
 # ---------------------------------------------------------------------------
