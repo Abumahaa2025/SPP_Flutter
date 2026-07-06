@@ -5,10 +5,12 @@ import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 
 import { ScreenScaffold } from '@/src/components/ScreenScaffold';
-import { ScreenHeader } from '@/src/components/ScreenHeader';
+import { StoryScreenHeader } from '@/src/components/StoryScreenHeader';
 import { GlassCard } from '@/src/components/GlassCard';
-import { EmptyState } from '@/src/components/EmptyState';
+import { AliveEmpty } from '@/src/components/AliveEmpty';
 import { BrainVerdict } from '@/src/components/BrainVerdict';
+import { GuidedSetup } from '@/src/components/GuidedSetup';
+import { SetupProgressBar } from '@/src/components/SetupProgressBar';
 import { api, type TenantT, type PropertyT } from '@/src/api/client';
 import { colors, spacing, typography } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
@@ -28,10 +30,12 @@ export default function Tenants() {
 
   return (
     <ScreenScaffold testID="tenants-screen">
-      <ScreenHeader eyebrow="Relationships" title={t('tenants.title')} sub={t('tenants.sub')} showBack />
+      <StoryScreenHeader question={t('page.q.tenants')} hint={t('tenants.sub')} showBack testID="tenants-header" />
+      <SetupProgressBar compact testID="tenants-setup-progress" />
+      <GuidedSetup flowId="tenant" defaultOpen={tenants.length === 0} testID="tenants-guided" />
       <BrainVerdict screen="tenants" />
       {tenants.length === 0 ? (
-        <EmptyState icon="users" eyebrow="No relationships yet" title="No tenants yet." body="Tenants will appear here once contracts are active." />
+        <AliveEmpty title={t('alive.tenants.title')} body={t('alive.tenants.body')} />
       ) : tenants.map((tn, i) => {
         const prop = propMap.get(tn.property_id);
         const rel = tn.reliability;
@@ -50,11 +54,11 @@ export default function Tenants() {
                   </View>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.name}>{tn.name}</Text>
-                    <Text style={styles.property}>{prop?.name ?? ''} · Unit {tn.unit}</Text>
+                    <Text style={styles.property}>{prop?.name ?? ''} · {t('tenants.unit')} {tn.unit}</Text>
                   </View>
                   <View style={styles.relWrap}>
                     <Text style={[styles.rel, { color }]}>{tn.reliability}</Text>
-                    <Text style={styles.relLabel}>REL.</Text>
+                    <Text style={styles.relLabel}>{t('tenants.relShort').toUpperCase()}</Text>
                   </View>
                 </View>
                 <View style={styles.hair} />

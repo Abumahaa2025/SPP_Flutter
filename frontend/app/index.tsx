@@ -1,102 +1,54 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import {
-  View, Text, StyleSheet, RefreshControl, Pressable,
+  View, Text, StyleSheet, RefreshControl,
 } from 'react-native';
 import Animated, {
-  FadeInDown, FadeIn, useSharedValue, useAnimatedScrollHandler,
-  useAnimatedStyle, withRepeat, withTiming, Easing, interpolate, Extrapolation,
+  FadeIn, useSharedValue, useAnimatedScrollHandler,
 } from 'react-native-reanimated';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 import { storage } from '@/src/utils/storage';
 
 import { AmbientBackground } from '@/src/components/AmbientBackground';
-import { GlassCard } from '@/src/components/GlassCard';
-import { HealthRing } from '@/src/components/HealthRing';
-import { ActionCard } from '@/src/components/ActionCard';
-import { GlassTabBar } from '@/src/components/GlassTabBar';
 import { BrandOrb, Wordmark } from '@/src/components/BrandOrb';
-import { api, type Briefing } from '@/src/api/client';
-import { colors, spacing, typography, radius } from '@/src/theme';
+import { AliveEmpty } from '@/src/components/AliveEmpty';
+import { HomeCommandCenter } from '@/src/components/HomeCommandCenter';
+import { SetupProgressBar } from '@/src/components/SetupProgressBar';
+import { SmartEmployeeSetupInsights } from '@/src/components/SmartEmployeeSetupInsights';
+import { useWorkspacePadding } from '@/src/hooks/use-workspace-padding';
+import { useWorkspaceOptional } from '@/src/context/WorkspaceContext';
+import { api, type Briefing, type NotifT } from '@/src/api/client';
+import { clearExecutiveCache, fetchExecutiveCached } from '@/src/api/executive-cache';
+import { mergeBriefingWithExecutive } from '@/src/api/executive-map';
+import { colors, spacing, typography } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
+import { UX_BUILD_STAMP } from '@/src/constants/build';
+
+const EMPTY_BRIEFING: Briefing = {
+  salutation: '',
+  owner_name: '',
+  headline: '',
+  narrative: [],
+  portfolio_annual_revenue: 0,
+  avg_health: 0,
+  occupancy: 0,
+  properties_count: 0,
+  tenants_count: 0,
+  expiring_contracts: 0,
+  decisions: [],
+  sensor_alerts: [],
+};
 
 const AnimatedScroll = Animated.ScrollView;
 
-function QuickLink({ icon, label, onPress, testID }: { icon: keyof typeof Feather.glyphMap; label: string; onPress: () => void; testID: string }) {
-  return (
-    <Pressable
-      testID={testID}
-      onPress={() => { Haptics.selectionAsync(); onPress(); }}
-      style={quickLinkStyles.wrap}
-    >
-      <View style={quickLinkStyles.iconWrap}>
-        <Feather name={icon} size={14} color={colors.textDim} />
-      </View>
-      <Text style={quickLinkStyles.label}>{label}</Text>
-    </Pressable>
-  );
-}
-const quickLinkStyles = StyleSheet.create({
-  wrap: {
-    flex: 1, alignItems: 'center', gap: 8,
-    paddingVertical: 14,
-    borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border,
-    backgroundColor: 'rgba(255,255,255,0.02)',
-  },
-  iconWrap: {
-    width: 34, height: 34, borderRadius: 17,
-    borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border,
-    alignItems: 'center', justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.02)',
-  },
-  label: {
-    color: colors.textDim, fontSize: 11, letterSpacing: 1.4,
-    textTransform: 'uppercase', fontWeight: '500',
-  },
-});
-
-const fmtCurrency = (n: number) => {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1000).toFixed(0)}K`;
-  return `${n}`;
-};
-
-/** Breathing status pulse — used in the brand row & Live chip */
-function Pulse({ color = colors.emerald, size = 6 }: { color?: string; size?: number }) {
-  const p = useSharedValue(0);
-  useEffect(() => {
-    p.value = withRepeat(withTiming(1, { duration: 1600, easing: Easing.inOut(Easing.sin) }), -1, true);
-  }, [p]);
-  const halo = useAnimatedStyle(() => ({
-    opacity: 0.35 + p.value * 0.55,
-    transform: [{ scale: 1 + p.value * 0.6 }],
-  }));
-  return (
-    <View style={{ width: size * 2.4, height: size * 2.4, alignItems: 'center', justifyContent: 'center' }}>
-      <Animated.View
-        style={[
-          {
-            position: 'absolute', width: size * 2.4, height: size * 2.4,
-            borderRadius: size * 1.2, backgroundColor: color, opacity: 0.35,
-          },
-          halo,
-        ]}
-      />
-      <View style={{ width: size, height: size, borderRadius: size / 2, backgroundColor: color }} />
-    </View>
-  );
-}
-
-/** Localized date eyebrow */
-function useDateEyebrow() {
+function useDateEyebrow(lang: 'en' | 'ar') {
   const [label] = useState(() => {
     const d = new Date();
-    const day = d.toLocaleDateString(undefined, { weekday: 'long' });
-    const date = d.toLocaleDateString(undefined, { month: 'long', day: 'numeric' });
+    const locale = lang === 'ar' ? 'ar-SA' : 'en-US';
+    const day = d.toLocaleDateString(locale, { weekday: 'long' });
+    const date = d.toLocaleDateString(locale, { month: 'long', day: 'numeric' });
     return `${day} · ${date}`;
   });
   return label;
@@ -105,30 +57,60 @@ function useDateEyebrow() {
 export default function Home() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const [briefing, setBriefing] = useState<Briefing | null>(null);
+  const [notifications, setNotifications] = useState<NotifT[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const dateEyebrow = useDateEyebrow();
+  const dateEyebrow = useDateEyebrow(lang);
+  const wsPad = useWorkspacePadding();
+  const workspace = useWorkspaceOptional();
+  const scrollRef = useRef<Animated.ScrollView>(null);
+  const briefY = useRef(0);
+
+  useEffect(() => {
+    if (!workspace?.homeAnchor) return;
+    const anchor = workspace.consumeHomeAnchor();
+    if (!anchor) return;
+    const tmr = setTimeout(() => {
+      if (anchor === 'brief') scrollRef.current?.scrollTo({ y: Math.max(0, briefY.current - 12), animated: true });
+    }, 320);
+    return () => clearTimeout(tmr);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [workspace?.homeAnchor]);
 
   const scrollY = useSharedValue(0);
   const onScroll = useAnimatedScrollHandler((e) => {
     scrollY.value = e.contentOffset.y;
   });
 
-  // header collapses subtly on scroll
-  const heroAnim = useAnimatedStyle(() => {
-    const shift = interpolate(scrollY.value, [0, 220], [0, -20], Extrapolation.CLAMP);
-    const fade = interpolate(scrollY.value, [0, 180], [1, 0.85], Extrapolation.CLAMP);
-    return { opacity: fade, transform: [{ translateY: shift }] };
-  });
-
   const load = async () => {
     try {
-      const b = await api.briefing();
-      setBriefing(b);
+      const [briefResult, execResult, sensorsResult, notifResult] = await Promise.allSettled([
+        api.briefing(),
+        fetchExecutiveCached(),
+        api.sensors(),
+        api.notifications(),
+      ]);
+      const baseBrief = briefResult.status === 'fulfilled' ? briefResult.value : EMPTY_BRIEFING;
+      const exec = execResult.status === 'fulfilled' ? execResult.value : null;
+      const sensors = sensorsResult.status === 'fulfilled' ? sensorsResult.value : [];
+      const alerts = sensors.filter((s) => s.status !== 'nominal').slice(0, 3);
+      if (exec) {
+        setBriefing(mergeBriefingWithExecutive(baseBrief, exec, alerts));
+      } else {
+        setBriefing(baseBrief);
+      }
+      if (notifResult.status === 'fulfilled') {
+        const sorted = [...notifResult.value].sort((a, b) => {
+          if (a.priority === 'high' && b.priority !== 'high') return -1;
+          if (b.priority === 'high' && a.priority !== 'high') return 1;
+          return 0;
+        });
+        setNotifications(sorted);
+      }
     } catch {
-      // Silent — the ambient screen speaks for itself.
+      // Briefing unavailable — alive empty guides the owner.
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -150,6 +132,7 @@ export default function Home() {
   const onRefresh = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setRefreshing(true);
+    clearExecutiveCache();
     load();
   };
 
@@ -159,19 +142,24 @@ export default function Home() {
       <AmbientBackground scrollY={scrollY} />
 
       {loading && !briefing ? (
-        <View style={styles.loading}>
+        <View style={[styles.loading, { paddingTop: insets.top + wsPad.paddingTop }]}>
           <BrandOrb size={64} />
           <Wordmark size="sm" color={colors.textMuted} />
-          <Text style={styles.loadingText}>Preparing your briefing…</Text>
+          <Text style={styles.loadingText}>{t('home.loading')}</Text>
         </View>
       ) : (
         <AnimatedScroll
+          ref={scrollRef}
           testID="home-scroll"
           onScroll={onScroll}
           scrollEventThrottle={16}
           contentContainerStyle={[
             styles.scroll,
-            { paddingTop: insets.top + spacing.xl, paddingBottom: 180 },
+            {
+              paddingTop: insets.top + wsPad.paddingTop + spacing.md,
+              paddingBottom: spacing['2xl'],
+              paddingRight: wsPad.paddingRight + spacing.lg,
+            },
           ]}
           showsVerticalScrollIndicator={false}
           refreshControl={
@@ -182,213 +170,37 @@ export default function Home() {
             />
           }
         >
-          {/* ============ TOP BAR ============ */}
-          <Animated.View entering={FadeIn.duration(500)} style={styles.topRow}>
-            <View style={styles.brandRow}>
-              <Pulse color={colors.emerald} />
-              <View>
-                <Wordmark size="sm" />
-              </View>
-            </View>
-            <Pressable
-              testID="notifications-btn"
-              onPress={() => { Haptics.selectionAsync(); router.push('/notifications'); }}
-              style={styles.iconButton}
-              hitSlop={8}
-            >
-              <Feather name="bell" size={16} color={colors.textDim} />
-              <View style={styles.badge} />
-            </Pressable>
-          </Animated.View>
-
-          {/* ============ HERO ============ */}
-          <Animated.View
-            entering={FadeInDown.duration(700).delay(80)}
-            style={[styles.hero, heroAnim]}
-          >
-            <Text style={styles.eyebrow} testID="date-eyebrow">
-              {dateEyebrow}
-            </Text>
-            <Text style={styles.salutation} testID="salutation">
-              {briefing?.salutation}, {briefing?.owner_name}.
-            </Text>
-            <Text style={styles.headline} testID="headline">
-              {briefing?.headline}
-            </Text>
-            <Text style={styles.subhead}>
-              {t('home.subhead')}
-            </Text>
-          </Animated.View>
-
-          {/* ============ MORNING BRIEF (advisor voice) ============ */}
-          {briefing?.narrative?.length ? (
-            <Animated.View entering={FadeInDown.duration(750).delay(140)}>
-              <GlassCard padding={22} radiusToken="lg" testID="brief-card">
-                <View style={styles.briefTop}>
-                  <View style={styles.briefIcon}>
-                    <Feather name="edit-3" size={13} color={colors.gold} />
-                  </View>
-                  <Text style={styles.briefEyebrow}>Morning brief · from your AI executive</Text>
-                </View>
-                <View style={{ marginTop: 14, gap: 10 }}>
-                  {briefing.narrative.map((line, i) => (
-                    <View key={i} style={styles.briefLine}>
-                      <View style={styles.briefDot} />
-                      <Text style={styles.briefText}>{line}</Text>
-                    </View>
-                  ))}
-                </View>
-              </GlassCard>
-            </Animated.View>
-          ) : null}
-
-          {/* ============ PORTFOLIO HEALTH ============ */}
-          <Animated.View entering={FadeInDown.duration(750).delay(200)}>
-            <Pressable
-              testID="health-card-btn"
-              onPress={() => { Haptics.selectionAsync(); router.push('/health'); }}
-            >
-              <GlassCard padding={28} radiusToken="lg" edge="emerald" testID="health-card">
-              <View style={styles.healthTop}>
-                <Text style={styles.sectionEyebrow}>Portfolio Health</Text>
-                <View style={styles.liveChip}>
-                  <Pulse color={colors.emerald} size={4} />
-                  <Text style={styles.liveChipText}>Live</Text>
-                </View>
-              </View>
-
-              <Text style={styles.healthCaption}>
-                {briefing && briefing.avg_health >= 85
-                  ? 'Excellent condition.'
-                  : briefing && briefing.avg_health >= 70
-                    ? 'Stable · items to review.'
-                    : 'Attention required.'}
-              </Text>
-
-              <View style={styles.healthBody}>
-                <HealthRing
-                  score={briefing?.avg_health ?? 0}
-                  label="Health"
-                  sublabel="synced just now"
-                />
-                <View style={styles.statsCol}>
-                  <View>
-                    <Text style={styles.statLabel}>Occupancy</Text>
-                    <View style={styles.statValueRow}>
-                      <Text style={styles.statValue}>{briefing?.occupancy ?? 0}</Text>
-                      <Text style={styles.statUnit}>%</Text>
-                    </View>
-                    <Text style={styles.statHint}>{briefing?.properties_count ?? 0} properties</Text>
-                  </View>
-                  <View style={styles.hair} />
-                  <View>
-                    <Text style={styles.statLabel}>Annualized</Text>
-                    <View style={styles.statValueRow}>
-                      <Text style={styles.statUnitLead}>AED</Text>
-                      <Text style={styles.statValue}>
-                        {fmtCurrency(briefing?.portfolio_annual_revenue ?? 0)}
-                      </Text>
-                    </View>
-                    <Text style={styles.statHint}>projected revenue</Text>
-                  </View>
-                  <View style={styles.hair} />
-                  <View>
-                    <Text style={styles.statLabel}>Signal</Text>
-                    <View style={styles.statValueRow}>
-                      <Text style={styles.statValue}>{briefing?.sensor_alerts.length ?? 0}</Text>
-                      <Text style={styles.statUnit}>alerts</Text>
-                    </View>
-                    <Text style={styles.statHint}>from virtual sensors</Text>
-                  </View>
-                </View>
-              </View>
-            </GlassCard>
-            </Pressable>
-          </Animated.View>
-
-          {/* ============ TODAY'S PRIORITIES ============ */}
-          <Animated.View
-            entering={FadeInDown.duration(650).delay(320)}
-            style={styles.sectionHead}
-          >
-            <Pressable
-              testID="priorities-header-btn"
-              onPress={() => { Haptics.selectionAsync(); router.push('/maintenance'); }}
-              style={{ flex: 1 }}
-            >
-              <Text style={styles.sectionTitle}>{t('home.priorities.title')}</Text>
-              <Text style={styles.sectionSub}>{t('home.priorities.sub')}</Text>
-            </Pressable>
-            <View style={styles.countBadge}>
-              <Text style={styles.countBadgeText}>{briefing?.decisions.length ?? 0}</Text>
-            </View>
-          </Animated.View>
-
-          {briefing?.decisions.map((d, i) => (
-            <Animated.View
-              key={d.id}
-              entering={FadeInDown.duration(650).delay(360 + i * 90)}
-            >
-              <ActionCard
-                decision={d}
-                rank={i + 1}
-                onAccept={() => {
-                  if (d.kind === 'maintenance') router.push('/maintenance');
-                  else if (d.property_id) router.push(`/property/${d.property_id}` as any);
-                }}
-                onDetails={() => {
-                  if (d.property_id) router.push(`/property/${d.property_id}` as any);
-                  else router.push('/maintenance');
-                }}
+          {!briefing && !loading ? (
+            <>
+              <SetupProgressBar testID="home-setup-progress" />
+              <AliveEmpty
+                title={t('alive.home.title')}
+                body={t('alive.home.body')}
+                actionLabel={t('alive.home.action')}
+                onAction={() => router.push('/upload')}
+                testID="home-alive-empty"
               />
-            </Animated.View>
-          ))}
+            </>
+          ) : (
+            <>
+              <SetupProgressBar testID="home-setup-progress" />
+              <HomeCommandCenter
+                briefing={briefing}
+                notifications={notifications}
+                dateEyebrow={dateEyebrow}
+                onBriefLayout={(y) => { briefY.current = y; }}
+              />
+              <SmartEmployeeSetupInsights briefing={briefing} />
+            </>
+          )}
 
-          {/* ============ ASK THE BRAIN ============ */}
-          <Animated.View entering={FadeInDown.duration(700).delay(720)} style={{ marginTop: spacing.md }}>
-            <Pressable
-              testID="open-brain-btn"
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                router.push('/brain');
-              }}
-            >
-              <GlassCard padding={22} radiusToken="lg">
-                <View style={styles.brainRow}>
-                  <View style={styles.brainIcon}>
-                    <Feather name="message-circle" size={18} color={colors.gold} />
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.brainTitle}>{t('home.brainCard.title')}</Text>
-                  <Text style={styles.brainSub}>
-                    {t('home.brainCard.example')}
-                  </Text>
-                  </View>
-                  <View style={styles.brainArrow}>
-                    <Feather name="arrow-up-right" size={16} color={colors.textDim} />
-                  </View>
-                </View>
-              </GlassCard>
-            </Pressable>
-          </Animated.View>
-
-          {/* ============ QUICK NAV ============ */}
-          <Animated.View entering={FadeIn.duration(700).delay(820)} style={styles.quickNav}>
-            <QuickLink icon="grid" label="Hub" onPress={() => router.push('/hub')} testID="qn-hub" />
-            <QuickLink icon="activity" label="Sensors" onPress={() => router.push('/sensors')} testID="qn-sensors" />
-            <QuickLink icon="heart" label="Health" onPress={() => router.push('/health')} testID="qn-health" />
-            <QuickLink icon="settings" label="Settings" onPress={() => router.push('/settings')} testID="qn-settings" />
-          </Animated.View>
-
-          {/* ============ FOOTER SIGNATURE ============ */}
           <Animated.View entering={FadeIn.duration(700).delay(900)} style={styles.footer}>
             <View style={styles.footerLine} />
             <Text style={styles.footerText}>{t('home.footer')}</Text>
+            <Text style={styles.buildStamp} testID="ux-build-stamp">{UX_BUILD_STAMP}</Text>
           </Animated.View>
         </AnimatedScroll>
       )}
-
-      <GlassTabBar />
     </View>
   );
 }
@@ -405,247 +217,10 @@ const styles = StyleSheet.create({
   scroll: {
     paddingHorizontal: spacing.lg,
   },
-
-  // ---- Top bar ----
-  topRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    marginBottom: spacing.xl,
-  },
-  brandRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  brandName: {
-    color: colors.text,
-    fontSize: 13,
-    letterSpacing: 6,
-    fontWeight: typography.weight.semibold,
-  },
-  iconButton: {
-    width: 40, height: 40, borderRadius: radius.pill,
-    borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border,
-    alignItems: 'center', justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.03)',
-  },
-  badge: {
-    position: 'absolute', top: 10, right: 12,
-    width: 6, height: 6, borderRadius: 3, backgroundColor: colors.gold,
-    shadowColor: colors.gold, shadowOpacity: 0.9, shadowRadius: 4,
-    shadowOffset: { width: 0, height: 0 },
-  },
-
-  // ---- Hero ----
-  hero: { marginBottom: spacing['2xl'] },
-  eyebrow: {
-    color: colors.textMuted,
-    fontSize: 11,
-    letterSpacing: 2.4,
-    textTransform: 'uppercase',
-    fontWeight: typography.weight.medium,
-    marginBottom: spacing.md,
-  },
-  salutation: {
-    color: colors.textDim,
-    fontSize: typography.title,
-    letterSpacing: typography.letter.tight,
-    lineHeight: 28,
-  },
-  headline: {
-    color: colors.text,
-    fontSize: typography.display,
-    lineHeight: 40,
-    fontWeight: typography.weight.semibold,
-    letterSpacing: -0.8,
-    marginTop: 6,
-  },
-  subhead: {
-    color: colors.textMuted,
-    fontSize: typography.body,
-    lineHeight: 22,
-    marginTop: spacing.md,
-    maxWidth: '92%',
-  },
-
-  // ---- Health card ----
-  healthTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.sm,
-  },
-  sectionEyebrow: {
-    color: colors.textMuted,
-    fontSize: 10.5,
-    letterSpacing: 2,
-    textTransform: 'uppercase',
-    fontWeight: typography.weight.medium,
-  },
-  liveChip: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    borderRadius: radius.pill,
-    paddingHorizontal: 10, paddingVertical: 4,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.emeraldEdge,
-    backgroundColor: colors.emeraldSoft,
-  },
-  liveChipText: {
-    color: colors.emerald,
-    fontSize: 10,
-    letterSpacing: 1.4,
-    textTransform: 'uppercase',
-    fontWeight: typography.weight.medium,
-  },
-  healthCaption: {
-    color: colors.text,
-    fontSize: typography.title,
-    fontWeight: typography.weight.semibold,
-    letterSpacing: typography.letter.tight,
-    marginTop: spacing.sm,
-  },
-  healthBody: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xl,
-    marginTop: spacing.xl,
-  },
-  statsCol: { flex: 1, gap: spacing.md },
-  statLabel: {
-    color: colors.textMuted,
-    fontSize: 10,
-    letterSpacing: 1.4,
-    textTransform: 'uppercase',
-    fontWeight: typography.weight.medium,
-  },
-  statValueRow: {
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    gap: 4,
-    marginTop: 4,
-  },
-  statValue: {
-    color: colors.text,
-    fontSize: 22,
-    fontWeight: typography.weight.semibold,
-    letterSpacing: typography.letter.tight,
-    fontVariant: ['tabular-nums'],
-  },
-  statUnit: {
-    color: colors.textMuted,
-    fontSize: 13,
-    letterSpacing: 0.2,
-  },
-  statUnitLead: {
-    color: colors.textMuted,
-    fontSize: 11,
-    letterSpacing: 1.2,
-    marginRight: 2,
-  },
-  statHint: {
-    color: colors.textSubtle,
-    fontSize: 11,
-    marginTop: 2,
-  },
-  hair: {
-    height: StyleSheet.hairlineWidth,
-    backgroundColor: colors.divider,
-  },
-
-  // ---- Section header ----
-  sectionHead: {
-    marginTop: spacing['2xl'],
-    marginBottom: spacing.lg,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-  },
-  sectionTitle: {
-    color: colors.text,
-    fontSize: typography.title,
-    fontWeight: typography.weight.semibold,
-    letterSpacing: typography.letter.tight,
-  },
-  sectionSub: {
-    color: colors.textMuted,
-    fontSize: typography.small,
-    marginTop: 4,
-    letterSpacing: 0.2,
-  },
-  countBadge: {
-    minWidth: 26, height: 26, borderRadius: 13,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.goldEdge,
-    backgroundColor: colors.goldSoft,
-    alignItems: 'center', justifyContent: 'center',
-    paddingHorizontal: 6,
-  },
-  countBadgeText: {
-    color: colors.gold,
-    fontSize: 12,
-    fontWeight: typography.weight.semibold,
-    fontVariant: ['tabular-nums'],
-  },
-
-  // ---- Brain row ----
-  brainRow: {
-    flexDirection: 'row', alignItems: 'center', gap: 16,
-  },
-  brainIcon: {
-    width: 44, height: 44, borderRadius: radius.pill,
-    borderWidth: StyleSheet.hairlineWidth, borderColor: colors.goldEdge,
-    backgroundColor: colors.goldSoft,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  brainTitle: {
-    color: colors.text,
-    fontSize: typography.cardTitle,
-    fontWeight: typography.weight.semibold,
-    letterSpacing: typography.letter.tight,
-  },
-  brainSub: {
-    marginTop: 4,
-    color: colors.textMuted,
-    fontSize: typography.small,
-    fontStyle: 'italic',
-  },
-  brainArrow: {
-    width: 34, height: 34, borderRadius: radius.pill,
-    borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border,
-    alignItems: 'center', justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.02)',
-  },
-
-  // ---- Footer signature ----
   footer: {
     marginTop: spacing['2xl'],
     alignItems: 'center',
     gap: spacing.md,
-  },
-  quickNav: {
-    marginTop: spacing.xl,
-    flexDirection: 'row',
-    gap: 10,
-  },
-  briefTop: {
-    flexDirection: 'row', alignItems: 'center', gap: 10,
-  },
-  briefIcon: {
-    width: 26, height: 26, borderRadius: 13,
-    borderWidth: StyleSheet.hairlineWidth, borderColor: colors.goldEdge,
-    backgroundColor: colors.goldSoft,
-    alignItems: 'center', justifyContent: 'center',
-  },
-  briefEyebrow: {
-    color: colors.textMuted, fontSize: 10.5, letterSpacing: 1.8,
-    textTransform: 'uppercase', fontWeight: typography.weight.medium,
-    flex: 1,
-  },
-  briefLine: { flexDirection: 'row', gap: 10, alignItems: 'flex-start' },
-  briefDot: {
-    width: 4, height: 4, borderRadius: 2, backgroundColor: colors.gold,
-    marginTop: 8,
-    shadowColor: colors.gold, shadowOpacity: 0.6, shadowRadius: 4, shadowOffset: { width: 0, height: 0 },
-  },
-  briefText: {
-    flex: 1, color: colors.textDim, fontSize: 14, lineHeight: 21, letterSpacing: -0.1,
   },
   footerLine: {
     width: 40, height: StyleSheet.hairlineWidth,
@@ -657,5 +232,12 @@ const styles = StyleSheet.create({
     letterSpacing: 2,
     textTransform: 'uppercase',
     fontWeight: typography.weight.medium,
+  },
+  buildStamp: {
+    color: colors.gold,
+    fontSize: 10,
+    letterSpacing: 0.6,
+    marginTop: 6,
+    fontVariant: ['tabular-nums'],
   },
 });

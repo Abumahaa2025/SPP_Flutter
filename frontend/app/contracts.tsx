@@ -5,15 +5,20 @@ import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 
 import { ScreenScaffold } from '@/src/components/ScreenScaffold';
-import { ScreenHeader } from '@/src/components/ScreenHeader';
+import { StoryScreenHeader } from '@/src/components/StoryScreenHeader';
 import { GlassCard } from '@/src/components/GlassCard';
-import { EmptyState } from '@/src/components/EmptyState';
+import { AliveEmpty } from '@/src/components/AliveEmpty';
 import { BrainVerdict } from '@/src/components/BrainVerdict';
+import { SetupProgressBar } from '@/src/components/SetupProgressBar';
+import { GuidedSetup } from '@/src/components/GuidedSetup';
 import { api, type ContractT, type PropertyT, type TenantT } from '@/src/api/client';
 import { colors, spacing, typography, radius } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
 
-const statusMeta = (s: string) => {
+import { formatDate } from '@/src/utils/locale';
+
+const statusMeta = (s: string, daysLeft: number, t: (k: any) => string) => {
+  if (s === 'expiring' && daysLeft < 0) return { color: colors.danger, key: 'contracts.status.expiredAgo' };
   if (s === 'expiring') return { color: colors.gold, key: 'contracts.status.expiring' };
   if (s === 'renewed') return { color: colors.emerald, key: 'contracts.status.renewed' };
   return { color: colors.emerald, key: 'contracts.status.active' };
@@ -22,7 +27,22 @@ const statusMeta = (s: string) => {
 const daysUntil = (dateStr: string) => {
   const d = new Date(dateStr).getTime();
   const now = Date.now();
-  return Math.max(0, Math.round((d - now) / (1000 * 60 * 60 * 24)));
+  return Math.round((d - now) / (1000 * 60 * 60 * 24));
+};
+
+const expiryLabel = (dateStr: string, status: string, t: (k: any) => string) => {
+  const days = daysUntil(dateStr);
+  if (status === 'expiring' && days < 0) {
+    return t('contracts.expiredAgo').replace('{days}', String(Math.abs(days)));
+  }
+  if (status === 'expiring' && days === 0) return t('contracts.expiresToday');
+  if (status === 'expiring' && days > 0) {
+    return t('contracts.expiresIn').replace('{days}', String(days));
+  }
+  if (status === 'active') {
+    return t('contracts.activeUntil').replace('{date}', formatDate(dateStr));
+  }
+  return null;
 };
 
 export default function Contracts() {
@@ -41,17 +61,33 @@ export default function Contracts() {
   const tenantMap = useMemo(() => new Map(tenants.map((x) => [x.id, x])), [tenants]);
   const propMap = useMemo(() => new Map(props.map((x) => [x.id, x])), [props]);
 
+  const sorted = useMemo(() => {
+    const order = { expiring: 0, active: 1, renewed: 2 } as Record<string, number>;
+    return contracts.slice().sort((a, b) => {
+      const oa = order[a.status] ?? 9;
+      const ob = order[b.status] ?? 9;
+      if (oa !== ob) return oa - ob;
+      return new Date(a.end).getTime() - new Date(b.end).getTime();
+    });
+  }, [contracts]);
+
   return (
     <ScreenScaffold testID="contracts-screen">
-      <ScreenHeader eyebrow="Lifecycle" title={t('contracts.title')} sub={t('contracts.sub')} showBack />
+      <StoryScreenHeader question={t('page.q.contracts')} hint={t('contracts.sub')} showBack testID="contracts-header" />
+      <SetupProgressBar compact testID="contracts-setup-progress" />
+      <GuidedSetup flowId="tenant" defaultOpen={sorted.length === 0} testID="contracts-guided" />
       <BrainVerdict screen="contracts" />
-      {contracts.length === 0 ? (
-        <EmptyState icon="file-text" eyebrow="All active" title="No contracts yet." body="When you add contracts, they will appear here — ranked by renewal urgency." />
-      ) : contracts.map((c, i) => {
-        const meta = statusMeta(c.status);
+      {sorted.length === 0 ? (
+        <AliveEmpty title={t('alive.contracts.title')} body={t('alive.contracts.body')} />
+      ) : sorted.map((c, i) => {
+        const days = daysUntil(c.end);
+        const meta = statusMeta(c.status, days, t);
         const tn = tenantMap.get(c.tenant_id);
         const prop = propMap.get(c.property_id);
-        const days = daysUntil(c.end);
+        const expiry = expiryLabel(c.end, c.status, t);
+        const statusText = meta.key === 'contracts.status.expiredAgo'
+          ? t('contracts.status.expiredAgo').replace('{days}', String(Math.abs(days)))
+          : t(meta.key as 'contracts.status.active');
         return (
           <Animated.View key={c.id} entering={FadeInDown.duration(600).delay(60 * i)}>
             <Pressable
@@ -63,29 +99,29 @@ export default function Contracts() {
                 <View style={styles.topRow}>
                   <View style={[styles.pill, { borderColor: meta.color + '55', backgroundColor: meta.color + '18' }]}>
                     <View style={[styles.pillDot, { backgroundColor: meta.color }]} />
-                    <Text style={[styles.pillText, { color: meta.color }]}>{t(meta.key as any).toUpperCase()}</Text>
+                    <Text style={[styles.pillText, { color: meta.color }]}>{statusText}</Text>
                   </View>
                   <View style={{ flex: 1 }} />
-                  {c.status === 'expiring' ? (
-                    <Text style={styles.days}>{days}d</Text>
+                  {expiry ? (
+                    <Text style={styles.days}>{expiry}</Text>
                   ) : null}
                 </View>
-                <Text style={styles.title}>{tn?.name ?? 'Tenant'}</Text>
-                <Text style={styles.sub}>{prop?.name ?? ''} · Unit {tn?.unit ?? '—'}</Text>
+                <Text style={styles.title}>{tn?.name ?? prop?.name ?? t('contracts.title')}</Text>
+                <Text style={styles.sub}>{prop?.name ?? ''} · {t('contracts.unit')} {tn?.unit ?? '—'}</Text>
                 <View style={styles.hair} />
                 <View style={styles.metaRow}>
                   <View style={styles.metaCol}>
-                    <Text style={styles.metaLabel}>START</Text>
+                    <Text style={styles.metaLabel}>{t('contracts.meta.start').toUpperCase()}</Text>
                     <Text style={styles.metaValue}>{new Date(c.start).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}</Text>
                   </View>
                   <View style={styles.metaSep} />
                   <View style={styles.metaCol}>
-                    <Text style={styles.metaLabel}>END</Text>
+                    <Text style={styles.metaLabel}>{t('contracts.meta.end').toUpperCase()}</Text>
                     <Text style={styles.metaValue}>{new Date(c.end).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}</Text>
                   </View>
                   <View style={styles.metaSep} />
                   <View style={styles.metaCol}>
-                    <Text style={styles.metaLabel}>MONTHLY</Text>
+                    <Text style={styles.metaLabel}>{t('contracts.meta.monthly').toUpperCase()}</Text>
                     <Text style={styles.metaValue}>AED {(c.monthly_rent / 1000).toFixed(1)}K</Text>
                   </View>
                 </View>
