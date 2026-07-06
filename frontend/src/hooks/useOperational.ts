@@ -39,9 +39,16 @@ export function useOperational() {
     tenantId?: string,
     description?: string,
     unitNumber?: string,
+    extras?: {
+      category?: MaintenanceTicket['category'];
+      priority?: MaintenanceTicket['priority'];
+      technicianName?: string;
+      media?: MaintenanceTicket['media'];
+    },
   ) => {
-    const ticket = await createMaintenanceTicket(unitId, title, tenantId, description);
+    const ticket = await createMaintenanceTicket(unitId, title, tenantId, description, extras);
     await onMaintenanceOpened(ticket, unitNumber);
+    if (extras?.technicianName) await onMaintenanceAssigned(ticket, extras.technicianName);
     await reload();
     return ticket;
   }, [reload]);
@@ -66,15 +73,22 @@ export function useOperational() {
     status: MaintenanceTicket['status'],
     note?: string,
     unitNumber?: string,
+    extras?: { media?: MaintenanceTicket['media']; rating?: number; workflowStep?: MaintenanceTicket['workflowStep'] },
   ) => {
     const s = await loadOperational();
     const ticket = s.tickets.find((t) => t.id === ticketId);
     if (!ticket) return;
     const notes = note ? [...ticket.notes, note] : ticket.notes;
+    const mergedMedia = extras?.media?.length
+      ? [...(ticket.media ?? []), ...extras.media]
+      : ticket.media;
     const next: MaintenanceTicket = {
       ...ticket,
       status,
       notes,
+      media: mergedMedia,
+      rating: extras?.rating ?? ticket.rating,
+      workflowStep: extras?.workflowStep ?? ticket.workflowStep,
       updatedAt: new Date().toISOString(),
       closedAt: status === 'closed' ? new Date().toISOString() : ticket.closedAt,
     };

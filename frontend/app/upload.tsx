@@ -16,10 +16,11 @@ import { UploadResultCard, type UploadResult } from '@/src/components/UploadResu
 import { GuidedSetup } from '@/src/components/GuidedSetup';
 import { colors, spacing, typography, radius } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
-import { analyzePickedFiles, buildUploadFileMeta, buildFilePreview, type FilePreview } from '@/src/utils/upload-analyze';
+import { analyzePickedFiles, buildUploadFileMeta, buildFilePreview, previewWithMapping, type FilePreview } from '@/src/utils/upload-analyze';
+import { buildResultsFromParsedData, parsedToFileMeta, type ParsedFileData } from '@/src/utils/upload-parse';
+import { OperationHint } from '@/src/components/OperationHint';
 import {
   fetchPortfolioAnalysis,
-  fetchPortfolioAnalysisFallback,
   applyPortfolioAnalysis,
   type PortfolioAnalysis,
 } from '@/src/api/portfolio-analysis';
@@ -124,36 +125,66 @@ export default function UploadScreen() {
         setStep(s);
         await new Promise((r) => setTimeout(r, MAGIC_PHASE_MS));
       }
-      const fileMeta = await buildUploadFileMeta(files);
-      const analyzed = await analyzePickedFiles(files, lang);
-      let portfolio: PortfolioAnalysis;
-      let source: 'render' | 'fallback' = 'render';
-      try {
-        portfolio = await fetchPortfolioAnalysis(fileMeta);
-        setAnalysisError(null);
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : 'analysis failed';
-        setAnalysisError(msg);
-        portfolio = await fetchPortfolioAnalysisFallback(fileMeta, lang);
-        source = 'fallback';
+
+      let analyzed: UploadResult[] = [];
+      let fileMeta = await buildUploadFileMeta(files);
+
+      if (preview && preview.parseable) {
+        const parsed: ParsedFileData = {
+          fileName: preview.fileName,
+          columns: preview.columns,
+          rows: preview.allRows,
+          rowCount: preview.rowCount,
+          mapping: preview.mapping,
+          mappedFields: preview.columns.map((c) => preview.mapping[c] ?? 'skip'),
+        };
+        analyzed = buildResultsFromParsedData(parsed, lang);
+        fileMeta = [parsedToFileMeta(parsed, files[0])];
       }
-      setAnalysisSource(source);
-      if (source === 'fallback' && preview && !preview.parseable) {
+
+      let portfolio: PortfolioAnalysis | null = null;
+      let source: 'render' | 'fallback' | null = null;
+
+      if (preview?.parseable) {
+        try {
+          portfolio = await fetchPortfolioAnalysis(fileMeta);
+          source = 'render';
+          setAnalysisError(null);
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : 'analysis failed';
+          setAnalysisError(msg);
+          source = 'fallback';
+        }
+      }
+
+      if (!analyzed.length && !preview?.parseable) {
         setImportFailed(true);
-        setResults([]);
         setStep(1);
-      } else {
-        setResults(analyzed);
+        return;
+      }
+
+      if (!analyzed.length) {
+        analyzed = await analyzePickedFiles(files, lang);
+      }
+
+      setAnalysisSource(source);
+      setResults(analyzed);
+      if (portfolio) {
         setPortfolioAnalysis(portfolio);
         await storage.setItem('spp.lastPortfolioAnalysis', JSON.stringify(portfolio));
-        setStep(7);
       }
+      setStep(7);
     } catch {
       setImportFailed(true);
       setStep(1);
     } finally {
       setBusy(false);
     }
+  };
+
+  const onMappingChange = (mapping: FilePreview['mapping']) => {
+    if (!preview) return;
+    setPreview(previewWithMapping(preview, mapping));
   };
 
   const onPromptChoice = async (key: 'update' | 'review' | 'cancel') => {
@@ -203,6 +234,10 @@ export default function UploadScreen() {
 
       <GuidedSetup flowId="pdf" defaultOpen={files.length === 0} testID="upload-guided" />
 
+      <View style={{ marginTop: spacing.md }}>
+        <OperationHint feature="import" />
+      </View>
+
       {importFailed ? (
         <Animated.View entering={FadeInDown.duration(500)} style={{ marginTop: spacing.lg }}>
           <GlassCard padding={20} radiusToken="lg" edge="gold">
@@ -229,6 +264,7 @@ export default function UploadScreen() {
             preview={preview}
             onConfirm={runAnalysis}
             onCancel={() => { setFiles([]); setPreview(null); setPreviewReady(false); }}
+            onMappingChange={onMappingChange}
           />
         </View>
       ) : null}
@@ -272,7 +308,7 @@ export default function UploadScreen() {
       {results.length > 0 ? (
         <Animated.View entering={FadeInDown.duration(600)}>
           <UploadFoundHeader />
-          {portfolioAnalysis ? (
+          {portfolioAnalysis && analysisSource === 'render' ? (
             <>
               <UploadExecutiveReport analysis={portfolioAnalysis} />
               {!promptDone ? (

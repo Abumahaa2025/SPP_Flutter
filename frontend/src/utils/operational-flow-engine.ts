@@ -155,6 +155,12 @@ export async function createMaintenanceTicket(
   title: string,
   tenantId?: string,
   description?: string,
+  extras?: {
+    category?: MaintenanceTicket['category'];
+    priority?: MaintenanceTicket['priority'];
+    technicianName?: string;
+    media?: MaintenanceTicket['media'];
+  },
 ): Promise<MaintenanceTicket> {
   const now = new Date().toISOString();
   const ticket: MaintenanceTicket = {
@@ -163,7 +169,12 @@ export async function createMaintenanceTicket(
     tenantId,
     title,
     description,
-    status: 'open',
+    category: extras?.category,
+    priority: extras?.priority ?? 'medium',
+    status: extras?.technicianName ? 'assigned' : 'open',
+    technicianName: extras?.technicianName,
+    media: extras?.media ?? [],
+    workflowStep: extras?.technicianName ? 'tracking' : 'submit',
     createdAt: now,
     updatedAt: now,
     notes: [],

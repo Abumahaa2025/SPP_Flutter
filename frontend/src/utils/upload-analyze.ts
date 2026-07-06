@@ -1,4 +1,7 @@
 import type { UploadResult } from '@/src/components/UploadResultCard';
+import type { ColumnField, ColumnMapping } from './upload-parse';
+
+export type { ColumnField, ColumnMapping } from './upload-parse';
 
 export type PickedFile = { name: string; mimeType?: string; size?: number; uri?: string };
 
@@ -114,10 +117,9 @@ export async function readPropertyFileSnippet(file: PickedFile): Promise<string 
   }
 }
 
-/** Client-side preview — property doc classification. */
+/** Client-side preview — only when no parsed data; prefer buildResultsFromParsedData. */
 export async function analyzePickedFiles(files: PickedFile[], lang: Lang): Promise<UploadResult[]> {
-  const delay = 500 + files.length * 140;
-  await new Promise((r) => setTimeout(r, delay));
+  await new Promise((r) => setTimeout(r, 300));
   return files.map((f, i) => buildResult(f, lang, i));
 }
 
@@ -137,7 +139,29 @@ export type FilePreview = {
   recognizedColumns: string[];
   previewRows: string[][];
   parseable: boolean;
+  mapping: ColumnMapping;
+  allRows: string[][];
 };
+
+function autoDetectMapping(headers: string[]): ColumnMapping {
+  const mapping: ColumnMapping = {};
+  headers.forEach((h) => {
+    const lower = h.toLowerCase();
+    let field: ColumnField = 'skip';
+    for (const [key, aliases] of Object.entries(COLUMN_ALIASES)) {
+      if (aliases.some((a) => lower.includes(a.toLowerCase()) || h.includes(a))) {
+        field = key as ColumnField;
+        break;
+      }
+    }
+    mapping[h] = field;
+  });
+  return mapping;
+}
+
+function mappedFieldCount(mapping: ColumnMapping): number {
+  return Object.values(mapping).filter((f) => f !== 'skip').length;
+}
 
 function splitRow(line: string): string[] {
   const delim = line.includes('\t') ? '\t' : ',';
@@ -145,7 +169,7 @@ function splitRow(line: string): string[] {
 }
 
 /** Local spreadsheet preview before server analysis. */
-export async function buildFilePreview(file: PickedFile): Promise<FilePreview | null> {
+export async function buildFilePreview(file: PickedFile, mappingOverride?: ColumnMapping): Promise<FilePreview | null> {
   const snippet = await readPropertyFileSnippet(file);
   if (!snippet) return null;
   const lines = snippet.split(/\r?\n/).filter((l) => l.trim());
@@ -153,12 +177,8 @@ export async function buildFilePreview(file: PickedFile): Promise<FilePreview | 
   const rows = lines.map(splitRow);
   const headers = rows[0];
   const dataRows = rows.slice(1);
-  const recognized = headers.filter((h) => {
-    const lower = h.toLowerCase();
-    return Object.values(COLUMN_ALIASES).some((aliases) =>
-      aliases.some((a) => lower.includes(a.toLowerCase()) || h.includes(a)),
-    );
-  });
+  const mapping = mappingOverride ?? autoDetectMapping(headers);
+  const recognized = headers.filter((h) => mapping[h] && mapping[h] !== 'skip');
   return {
     fileName: file.name,
     rowCount: dataRows.length,
@@ -166,7 +186,20 @@ export async function buildFilePreview(file: PickedFile): Promise<FilePreview | 
     columns: headers,
     recognizedColumns: recognized,
     previewRows: dataRows.slice(0, 5),
-    parseable: recognized.length >= 2 && dataRows.length > 0,
+    allRows: dataRows,
+    mapping,
+    parseable: mappedFieldCount(mapping) >= 2 && dataRows.length > 0,
+  };
+}
+
+/** Re-check parseability after user adjusts column mapping. */
+export function previewWithMapping(preview: FilePreview, mapping: ColumnMapping): FilePreview {
+  const recognized = preview.columns.filter((h) => mapping[h] && mapping[h] !== 'skip');
+  return {
+    ...preview,
+    mapping,
+    recognizedColumns: recognized,
+    parseable: mappedFieldCount(mapping) >= 2 && preview.rowCount > 0,
   };
 }
 

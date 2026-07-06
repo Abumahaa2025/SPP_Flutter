@@ -54,32 +54,47 @@ export type OperationalEvent = {
 
 export type MaintenanceTicketStatus = 'open' | 'assigned' | 'in_progress' | 'closed';
 
+export type MaintenanceCategory = 'plumbing' | 'electrical' | 'ac' | 'general' | 'other';
 
+export type MaintenancePriority = 'low' | 'medium' | 'high' | 'urgent';
+
+export type MediaAttachment = {
+  uri: string;
+  type: 'photo' | 'video' | 'file';
+  name: string;
+  addedAt: string;
+};
+
+export type MaintenanceWorkflowStep =
+  | 'create'
+  | 'type'
+  | 'description'
+  | 'photos'
+  | 'video'
+  | 'priority'
+  | 'technician'
+  | 'submit'
+  | 'tracking'
+  | 'close'
+  | 'rating';
 
 export type MaintenanceTicket = {
-
   id: string;
-
   unitId: string;
-
   tenantId?: string;
-
   title: string;
-
   description?: string;
-
+  category?: MaintenanceCategory;
+  priority?: MaintenancePriority;
   status: MaintenanceTicketStatus;
-
+  workflowStep?: MaintenanceWorkflowStep;
   technicianName?: string;
-
+  media?: MediaAttachment[];
+  rating?: number;
   createdAt: string;
-
   updatedAt: string;
-
   closedAt?: string;
-
   notes: string[];
-
 };
 
 

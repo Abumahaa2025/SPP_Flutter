@@ -5,6 +5,8 @@ import * as Haptics from 'expo-haptics';
 
 import { GlassCard } from '@/src/components/GlassCard';
 import type { FilePreview } from '@/src/utils/upload-analyze';
+import type { ColumnMapping } from '@/src/utils/upload-parse';
+import { UploadColumnMapper } from '@/src/components/UploadColumnMapper';
 import { colors, spacing, typography, radius } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
 
@@ -12,10 +14,11 @@ type Props = {
   preview: FilePreview;
   onConfirm: () => void;
   onCancel: () => void;
+  onMappingChange?: (mapping: ColumnMapping) => void;
   testID?: string;
 };
 
-export function UploadFilePreview({ preview, onConfirm, onCancel, testID = 'upload-preview' }: Props) {
+export function UploadFilePreview({ preview, onConfirm, onCancel, onMappingChange, testID = 'upload-preview' }: Props) {
   const { t, isRTL } = useI18n();
 
   return (
@@ -57,6 +60,18 @@ export function UploadFilePreview({ preview, onConfirm, onCancel, testID = 'uplo
         ) : (
           <Text style={[styles.dim, isRTL && styles.rtl]}>{t('journey.upload.noPreview')}</Text>
         )}
+
+        {preview.columns.length > 0 && onMappingChange ? (
+          <UploadColumnMapper
+            columns={preview.columns}
+            mapping={preview.mapping}
+            onChange={onMappingChange}
+          />
+        ) : null}
+
+        <Text style={[styles.dim, isRTL && styles.rtl, { marginTop: spacing.sm }]}>
+          {t('opsv2.import.noInvent' as any)}
+        </Text>
 
         <Text style={[styles.confirm, isRTL && styles.rtl]}>{t('journey.upload.confirm')}</Text>
         <View style={[styles.actions, isRTL && styles.rowRtl]}>

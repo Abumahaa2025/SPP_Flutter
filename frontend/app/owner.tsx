@@ -33,6 +33,7 @@ const LINKS: HubLink[] = [
   { key: 'portfolio', icon: 'layers', labelKey: 'op.owner.portfolio', hintKey: 'op.owner.portfolio.hint', route: '/portfolio' },
   { key: 'reports', icon: 'bar-chart-2', labelKey: 'op.owner.reports', hintKey: 'op.owner.reports.hint', route: '/reports' },
   { key: 'services', icon: 'zap', labelKey: 'op.owner.services', hintKey: 'op.owner.services.hint', route: '/operational/services', tone: 'gold' },
+  { key: 'portals', icon: 'link', labelKey: 'opsv2.portals.title', hintKey: 'opsv2.portals.sub', route: '/operational/portals', tone: 'emerald' },
 ];
 
 function fmtEvent(t: (k: any) => string, key: string, params?: Record<string, string>) {

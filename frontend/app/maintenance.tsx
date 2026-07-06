@@ -10,6 +10,7 @@ import { StoryScreenHeader } from '@/src/components/StoryScreenHeader';
 import { AliveEmpty } from '@/src/components/AliveEmpty';
 import { GlassCard } from '@/src/components/GlassCard';
 import { GuidedSetup } from '@/src/components/GuidedSetup';
+import { OperationHint } from '@/src/components/OperationHint';
 import { useOperational } from '@/src/hooks/useOperational';
 import { usePropertyOS } from '@/src/hooks/usePropertyOS';
 import { useNotificationPrefs } from '@/src/hooks/usePreferences';
@@ -49,6 +50,16 @@ export default function Maintenance() {
 
       <GuidedSetup flowId="technician" defaultOpen={decisions.length === 0 && !openTickets.length} testID="maintenance-guided" />
 
+      <OperationHint feature="maintenance" />
+
+      <Pressable
+        style={styles.createBtn}
+        onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); router.push('/maintenance/create' as any); }}
+        testID="maintenance-new-btn"
+      >
+        <Text style={styles.createBtnText}>{t('opsv2.maint.new' as any)}</Text>
+      </Pressable>
+
       {openTickets.length > 0 ? (
         <View style={{ marginTop: spacing.lg }}>
           <Text style={styles.sectionEyebrow}>{t('op.owner.maintenance')}</Text>
@@ -58,7 +69,15 @@ export default function Maintenance() {
               <Animated.View key={tk.id} entering={FadeInDown.duration(500).delay(i * 50)} style={{ marginBottom: spacing.md }}>
                 <GlassCard padding={16} radiusToken="md" edge="emerald">
                   <Text style={styles.itemTitle}>{tk.title}</Text>
-                  <Text style={styles.openFor}>{unit?.number ? `${t('op.tenant.unit')} ${unit.number}` : ''} · {tk.status}</Text>
+                  <Text style={styles.openFor}>
+                    {unit?.number ? `${t('op.tenant.unit')} ${unit.number}` : ''} · {tk.status}
+                    {tk.priority ? ` · ${t(`opsv2.maint.priority.${tk.priority}` as any)}` : ''}
+                  </Text>
+                  {tk.workflowStep ? (
+                    <Text style={styles.workflowStep}>
+                      {t(`opsv2.maint.step.${tk.workflowStep}` as any)}
+                    </Text>
+                  ) : null}
                   {tk.technicianName ? <Text style={styles.itemBody}>{tk.technicianName}</Text> : null}
                 </GlassCard>
               </Animated.View>
@@ -142,4 +161,10 @@ const styles = StyleSheet.create({
   metaDot: { width: 3, height: 3, borderRadius: 1.5, backgroundColor: colors.textSubtle, marginHorizontal: 4 },
   techBtn: { marginTop: spacing.sm, paddingVertical: 10 },
   techBtnText: { color: colors.emerald, fontSize: typography.small, fontWeight: typography.weight.semibold },
+  createBtn: {
+    marginTop: spacing.md, paddingVertical: 14, borderRadius: 12,
+    backgroundColor: colors.emerald, alignItems: 'center',
+  },
+  createBtnText: { color: colors.bg, fontWeight: typography.weight.semibold, fontSize: 14 },
+  workflowStep: { color: colors.textMuted, fontSize: 11, marginTop: 4 },
 });
