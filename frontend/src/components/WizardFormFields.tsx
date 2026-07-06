@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, StyleSheet, TextInput, Pressable } from 'react-native';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { KeyboardAwareTextInput } from '@/src/components/KeyboardAwareTextInput';
 import { colors, spacing, typography, radius } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
 
@@ -37,7 +38,7 @@ export function WizardTextField({
     <View style={{ marginTop: spacing.md }}>
       <FieldLabel label={label} required={required} isRTL={isRTL} />
       {hint ? <Text style={[styles.hint, isRTL && styles.rtl]}>{hint}</Text> : null}
-      <TextInput
+      <KeyboardAwareTextInput
         testID={testID}
         value={value}
         onChangeText={onChangeText}

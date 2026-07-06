@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Pressable, TextInput, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
+import { KeyboardAwareTextInput } from '@/src/components/KeyboardAwareTextInput';
+import type { TechnicianRecord, TechnicianSpecialty } from '@/src/types/technician';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Haptics from 'expo-haptics';
 import { Feather } from '@expo/vector-icons';
@@ -28,12 +30,14 @@ type Props = {
   unitId: string;
   unitLabel?: string;
   tenantId?: string;
-  technicians?: string[];
+  technicianList?: TechnicianRecord[];
+  onCreateTechnician?: (input: { name: string; phone: string; specialty: TechnicianSpecialty }) => Promise<TechnicianRecord>;
   onSubmit: (data: {
     title: string;
     description: string;
     category: MaintenanceCategory;
     priority: MaintenancePriority;
+    technicianId?: string;
     technicianName?: string;
     media: MediaAttachment[];
   }) => Promise<void>;
@@ -41,8 +45,8 @@ type Props = {
 };
 
 export function MaintenanceJourney({
-  unitId, unitLabel, tenantId, technicians = ['فني الصيانة', 'فني التكييف', 'فني الكهرباء'],
-  onSubmit, onCancel,
+  unitId, unitLabel, tenantId, technicianList = [],
+  onCreateTechnician, onSubmit, onCancel,
 }: Props) {
   const { t, isRTL } = useI18n();
   const [stepIdx, setStepIdx] = useState(0);
@@ -51,8 +55,14 @@ export function MaintenanceJourney({
   const [description, setDescription] = useState('');
   const [media, setMedia] = useState<MediaAttachment[]>([]);
   const [priority, setPriority] = useState<MaintenancePriority>('medium');
-  const [technician, setTechnician] = useState<string | undefined>();
+  const [technicianId, setTechnicianId] = useState<string | undefined>();
+  const [showAddTech, setShowAddTech] = useState(false);
+  const [newTechName, setNewTechName] = useState('');
+  const [newTechPhone, setNewTechPhone] = useState('');
+  const [newTechSpecialty, setNewTechSpecialty] = useState<TechnicianSpecialty>('general');
   const [busy, setBusy] = useState(false);
+
+  const selectedTech = technicianList.find((t) => t.id === technicianId);
 
   const step = STEPS[stepIdx];
 
@@ -91,7 +101,8 @@ export function MaintenanceJourney({
         description: description.trim(),
         category,
         priority,
-        technicianName: technician,
+        technicianId: selectedTech?.id,
+        technicianName: selectedTech?.name,
         media,
       });
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
@@ -125,7 +136,7 @@ export function MaintenanceJourney({
           {step === 'create' ? (
             <>
               <Text style={[styles.label, isRTL && styles.rtl]}>{stepLabel('create')}</Text>
-              <TextInput
+              <KeyboardAwareTextInput
                 value={title}
                 onChangeText={setTitle}
                 placeholder={t('op.tenant.requestPh')}
@@ -157,7 +168,7 @@ export function MaintenanceJourney({
           {step === 'description' ? (
             <>
               <Text style={[styles.label, isRTL && styles.rtl]}>{stepLabel('description')}</Text>
-              <TextInput
+              <KeyboardAwareTextInput
                 value={description}
                 onChangeText={setDescription}
                 multiline
@@ -215,16 +226,57 @@ export function MaintenanceJourney({
 
           {step === 'technician' ? (
             <>
-              <Text style={[styles.label, isRTL && styles.rtl]}>{stepLabel('technician')}</Text>
-              {technicians.map((tech) => (
+              <Text style={[styles.label, isRTL && styles.rtl]}>{t('maint.selectTech' as any)}</Text>
+              {technicianList.map((tech) => (
                 <Pressable
-                  key={tech}
-                  style={[styles.techRow, technician === tech && styles.techRowActive]}
-                  onPress={() => setTechnician(tech)}
+                  key={tech.id}
+                  style={[styles.techRow, technicianId === tech.id && styles.techRowActive]}
+                  onPress={() => setTechnicianId(tech.id)}
                 >
-                  <Text style={styles.techText}>{tech}</Text>
+                  <Text style={styles.techText}>{tech.name}</Text>
+                  <Text style={styles.dim}>{tech.phone} · {t(`opsv2.maint.type.${tech.specialty}` as any)}</Text>
                 </Pressable>
               ))}
+              <Pressable style={styles.mediaBtn} onPress={() => setShowAddTech(!showAddTech)}>
+                <Feather name="user-plus" size={16} color={colors.gold} />
+                <Text style={[styles.mediaBtnText, { color: colors.gold }]}>{t('maint.addTech' as any)}</Text>
+              </Pressable>
+              {showAddTech && onCreateTechnician ? (
+                <View style={{ marginTop: 8 }}>
+                  <KeyboardAwareTextInput
+                    value={newTechName}
+                    onChangeText={setNewTechName}
+                    placeholder={t('maint.techName' as any)}
+                    placeholderTextColor={colors.textSubtle}
+                    style={[styles.input, isRTL && styles.rtl]}
+                  />
+                  <KeyboardAwareTextInput
+                    value={newTechPhone}
+                    onChangeText={setNewTechPhone}
+                    placeholder={t('maint.techPhone' as any)}
+                    placeholderTextColor={colors.textSubtle}
+                    keyboardType="phone-pad"
+                    style={[styles.input, isRTL && styles.rtl, { marginTop: 8 }]}
+                  />
+                  <Pressable
+                    style={[styles.navPrimary, { marginTop: 8 }]}
+                    onPress={async () => {
+                      if (!newTechName.trim()) return;
+                      const tech = await onCreateTechnician({
+                        name: newTechName.trim(),
+                        phone: newTechPhone,
+                        specialty: newTechSpecialty,
+                      });
+                      setTechnicianId(tech.id);
+                      setShowAddTech(false);
+                      setNewTechName('');
+                      setNewTechPhone('');
+                    }}
+                  >
+                    <Text style={styles.navPrimaryText}>{t('maint.addTech' as any)}</Text>
+                  </Pressable>
+                </View>
+              ) : null}
             </>
           ) : null}
 
@@ -238,7 +290,7 @@ export function MaintenanceJourney({
               {media.length ? (
                 <Text style={[styles.dim, isRTL && styles.rtl]}>{media.length} ملف(ات) مرفقة</Text>
               ) : null}
-              {technician ? <Text style={[styles.dim, isRTL && styles.rtl]}>{technician}</Text> : null}
+              {selectedTech ? <Text style={[styles.dim, isRTL && styles.rtl]}>{selectedTech.name}</Text> : null}
             </>
           ) : null}
         </GlassCard>

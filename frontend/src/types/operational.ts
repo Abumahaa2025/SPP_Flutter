@@ -52,7 +52,41 @@ export type OperationalEvent = {
 
 
 
-export type MaintenanceTicketStatus = 'open' | 'assigned' | 'in_progress' | 'closed';
+export type MaintenanceTicketStatus =
+  | 'open'
+  | 'assigned'
+  | 'accepted'
+  | 'en_route'
+  | 'in_progress'
+  | 'awaiting_tenant'
+  | 'closed'
+  | 'reprocess';
+
+export type TimelineEventKind =
+  | 'created'
+  | 'technician_assigned'
+  | 'tech_accepted'
+  | 'en_route'
+  | 'started'
+  | 'photos_uploaded'
+  | 'completed'
+  | 'tenant_approved';
+
+export type TimelineEvent = {
+  id: string;
+  kind: TimelineEventKind;
+  at?: string;
+  done: boolean;
+};
+
+export type TenantNotification = {
+  at: string;
+  messageKey: string;
+  messageParams?: Record<string, string>;
+  read?: boolean;
+};
+
+export type TenantApprovalStatus = 'pending' | 'approved' | 'reprocess';
 
 export type MaintenanceCategory = 'plumbing' | 'electrical' | 'ac' | 'general' | 'other';
 
@@ -63,6 +97,7 @@ export type MediaAttachment = {
   type: 'photo' | 'video' | 'file';
   name: string;
   addedAt: string;
+  phase?: 'before' | 'after' | 'general';
 };
 
 export type MaintenanceWorkflowStep =
@@ -88,9 +123,20 @@ export type MaintenanceTicket = {
   priority?: MaintenancePriority;
   status: MaintenanceTicketStatus;
   workflowStep?: MaintenanceWorkflowStep;
+  technicianId?: string;
   technicianName?: string;
   media?: MediaAttachment[];
+  beforeMedia?: MediaAttachment[];
+  afterMedia?: MediaAttachment[];
+  timeline?: TimelineEvent[];
+  progressPercent?: number;
+  etaMinutes?: number;
+  etaArrivalAt?: string;
+  tenantNotifications?: TenantNotification[];
+  tenantApproval?: TenantApprovalStatus;
+  tenantComment?: string;
   rating?: number;
+  sppInsight?: string;
   createdAt: string;
   updatedAt: string;
   closedAt?: string;

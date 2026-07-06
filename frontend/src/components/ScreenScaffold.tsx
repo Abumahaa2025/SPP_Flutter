@@ -9,6 +9,8 @@ import Animated, { useSharedValue, useAnimatedScrollHandler } from 'react-native
 import { AmbientBackground } from './AmbientBackground';
 import { colors, spacing } from '../theme';
 import { useWorkspacePadding } from '../hooks/use-workspace-padding';
+import { useKeyboardInset } from '../hooks/useKeyboardInset';
+import { TAB_BAR_RESERVED } from '../constants/chrome';
 
 const AScroll = Animated.ScrollView;
 
@@ -22,21 +24,21 @@ type Props = {
   refreshControl?: React.ReactElement<RefreshControlProps>;
 };
 
-/** Reusable screen shell — ambient background + safe area + optional scroll + keyboard lift. */
+/** Screen shell with keyboard lift on all platforms. */
 export function ScreenScaffold({
   children, testID, scrollable = true, contentStyle, showTabBar = true,
   refreshControl, keyboardAware = true,
 }: Props) {
   const insets = useSafeAreaInsets();
+  const keyboardInset = useKeyboardInset();
   const scrollY = useSharedValue(0);
   const onScroll = useAnimatedScrollHandler((e) => { scrollY.value = e.contentOffset.y; });
   const wsPad = useWorkspacePadding();
 
   const padTop = insets.top + wsPad.paddingTop + spacing.lg;
   const padRight = wsPad.paddingRight + spacing.lg;
-  const padBottom = showTabBar
-    ? insets.bottom + wsPad.paddingBottom + spacing.lg
-    : spacing.xl;
+  const tabReserve = showTabBar ? TAB_BAR_RESERVED + insets.bottom : spacing.xl;
+  const padBottom = tabReserve + (keyboardAware ? keyboardInset : 0) + spacing.lg;
 
   const scrollContent = scrollable ? (
     <AScroll
@@ -46,13 +48,15 @@ export function ScreenScaffold({
       overScrollMode="never"
       nestedScrollEnabled
       keyboardShouldPersistTaps="handled"
-      automaticallyAdjustKeyboardInsets={Platform.OS === 'ios'}
+      keyboardDismissMode="interactive"
+      automaticallyAdjustKeyboardInsets
       refreshControl={refreshControl}
       contentContainerStyle={[{
         paddingTop: padTop,
-        paddingBottom: padBottom + (keyboardAware ? 80 : 0),
+        paddingBottom: padBottom,
         paddingLeft: spacing.lg,
         paddingRight: padRight,
+        flexGrow: 1,
       }, contentStyle]}
       showsVerticalScrollIndicator={false}
     >
@@ -74,8 +78,8 @@ export function ScreenScaffold({
       {keyboardAware ? (
         <KeyboardAvoidingView
           style={{ flex: 1 }}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          keyboardVerticalOffset={insets.top}
+          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+          keyboardVerticalOffset={Platform.OS === 'ios' ? insets.top : 0}
         >
           {scrollContent}
         </KeyboardAvoidingView>

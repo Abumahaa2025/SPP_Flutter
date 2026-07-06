@@ -67,19 +67,21 @@ export default function Maintenance() {
             const unit = osState.units.find((u) => u.id === tk.unitId);
             return (
               <Animated.View key={tk.id} entering={FadeInDown.duration(500).delay(i * 50)} style={{ marginBottom: spacing.md }}>
+                <Pressable onPress={() => router.push(`/maintenance/${tk.id}` as any)}>
                 <GlassCard padding={16} radiusToken="md" edge="emerald">
                   <Text style={styles.itemTitle}>{tk.title}</Text>
                   <Text style={styles.openFor}>
                     {unit?.number ? `${t('op.tenant.unit')} ${unit.number}` : ''} · {tk.status}
-                    {tk.priority ? ` · ${t(`opsv2.maint.priority.${tk.priority}` as any)}` : ''}
+                    {tk.progressPercent != null ? ` · ${tk.progressPercent}%` : ''}
                   </Text>
-                  {tk.workflowStep ? (
+                  {tk.etaMinutes ? (
                     <Text style={styles.workflowStep}>
-                      {t(`opsv2.maint.step.${tk.workflowStep}` as any)}
+                      {t('maint.eta' as any)}: {tk.etaMinutes} {t('maint.minutes' as any)}
                     </Text>
                   ) : null}
                   {tk.technicianName ? <Text style={styles.itemBody}>{tk.technicianName}</Text> : null}
                 </GlassCard>
+                </Pressable>
               </Animated.View>
             );
           })}

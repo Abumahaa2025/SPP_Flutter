@@ -3,7 +3,7 @@
 ## الرابط الوحيد — احفظه
 
 **تثبيت مباشر (APK) — افتح على أندرويد في Chrome:**
-https://expo.dev/artifacts/eas/CT8kGgcWmD37XpiXjJn6ka1sDrDGRJVjyC8Z4w5HTeM.apk
+https://expo.dev/artifacts/eas/GdiPAg-zXwoIyfM5rUbghf2l2hwuOYsr9ZwO5PXHeW4.apk
 
 **صفحة البناءات الدائمة:**
 https://expo.dev/accounts/abumahaa2025/projects/spp-beta/builds
@@ -32,8 +32,10 @@ npx eas-cli update --channel beta --message "وصف التحديث"
 
 ## الإصدار الحالي
 
-`1.0.0-beta.5+pulse1` — رحلة الإعداد · وميض التنبيهات · معاينة الاستيراد · تحديث OTA
+`1.0.0-beta.6+opsv2` — Operational Experience V2 · استيراد ذكي · صيانة · بوابات · موظف ذكي
 
-**أحدث APK:** https://expo.dev/accounts/abumahaa2025/projects/spp-beta/builds/ab39af51-d59c-4c48-994d-2ef1678d34dd
+**أحدث APK:** https://expo.dev/accounts/abumahaa2025/projects/spp-beta/builds/4ce547cc-9fc7-46b5-803b-3e0a78b07276
+
+**أحدث OTA:** https://expo.dev/accounts/abumahaa2025/projects/spp-beta/updates/41382a17-7c73-4a9e-8239-9f3054ffecba
 
 © SPP Labs

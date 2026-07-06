@@ -13,6 +13,8 @@ import { PortalShareCard } from '@/src/components/PortalShareCard';
 import { OperationHint } from '@/src/components/OperationHint';
 import { usePropertyOS, buildTechnicianPortal } from '@/src/hooks/usePropertyOS';
 import { usePortalAccess } from '@/src/hooks/usePortalAccess';
+import { useTechnicians } from '@/src/hooks/useTechnicians';
+import { inAppTechRouteFor } from '@/src/utils/technician-store';
 import { inAppTechRoute } from '@/src/utils/operational-flow-engine';
 import { inAppAgentRoute } from '@/src/utils/portal-access-store';
 import { useNotificationPrefs } from '@/src/hooks/usePreferences';
@@ -31,6 +33,7 @@ export default function PortalsManagementScreen() {
   const { countEnabled } = useNotificationPrefs();
   const { state, ensureTechnicianPortal } = usePropertyOS(countEnabled);
   const { agents, addAgent, getLastLogin, setAgentActive } = usePortalAccess();
+  const { technicians } = useTechnicians();
 
   const [showAgentForm, setShowAgentForm] = useState(false);
   const [agentName, setAgentName] = useState('');
@@ -124,6 +127,22 @@ export default function PortalsManagementScreen() {
           </Pressable>
         </View>
       </GlassCard>
+
+      {technicians.map((tech) => (
+        <GlassCard key={tech.id} padding={14} radiusToken="md" style={styles.gap}>
+          <Text style={styles.agentName}>{tech.name}</Text>
+          <Text style={styles.link} selectable numberOfLines={2}>{tech.portalUrl}</Text>
+          <Text style={styles.meta}>
+            {t(`opsv2.maint.type.${tech.specialty}` as any)} · {tech.phone}
+          </Text>
+          <Pressable
+            style={styles.actionBtn}
+            onPress={() => router.push(inAppTechRouteFor(tech) as any)}
+          >
+            <Text style={styles.actionText}>{t('op.tech.title')}</Text>
+          </Pressable>
+        </GlassCard>
+      ))}
 
       <View style={[styles.agentHeader, isRTL && styles.rowRtl]}>
         <Text style={[styles.section, isRTL && styles.rtl]}>{t('opsv2.portals.addAgent' as any)}</Text>

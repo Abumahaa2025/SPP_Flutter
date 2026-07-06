@@ -1,5 +1,6 @@
 import React from 'react';
-import { View, Text, TextInput, StyleSheet, TextInputProps } from 'react-native';
+import { View, Text, StyleSheet, TextInputProps } from 'react-native';
+import { KeyboardAwareTextInput } from '@/src/components/KeyboardAwareTextInput';
 import { colors, radius, typography } from '@/src/theme';
 
 type Props = TextInputProps & {
@@ -12,7 +13,7 @@ export function AuthField({ label, isRTL, onFocusExtra, style, ...rest }: Props)
   return (
     <View style={styles.wrap}>
       <Text style={[styles.label, isRTL && styles.rtl]}>{label}</Text>
-      <TextInput
+      <KeyboardAwareTextInput
         {...rest}
         placeholderTextColor={colors.textSubtle}
         onFocus={(e) => {

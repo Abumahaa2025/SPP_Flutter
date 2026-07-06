@@ -1,12 +1,21 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 
-import type { MaintenanceTicket, OperationalEvent, PendingAction } from '@/src/types/operational';
+import type { MaintenanceTicket, MediaAttachment } from '@/src/types/operational';
+import type { TechnicianRecord } from '@/src/types/technician';
 import {
-  createMaintenanceTicket,
-  onMaintenanceAssigned,
-  onMaintenanceClosed,
-  onMaintenanceOpened,
-} from '@/src/utils/operational-flow-engine';
+  createOwnerTicket,
+  assignTechnicianToTicket,
+  techAcceptTicket,
+  techEnRoute,
+  techStartTicket,
+  techUploadMedia,
+  techCompleteTicket,
+  tenantApproveTicket,
+  tenantRequestReprocess,
+  ticketsForTechnician,
+  ticketsForUnit,
+} from '@/src/utils/maintenance-workflow';
+import { onMaintenanceOpened } from '@/src/utils/operational-flow-engine';
 import {
   loadOperational,
   removePendingAction,
@@ -19,9 +28,9 @@ export function useOperational() {
   useEffect(() => subscribeOperational(() => bump((n) => n + 1)), []);
 
   const [state, setState] = useState({
-    events: [] as OperationalEvent[],
+    events: [] as import('@/src/types/operational').OperationalEvent[],
     tickets: [] as MaintenanceTicket[],
-    pendingActions: [] as PendingAction[],
+    pendingActions: [] as import('@/src/types/operational').PendingAction[],
   });
   const [ready, setReady] = useState(false);
 
@@ -42,17 +51,108 @@ export function useOperational() {
     extras?: {
       category?: MaintenanceTicket['category'];
       priority?: MaintenanceTicket['priority'];
+      technicianId?: string;
       technicianName?: string;
-      media?: MaintenanceTicket['media'];
+      media?: MediaAttachment[];
     },
   ) => {
-    const ticket = await createMaintenanceTicket(unitId, title, tenantId, description, extras);
-    await onMaintenanceOpened(ticket, unitNumber);
-    if (extras?.technicianName) await onMaintenanceAssigned(ticket, extras.technicianName);
+    const ticket = await createOwnerTicket(
+      unitId, title, tenantId, description,
+      {
+        category: extras?.category,
+        priority: extras?.priority,
+        media: extras?.media,
+        technicianId: extras?.technicianId,
+        technicianName: extras?.technicianName,
+      },
+      unitNumber,
+    );
+    if (!extras?.technicianId) await onMaintenanceOpened(ticket, unitNumber);
     await reload();
     return ticket;
   }, [reload]);
 
+  const assignTechnician = useCallback(async (
+    ticketId: string,
+    tech: TechnicianRecord,
+    unitNumber?: string,
+  ) => {
+    const s = await loadOperational();
+    const ticket = s.tickets.find((t) => t.id === ticketId);
+    if (!ticket) return;
+    await assignTechnicianToTicket(ticket, tech, unitNumber);
+    await reload();
+  }, [reload]);
+
+  const acceptTicket = useCallback(async (ticketId: string) => {
+    const s = await loadOperational();
+    const ticket = s.tickets.find((t) => t.id === ticketId);
+    if (!ticket) return;
+    await techAcceptTicket(ticket);
+    await reload();
+  }, [reload]);
+
+  const enRouteTicket = useCallback(async (ticketId: string) => {
+    const s = await loadOperational();
+    const ticket = s.tickets.find((t) => t.id === ticketId);
+    if (!ticket) return;
+    await techEnRoute(ticket);
+    await reload();
+  }, [reload]);
+
+  const startTicket = useCallback(async (ticketId: string) => {
+    const s = await loadOperational();
+    const ticket = s.tickets.find((t) => t.id === ticketId);
+    if (!ticket) return;
+    await techStartTicket(ticket);
+    await reload();
+  }, [reload]);
+
+  const uploadTicketMedia = useCallback(async (
+    ticketId: string,
+    media: MediaAttachment[],
+    phase: 'before' | 'after' | 'general',
+  ) => {
+    const s = await loadOperational();
+    const ticket = s.tickets.find((t) => t.id === ticketId);
+    if (!ticket) return;
+    await techUploadMedia(ticket, media, phase);
+    await reload();
+  }, [reload]);
+
+  const completeTicket = useCallback(async (ticketId: string, note?: string) => {
+    const s = await loadOperational();
+    const ticket = s.tickets.find((t) => t.id === ticketId);
+    if (!ticket) return;
+    await techCompleteTicket(ticket, s.tickets, note);
+    await reload();
+  }, [reload]);
+
+  const tenantApprove = useCallback(async (
+    ticketId: string,
+    rating: number,
+    comment?: string,
+  ) => {
+    const s = await loadOperational();
+    const ticket = s.tickets.find((t) => t.id === ticketId);
+    if (!ticket) return;
+    await tenantApproveTicket(ticket, rating, comment);
+    if (ticket.technicianId) {
+      const { updateTechnicianRating } = await import('@/src/utils/technician-store');
+      await updateTechnicianRating(ticket.technicianId, rating);
+    }
+    await reload();
+  }, [reload]);
+
+  const tenantReprocess = useCallback(async (ticketId: string, comment?: string) => {
+    const s = await loadOperational();
+    const ticket = s.tickets.find((t) => t.id === ticketId);
+    if (!ticket) return;
+    await tenantRequestReprocess(ticket, comment);
+    await reload();
+  }, [reload]);
+
+  /** @deprecated use workflow methods */
   const assignTicket = useCallback(async (ticketId: string, techName: string) => {
     const s = await loadOperational();
     const ticket = s.tickets.find((t) => t.id === ticketId);
@@ -64,7 +164,6 @@ export function useOperational() {
       updatedAt: new Date().toISOString(),
     };
     await upsertTicket(next);
-    await onMaintenanceAssigned(next, techName);
     await reload();
   }, [reload]);
 
@@ -73,27 +172,21 @@ export function useOperational() {
     status: MaintenanceTicket['status'],
     note?: string,
     unitNumber?: string,
-    extras?: { media?: MaintenanceTicket['media']; rating?: number; workflowStep?: MaintenanceTicket['workflowStep'] },
+    extras?: { media?: MediaAttachment[]; rating?: number },
   ) => {
     const s = await loadOperational();
     const ticket = s.tickets.find((t) => t.id === ticketId);
     if (!ticket) return;
     const notes = note ? [...ticket.notes, note] : ticket.notes;
-    const mergedMedia = extras?.media?.length
-      ? [...(ticket.media ?? []), ...extras.media]
-      : ticket.media;
     const next: MaintenanceTicket = {
       ...ticket,
       status,
       notes,
-      media: mergedMedia,
       rating: extras?.rating ?? ticket.rating,
-      workflowStep: extras?.workflowStep ?? ticket.workflowStep,
       updatedAt: new Date().toISOString(),
       closedAt: status === 'closed' ? new Date().toISOString() : ticket.closedAt,
     };
     await upsertTicket(next);
-    if (status === 'closed') await onMaintenanceClosed(next, unitNumber);
     await reload();
   }, [reload]);
 
@@ -121,10 +214,20 @@ export function useOperational() {
     recentEvents,
     openTickets,
     openTicket,
+    assignTechnician,
+    acceptTicket,
+    enRouteTicket,
+    startTicket,
+    uploadTicketMedia,
+    completeTicket,
+    tenantApprove,
+    tenantReprocess,
     assignTicket,
     updateTicketStatus,
     approveAction,
     dismissAction,
+    ticketsForTechnician: (techId: string) => ticketsForTechnician(state.tickets, techId),
+    ticketsForUnit: (unitId: string) => ticketsForUnit(state.tickets, unitId),
     reload,
   };
 }

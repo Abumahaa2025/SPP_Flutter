@@ -15,6 +15,7 @@
     },
     "android": {
       "package": "ai.spp.beta",
+      "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#050A12"

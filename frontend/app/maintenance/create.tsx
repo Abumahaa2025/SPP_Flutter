@@ -8,6 +8,7 @@ import { StoryScreenHeader } from '@/src/components/StoryScreenHeader';
 import { MaintenanceJourney } from '@/src/components/maintenance/MaintenanceJourney';
 import { usePropertyOS } from '@/src/hooks/usePropertyOS';
 import { useOperational } from '@/src/hooks/useOperational';
+import { useTechnicians } from '@/src/hooks/useTechnicians';
 import { useNotificationPrefs } from '@/src/hooks/usePreferences';
 import { colors, spacing, typography } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
@@ -19,7 +20,9 @@ export default function MaintenanceCreateScreen() {
   const { countEnabled } = useNotificationPrefs();
   const { state } = usePropertyOS(countEnabled);
   const { openTicket } = useOperational();
+  const { technicians, create } = useTechnicians();
   const [done, setDone] = useState(false);
+  const [ticketId, setTicketId] = useState<string | null>(null);
 
   const unit = params.unitId
     ? state.units.find((u) => u.id === params.unitId)
@@ -34,13 +37,13 @@ export default function MaintenanceCreateScreen() {
     );
   }
 
-  if (done) {
+  if (done && ticketId) {
     return (
       <ScreenScaffold testID="maintenance-create-done">
         <StoryScreenHeader question={t('opsv2.maint.step.tracking' as any)} showBack />
         <Text style={styles.success}>{t('opsv2.maint.submit' as any)} ✓</Text>
-        <Pressable style={styles.btn} onPress={() => router.replace('/maintenance')}>
-          <Text style={styles.btnText}>{t('opsv2.maint.step.tracking' as any)}</Text>
+        <Pressable style={styles.btn} onPress={() => router.replace(`/maintenance/${ticketId}` as any)}>
+          <Text style={styles.btnText}>{t('maint.detail' as any)}</Text>
         </Pressable>
       </ScreenScaffold>
     );
@@ -56,13 +59,17 @@ export default function MaintenanceCreateScreen() {
       <MaintenanceJourney
         unitId={unit.id}
         unitLabel={`${t('op.tenant.unit')} ${unit.number}`}
+        technicianList={technicians}
+        onCreateTechnician={create}
         onSubmit={async (data) => {
-          await openTicket(unit.id, data.title, undefined, data.description, unit.number, {
+          const ticket = await openTicket(unit.id, data.title, undefined, data.description, unit.number, {
             category: data.category,
             priority: data.priority,
+            technicianId: data.technicianId,
             technicianName: data.technicianName,
             media: data.media,
           });
+          setTicketId(ticket.id);
           setDone(true);
           Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         }}
