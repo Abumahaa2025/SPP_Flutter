@@ -8,6 +8,7 @@ type FieldProps = {
   value: string;
   onChangeText: (v: string) => void;
   placeholder?: string;
+  example?: string;
   keyboard?: 'default' | 'numeric' | 'email-address' | 'phone-pad';
   testID?: string;
   required?: boolean;
@@ -28,10 +29,10 @@ function FieldLabel({ label, required, isRTL }: { label: string; required?: bool
 }
 
 export function WizardTextField({
-  label, value, onChangeText, placeholder, keyboard = 'default', testID,
+  label, value, onChangeText, placeholder, example, keyboard = 'default', testID,
   required = false, hint, error,
 }: FieldProps) {
-  const { isRTL } = useI18n();
+  const { t, isRTL } = useI18n();
   return (
     <View style={{ marginTop: spacing.md }}>
       <FieldLabel label={label} required={required} isRTL={isRTL} />
@@ -49,6 +50,11 @@ export function WizardTextField({
           error ? styles.inputError : null,
         ]}
       />
+      {example ? (
+        <Text style={[styles.example, isRTL && styles.rtl]}>
+          {t('journey.field.example')}: {example}
+        </Text>
+      ) : null}
       {error ? <Text style={[styles.error, isRTL && styles.rtl]}>{error}</Text> : null}
     </View>
   );
@@ -159,6 +165,7 @@ const styles = StyleSheet.create({
   badgeReq: { color: colors.danger },
   badgeOpt: { color: colors.textSubtle },
   hint: { color: colors.textSubtle, fontSize: 11.5, lineHeight: 17, marginBottom: 6 },
+  example: { color: colors.textMuted, fontSize: 11.5, marginTop: 6, lineHeight: 17 },
   error: { color: colors.danger, fontSize: 11.5, marginTop: 6, lineHeight: 17 },
   input: {
     borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border, borderRadius: radius.md,

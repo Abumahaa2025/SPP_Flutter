@@ -121,6 +121,55 @@ export async function analyzePickedFiles(files: PickedFile[], lang: Lang): Promi
   return files.map((f, i) => buildResult(f, lang, i));
 }
 
+const COLUMN_ALIASES: Record<string, string[]> = {
+  unit: ['unit', 'وحدة', 'شقة', 'رقم', 'apt'],
+  tenant: ['tenant', 'مستأجر', 'اسم', 'name'],
+  rent: ['rent', 'إيجار', 'ايجار', 'مبلغ', 'amount', 'تحصيل'],
+  phone: ['phone', 'جوال', 'mobile', 'هاتف', 'tel'],
+  contract: ['contract', 'عقد', 'lease'],
+};
+
+export type FilePreview = {
+  fileName: string;
+  rowCount: number;
+  columnCount: number;
+  columns: string[];
+  recognizedColumns: string[];
+  previewRows: string[][];
+  parseable: boolean;
+};
+
+function splitRow(line: string): string[] {
+  const delim = line.includes('\t') ? '\t' : ',';
+  return line.split(delim).map((c) => c.trim().replace(/^"|"$/g, ''));
+}
+
+/** Local spreadsheet preview before server analysis. */
+export async function buildFilePreview(file: PickedFile): Promise<FilePreview | null> {
+  const snippet = await readPropertyFileSnippet(file);
+  if (!snippet) return null;
+  const lines = snippet.split(/\r?\n/).filter((l) => l.trim());
+  if (lines.length < 1) return null;
+  const rows = lines.map(splitRow);
+  const headers = rows[0];
+  const dataRows = rows.slice(1);
+  const recognized = headers.filter((h) => {
+    const lower = h.toLowerCase();
+    return Object.values(COLUMN_ALIASES).some((aliases) =>
+      aliases.some((a) => lower.includes(a.toLowerCase()) || h.includes(a)),
+    );
+  });
+  return {
+    fileName: file.name,
+    rowCount: dataRows.length,
+    columnCount: headers.length,
+    columns: headers,
+    recognizedColumns: recognized,
+    previewRows: dataRows.slice(0, 5),
+    parseable: recognized.length >= 2 && dataRows.length > 0,
+  };
+}
+
 /** Build API payload with optional text snippets for deep parse. */
 export async function buildUploadFileMeta(files: PickedFile[]) {
   return Promise.all(

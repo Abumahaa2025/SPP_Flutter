@@ -5,6 +5,7 @@ import { propertyOsEn, propertyOsAr } from './property-os-keys';
 import { dailyOpsEn, dailyOpsAr } from './daily-ops-keys';
 import { polishEn, polishAr } from './polish-keys';
 import { operationalEn, operationalAr } from './operational-keys';
+import { journeyEn, journeyAr } from './journey-keys';
 
 type Lang = 'en' | 'ar';
 
@@ -15,6 +16,7 @@ const dict = {
     ...dailyOpsEn,
     ...polishEn,
     ...operationalEn,
+    ...journeyEn,
     'app.name': 'SPP',
     'app.tagline': 'AI Operating System for Real Estate',
 
@@ -1718,6 +1720,7 @@ const dict = {
     ...dailyOpsAr,
     ...polishAr,
     ...operationalAr,
+    ...journeyAr,
     'app.name': 'SPP',
     'app.tagline': 'نظام تشغيل بالذكاء الاصطناعي للعقارات',
 

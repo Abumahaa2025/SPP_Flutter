@@ -12,6 +12,14 @@ import { StoryScreenHeader } from '@/src/components/StoryScreenHeader';
 import { GlassCard } from '@/src/components/GlassCard';
 import { SetupProgressBar } from '@/src/components/SetupProgressBar';
 import { WizardSuccessToast } from '@/src/components/WizardSuccessToast';
+import { JourneyWelcome } from '@/src/components/journey/JourneyWelcome';
+import { JourneyPhaseCard } from '@/src/components/journey/JourneyPhaseCard';
+import { JourneySuccessCard } from '@/src/components/journey/JourneySuccessCard';
+import { JourneyLaunchComplete } from '@/src/components/journey/JourneyLaunchComplete';
+import { JourneyValueTip } from '@/src/components/journey/JourneyValueTip';
+import {
+  ALERTS_SUCCESS, PHASE_EMOJI, PHASE_INTRO, PHASE_SUCCESS, visiblePhases,
+} from '@/src/components/journey/journey-phases';
 import {
   WizardChipGroup, WizardInfoBox, WizardTextField, WizardToggle, WizardPhaseIntro,
 } from '@/src/components/WizardFormFields';
@@ -59,6 +67,7 @@ const emptyUnitDraft = () => ({
 });
 
 type FieldErrors = Record<string, string>;
+type PhaseView = 'intro' | 'form' | 'success';
 
 export function PropertySetupWizard() {
   const { t, isRTL, lang } = useI18n();
@@ -77,6 +86,8 @@ export function PropertySetupWizard() {
     PHASES.includes(initialPhase) ? initialPhase : 'property',
   );
   const [lastTenant, setLastTenant] = useState<typeof state.tenants[0] | null>(null);
+  const [phaseView, setPhaseView] = useState<PhaseView>(skipWelcome ? 'intro' : 'intro');
+  const [successPhase, setSuccessPhase] = useState<SetupPhaseId | null>(null);
   const [successToast, setSuccessToast] = useState<string | null>(null);
   const [advancing, setAdvancing] = useState(false);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
@@ -129,18 +140,27 @@ export function PropertySetupWizard() {
   const goPhase = (p: SetupPhaseId) => {
     Haptics.selectionAsync();
     setFieldErrors({});
+    setSuccessPhase(null);
     setPhase(p);
+    setPhaseView(p === 'smartEmployee' ? 'form' : 'intro');
   };
 
-  const advanceWithToast = (message: string, next: SetupPhaseId | (() => void)) => {
-    setSuccessToast(message);
-    setAdvancing(true);
-    setTimeout(() => {
-      setSuccessToast(null);
-      setAdvancing(false);
-      if (typeof next === 'function') next();
-      else goPhase(next);
-    }, 1000);
+  const finishPhase = (completed: SetupPhaseId) => {
+    setSuccessPhase(completed);
+    setPhaseView('success');
+    setAdvancing(false);
+  };
+
+  const onSuccessContinue = () => {
+    const cfg = successPhase && successPhase in PHASE_SUCCESS
+      ? PHASE_SUCCESS[successPhase as keyof typeof PHASE_SUCCESS]
+      : successPhase === 'alerts' ? ALERTS_SUCCESS : null;
+    setSuccessPhase(null);
+    if (cfg) {
+      goPhase(cfg.nextPhase);
+    } else if (phase === 'smartEmployee') {
+      setPhaseView('form');
+    }
   };
 
   const validateProperty = () => {
@@ -194,7 +214,7 @@ export function PropertySetupWizard() {
         buildingCount: Math.max(0, Number(buildings) || 0),
         unitCount: Math.max(1, Number(unitCount) || 1),
       });
-      advanceWithToast(t('pos.toast.property'), 'units');
+      finishPhase('property');
       return;
     }
 
@@ -231,10 +251,12 @@ export function PropertySetupWizard() {
       });
       const target = state.property?.unitCount ?? 1;
       if (state.units.length + 1 >= target) {
-        advanceWithToast(t('pos.toast.units'), 'tenants');
+        finishPhase('units');
       } else {
         setUnitDraft(emptyUnitDraft());
         setFieldErrors({});
+        setSuccessToast(t('pos.toast.units'));
+        setTimeout(() => setSuccessToast(null), 1200);
       }
       return;
     }
@@ -253,7 +275,7 @@ export function PropertySetupWizard() {
       setContractTenantId(tenant?.id ?? '');
       const unit = state.units.find((u) => u.id === tenantUnitId);
       if (unit) setContractRent(String(unit.rentAmount));
-      advanceWithToast(t('pos.toast.tenant'), 'contracts');
+      finishPhase('tenants');
       return;
     }
 
@@ -271,7 +293,7 @@ export function PropertySetupWizard() {
         depositAmount: Number(contractDeposit) || 0,
         specialTerms: contractTerms.trim() || undefined,
       });
-      advanceWithToast(t('pos.toast.contract'), 'alerts');
+      finishPhase('contracts');
       return;
     }
 
@@ -281,7 +303,7 @@ export function PropertySetupWizard() {
       updateNotif('contractRenewals', true);
       updateNotif('maintenance', true);
       markSetupComplete();
-      goPhase('smartEmployee');
+      finishPhase('alerts');
       return;
     }
 
@@ -304,22 +326,69 @@ export function PropertySetupWizard() {
   if (showWelcome) {
     return (
       <ScreenScaffold testID="property-os-welcome">
-        <View style={styles.welcomeWrap}>
-          <Animated.View entering={FadeInDown.duration(600)}>
-            <GlassCard padding={28} radiusToken="lg" edge="gold">
-              <Text style={[styles.welcomeTitle, isRTL && styles.rtl]}>{t('pos.welcome.title')}</Text>
-              <Text style={[styles.welcomeBody, isRTL && styles.rtl]}>{t('pos.welcome.body')}</Text>
-              <Pressable
-                testID="pos-welcome-start"
-                style={styles.welcomeBtn}
-                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setShowWelcome(false); }}
-              >
-                <Text style={styles.welcomeBtnText}>{t('pos.welcome.start')}</Text>
-                <Feather name="arrow-right" size={16} color={colors.bg} />
-              </Pressable>
-            </GlassCard>
-          </Animated.View>
-        </View>
+        <JourneyWelcome
+          onStart={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            setShowWelcome(false);
+            setPhaseView('intro');
+          }}
+        />
+      </ScreenScaffold>
+    );
+  }
+
+  if (successPhase && phaseView === 'success') {
+    const cfg = successPhase === 'alerts'
+      ? ALERTS_SUCCESS
+      : (successPhase in PHASE_SUCCESS
+        ? PHASE_SUCCESS[successPhase as keyof typeof PHASE_SUCCESS]
+        : null);
+    if (cfg) {
+      return (
+        <ScreenScaffold testID="property-os-success">
+          <JourneySuccessCard
+            titleKey={cfg.titleKey}
+            checklistKeys={cfg.checklistKeys}
+            nextKey={cfg.nextKey}
+            onContinue={onSuccessContinue}
+          />
+          <View style={{ marginTop: spacing.md }}>
+            <JourneyValueTip />
+          </View>
+        </ScreenScaffold>
+      );
+    }
+  }
+
+  if (phaseView === 'intro' && phase !== 'smartEmployee') {
+    const intro = PHASE_INTRO[phase];
+    return (
+      <ScreenScaffold testID="property-os-phase-intro">
+        <StoryScreenHeader
+          question={t('pos.wizard.title')}
+          hint={t(`pos.phase.${phase}` as 'pos.phase.property')}
+          showBack
+        />
+        <JourneyPhaseCard
+          emoji={PHASE_EMOJI[phase]}
+          titleKey={intro.titleKey}
+          bodyKey={intro.bodyKey}
+          whereLabel={`${t('journey.where')} · ${t(`pos.phase.${phase}` as 'pos.phase.property')}`}
+          onStart={() => setPhaseView('form')}
+        />
+      </ScreenScaffold>
+    );
+  }
+
+  if (phase === 'smartEmployee' && phaseView === 'intro') {
+    return (
+      <ScreenScaffold testID="property-os-smart-intro">
+        <JourneyPhaseCard
+          emoji={PHASE_EMOJI.smartEmployee}
+          titleKey="journey.intro.smartEmployee.title"
+          bodyKey="journey.intro.smartEmployee.body"
+          onStart={() => setPhaseView('form')}
+        />
       </ScreenScaffold>
     );
   }
@@ -343,7 +412,8 @@ export function PropertySetupWizard() {
         <Animated.View entering={FadeInDown.duration(500)}>
           <GlassCard padding={16} radiusToken="lg" edge="gold">
             <View style={[styles.phaseNav, isRTL && styles.rowRtl]}>
-              {PHASES.map((p, i) => {
+              {visiblePhases(phaseIndex, phases).map((p) => {
+                const i = PHASES.indexOf(p);
                 const meta = phases.find((x) => x.id === p);
                 const active = p === phase;
                 const done = meta?.complete;
@@ -373,12 +443,13 @@ export function PropertySetupWizard() {
         keyboardShouldPersistTaps="handled"
         contentContainerStyle={{ paddingBottom: spacing['2xl'] }}
       >
-        {phase === 'property' ? (
+        {phase === 'property' && phaseView === 'form' ? (
           <PhaseCard>
             <WizardPhaseIntro text={t('pos.intro.property')} />
             <WizardTextField
               label={t('pos.property.name')} required
               hint={t('pos.hint.property.name')}
+              example={t('journey.ex.propertyName')}
               value={propName} onChangeText={(v) => { setPropName(v); clearErr('propName'); }}
               placeholder={t('pos.property.namePh')} testID="pos-prop-name"
               error={fieldErrors.propName}
@@ -394,6 +465,7 @@ export function PropertySetupWizard() {
             <WizardTextField
               label={t('pos.property.city')} required
               hint={t('pos.hint.property.city')}
+              example={t('journey.ex.city')}
               value={city} onChangeText={(v) => { setCity(v); clearErr('city'); }}
               placeholder={t('pos.property.cityPh')} testID="pos-prop-city"
               error={fieldErrors.city}
@@ -419,7 +491,7 @@ export function PropertySetupWizard() {
           </PhaseCard>
         ) : null}
 
-        {phase === 'units' ? (
+        {phase === 'units' && phaseView === 'form' ? (
           <PhaseCard>
             <WizardPhaseIntro text={t('pos.intro.units')} />
             {state.units.length > 0 ? (
@@ -430,6 +502,7 @@ export function PropertySetupWizard() {
             <WizardTextField
               label={t('pos.units.number')} required
               hint={t('pos.hint.units.number')}
+              example={t('journey.ex.unitNumber')}
               value={unitDraft.number}
               onChangeText={(v) => { setUnitDraft((d) => ({ ...d, number: v })); clearErr('unitNumber'); }}
               placeholder={t('pos.units.numberPh')} testID="pos-unit-num"
@@ -454,6 +527,7 @@ export function PropertySetupWizard() {
             <WizardTextField
               label={t('pos.rent.amount')} required
               hint={t('pos.hint.units.rent')}
+              example={t('journey.ex.rent')}
               value={unitDraft.rentAmount}
               onChangeText={(v) => { setUnitDraft((d) => ({ ...d, rentAmount: v })); clearErr('rentAmount'); }}
               keyboard="numeric" testID="pos-unit-rent"
@@ -477,18 +551,20 @@ export function PropertySetupWizard() {
           </PhaseCard>
         ) : null}
 
-        {phase === 'tenants' ? (
+        {phase === 'tenants' && phaseView === 'form' ? (
           <PhaseCard>
             <WizardPhaseIntro text={t('pos.intro.tenants')} />
             <WizardTextField
               label={t('pos.tenant.name')} required
               hint={t('pos.hint.tenant.name')}
+              example={t('journey.ex.tenantName')}
               value={tenantName} onChangeText={(v) => { setTenantName(v); clearErr('tenantName'); }}
               testID="pos-tenant-name" error={fieldErrors.tenantName}
             />
             <WizardTextField
               label={t('pos.tenant.phone')} required
               hint={t('pos.hint.tenant.phone')}
+              example={t('journey.ex.phone')}
               value={tenantPhone} onChangeText={(v) => { setTenantPhone(v); clearErr('tenantPhone'); }}
               keyboard="phone-pad" testID="pos-tenant-phone" error={fieldErrors.tenantPhone}
             />
@@ -504,7 +580,7 @@ export function PropertySetupWizard() {
           </PhaseCard>
         ) : null}
 
-        {phase === 'contracts' ? (
+        {phase === 'contracts' && phaseView === 'form' ? (
           <PhaseCard>
             <WizardPhaseIntro text={t('pos.intro.contracts')} />
             <WizardTextField
@@ -540,7 +616,7 @@ export function PropertySetupWizard() {
           </PhaseCard>
         ) : null}
 
-        {phase === 'alerts' ? (
+        {phase === 'alerts' && phaseView === 'form' ? (
           <PhaseCard>
             <WizardPhaseIntro text={t('pos.intro.alerts')} />
             <WizardInfoBox why={t('pos.alerts.why')} example={t('pos.alerts.enable')} />
@@ -550,32 +626,27 @@ export function PropertySetupWizard() {
 
         {phase === 'smartEmployee' ? (
           <Animated.View entering={FadeInDown.duration(600)} style={{ marginTop: spacing.lg }}>
-            <GlassCard padding={28} radiusToken="lg" edge="emerald" testID="pos-complete-screen">
-              <Text style={[styles.completeTitle, isRTL && styles.rtl]}>{t('pos.complete.title')}</Text>
-              <View style={styles.checklist}>
-                {[t('pos.complete.property'), t('pos.complete.units'), t('pos.complete.contracts'), t('pos.complete.smart')].map((line) => (
-                  <Text key={line} style={[styles.checkItem, isRTL && styles.rtl]}>{line}</Text>
-                ))}
-              </View>
-              {tenantPortal ? (
-                <PortalPreview
-                  title={t('pos.portal.tenant.lead')}
-                  link={tenantPortal.portalUrl}
-                  extra={tenantPortal.whatsAppMessage}
-                  onShare={shareWhatsApp}
-                  shareLabel={t('pos.portal.shareWhatsapp')}
-                  isRTL={isRTL}
-                />
-              ) : null}
-              <Pressable testID="pos-complete-cta" style={styles.completeCta} onPress={() => { markSetupComplete(); router.replace('/operational/services' as any); }}>
-                <Text style={styles.completeCtaText}>{t('pos.complete.cta')}</Text>
-                <Feather name="arrow-right" size={16} color={colors.bg} />
-              </Pressable>
-            </GlassCard>
+            {tenantPortal ? (
+              <PortalPreview
+                title={t('pos.portal.tenant.lead')}
+                link={tenantPortal.portalUrl}
+                extra={tenantPortal.whatsAppMessage}
+                onShare={shareWhatsApp}
+                shareLabel={t('pos.portal.shareWhatsapp')}
+                isRTL={isRTL}
+              />
+            ) : null}
+            <View style={{ marginTop: spacing.md }}>
+              <JourneyLaunchComplete
+                onServices={() => { markSetupComplete(); router.replace('/operational/services' as any); }}
+                onUpload={() => { markSetupComplete(); router.replace('/upload' as any); }}
+                onDaily={() => { markSetupComplete(); router.replace('/' as any); }}
+              />
+            </View>
           </Animated.View>
         ) : null}
 
-        {phase !== 'smartEmployee' ? (
+        {phase !== 'smartEmployee' && phaseView === 'form' ? (
           <Animated.View entering={FadeInDown.duration(500).delay(80)} style={styles.actions}>
             {phaseIndex > 0 ? (
               <Pressable style={styles.secondaryBtn} onPress={() => goPhase(PHASES[phaseIndex - 1])} disabled={advancing}>
@@ -598,7 +669,7 @@ export function PropertySetupWizard() {
           </Animated.View>
         ) : null}
 
-        {phase !== 'smartEmployee' ? (
+        {phase !== 'smartEmployee' && phaseView === 'form' ? (
           <>
             <Pressable style={styles.importLink} onPress={() => router.push('/upload')}>
               <Feather name="upload" size={14} color={colors.gold} />

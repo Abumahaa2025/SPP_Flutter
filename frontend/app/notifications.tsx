@@ -10,12 +10,19 @@ import { api, type NotifT } from '@/src/api/client';
 import { formatNotification } from '@/src/utils/format-notification';
 import { spacing } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
+import { useAttentionPulse } from '@/src/hooks/useAttentionPulse';
 
 export default function Notifications() {
   const { t } = useI18n();
+  const { acknowledge } = useAttentionPulse();
   const [items, setItems] = useState<NotifT[]>([]);
 
-  useEffect(() => { api.notifications().then(setItems).catch(() => {}); }, []);
+  useEffect(() => {
+    api.notifications().then((list) => {
+      setItems(list);
+      void acknowledge();
+    }).catch(() => {});
+  }, [acknowledge]);
 
   return (
     <ScreenScaffold testID="notifications-screen">

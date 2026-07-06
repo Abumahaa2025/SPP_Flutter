@@ -10,18 +10,20 @@ import { Feather } from '@expo/vector-icons';
 
 import { ScreenScaffold } from '@/src/components/ScreenScaffold';
 import { StoryScreenHeader } from '@/src/components/StoryScreenHeader';
+import { GlassCard } from '@/src/components/GlassCard';
 import { UploadMagic, UploadFoundHeader } from '@/src/components/UploadMagic';
 import { UploadResultCard, type UploadResult } from '@/src/components/UploadResultCard';
 import { GuidedSetup } from '@/src/components/GuidedSetup';
 import { colors, spacing, typography, radius } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
-import { analyzePickedFiles, buildUploadFileMeta } from '@/src/utils/upload-analyze';
+import { analyzePickedFiles, buildUploadFileMeta, buildFilePreview, type FilePreview } from '@/src/utils/upload-analyze';
 import {
   fetchPortfolioAnalysis,
   fetchPortfolioAnalysisFallback,
   applyPortfolioAnalysis,
   type PortfolioAnalysis,
 } from '@/src/api/portfolio-analysis';
+import { UploadFilePreview } from '@/src/components/UploadFilePreview';
 import { UploadExecutiveReport } from '@/src/components/UploadExecutiveReport';
 import { UploadPortfolioPrompt } from '@/src/components/UploadPortfolioPrompt';
 import { UploadSmartDecisions } from '@/src/components/UploadSmartDecisions';
@@ -45,6 +47,9 @@ export default function UploadScreen() {
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [step, setStep] = useState(1);
   const [busy, setBusy] = useState(false);
+  const [preview, setPreview] = useState<FilePreview | null>(null);
+  const [importFailed, setImportFailed] = useState(false);
+  const [previewReady, setPreviewReady] = useState(false);
 
   const pickFiles = useCallback(async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -74,6 +79,12 @@ export default function UploadScreen() {
     setAnalysisSource(null);
     setAnalysisError(null);
     setStep(1);
+    setPreview(null);
+    setPreviewReady(false);
+    setImportFailed(false);
+    const pre = await buildFilePreview(next[0]);
+    setPreview(pre);
+    setPreviewReady(true);
   }, []);
 
   const removeFile = (name: string) => {
@@ -88,12 +99,20 @@ export default function UploadScreen() {
     setPromptDone(false);
     setAnalysisSource(null);
     setAnalysisError(null);
+    setPreview(null);
+    setPreviewReady(false);
+    setImportFailed(false);
   };
 
   const runAnalysis = async () => {
     if (!files.length || busy) return;
+    if (preview && !preview.parseable) {
+      setImportFailed(true);
+      return;
+    }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setBusy(true);
+    setImportFailed(false);
     setResults([]);
     setPortfolioAnalysis(null);
     setPromptDone(false);
@@ -108,21 +127,29 @@ export default function UploadScreen() {
       const fileMeta = await buildUploadFileMeta(files);
       const analyzed = await analyzePickedFiles(files, lang);
       let portfolio: PortfolioAnalysis;
+      let source: 'render' | 'fallback' = 'render';
       try {
         portfolio = await fetchPortfolioAnalysis(fileMeta);
-        setAnalysisSource('render');
         setAnalysisError(null);
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'analysis failed';
         setAnalysisError(msg);
         portfolio = await fetchPortfolioAnalysisFallback(fileMeta, lang);
-        setAnalysisSource('fallback');
+        source = 'fallback';
       }
-      setResults(analyzed);
-      setPortfolioAnalysis(portfolio);
-      await storage.setItem('spp.lastPortfolioAnalysis', JSON.stringify(portfolio));
-      setStep(7);
+      setAnalysisSource(source);
+      if (source === 'fallback' && preview && !preview.parseable) {
+        setImportFailed(true);
+        setResults([]);
+        setStep(1);
+      } else {
+        setResults(analyzed);
+        setPortfolioAnalysis(portfolio);
+        await storage.setItem('spp.lastPortfolioAnalysis', JSON.stringify(portfolio));
+        setStep(7);
+      }
     } catch {
+      setImportFailed(true);
       setStep(1);
     } finally {
       setBusy(false);
@@ -176,7 +203,53 @@ export default function UploadScreen() {
 
       <GuidedSetup flowId="pdf" defaultOpen={files.length === 0} testID="upload-guided" />
 
-      {!busy && !results.length ? (
+      {importFailed ? (
+        <Animated.View entering={FadeInDown.duration(500)} style={{ marginTop: spacing.lg }}>
+          <GlassCard padding={20} radiusToken="lg" edge="gold">
+            <Text style={styles.failTitle}>{t('journey.upload.failTitle')}</Text>
+            <Text style={styles.failBody}>{t('journey.upload.failBody')}</Text>
+            <View style={styles.actions}>
+              <Pressable
+                style={styles.secondaryBtn}
+                onPress={() => { setImportFailed(false); setFiles([]); setPreview(null); setPreviewReady(false); }}
+              >
+                <Text style={styles.secondaryText}>{t('journey.upload.failRetry')}</Text>
+              </Pressable>
+              <Pressable style={styles.primaryBtn} onPress={pickFiles}>
+                <Text style={styles.primaryText}>{t('journey.upload.failMatch')}</Text>
+              </Pressable>
+            </View>
+          </GlassCard>
+        </Animated.View>
+      ) : null}
+
+      {!busy && !results.length && previewReady && preview && !importFailed ? (
+        <View style={{ marginTop: spacing.lg }}>
+          <UploadFilePreview
+            preview={preview}
+            onConfirm={runAnalysis}
+            onCancel={() => { setFiles([]); setPreview(null); setPreviewReady(false); }}
+          />
+        </View>
+      ) : null}
+
+      {!busy && !results.length && previewReady && !preview && files.length > 0 && !importFailed ? (
+        <Animated.View entering={FadeInDown.duration(500)} style={{ marginTop: spacing.lg }}>
+          <GlassCard padding={20} radiusToken="lg">
+            <Text style={styles.failBody}>{t('journey.upload.noPreview')}</Text>
+            <View style={[styles.actions, { marginTop: spacing.md }]}>
+              <Pressable style={styles.secondaryBtn} onPress={() => { setFiles([]); setPreviewReady(false); }}>
+                <Text style={styles.secondaryText}>{t('journey.upload.confirmNo')}</Text>
+              </Pressable>
+              <Pressable style={styles.primaryBtn} onPress={runAnalysis}>
+                <Text style={styles.primaryText}>{t('journey.upload.confirmYes')}</Text>
+              </Pressable>
+            </View>
+          </GlassCard>
+        </Animated.View>
+      ) : null}
+
+      {!busy && !results.length && !previewReady ? (
         <Animated.View entering={FadeInDown.duration(600).delay(80)} style={styles.dropZone}>
           <Pressable onPress={pickFiles} style={styles.dropInner} testID="upload-pick-btn">
             <Feather name="upload-cloud" size={36} color={colors.gold} />
@@ -189,37 +262,6 @@ export default function UploadScreen() {
               ))}
             </View>
           </Pressable>
-        </Animated.View>
-      ) : null}
-
-      {files.length > 0 && !results.length ? (
-        <Animated.View entering={FadeInDown.duration(500)} style={styles.fileBlock}>
-          {files.map((f) => (
-            <View key={f.name} style={styles.fileRow}>
-              <Feather name="file" size={14} color={colors.textMuted} />
-              <Text style={styles.fileName} numberOfLines={1}>{f.name}</Text>
-              {!busy ? (
-                <Pressable onPress={() => removeFile(f.name)} hitSlop={8}>
-                  <Feather name="x" size={16} color={colors.textMuted} />
-                </Pressable>
-              ) : null}
-            </View>
-          ))}
-          {!busy ? (
-            <View style={styles.actions}>
-              <Pressable onPress={pickFiles} style={styles.secondaryBtn} testID="upload-add-more">
-                <Text style={styles.secondaryText}>{t('upload.addMore')}</Text>
-              </Pressable>
-              <Pressable
-                onPress={runAnalysis}
-                style={styles.primaryBtn}
-                testID="upload-analyze-btn"
-              >
-                <Feather name="zap" size={15} color={colors.bg} />
-                <Text style={styles.primaryText}>{t('upload.analyze')}</Text>
-              </Pressable>
-            </View>
-          ) : null}
         </Animated.View>
       ) : null}
 
@@ -326,4 +368,6 @@ const styles = StyleSheet.create({
   sourceFallback: { backgroundColor: colors.goldSoft, borderColor: colors.goldEdge },
   sourceText: { fontSize: 10, fontWeight: typography.weight.medium, color: colors.text },
   errorHint: { color: colors.textMuted, fontSize: 10, marginTop: 6, lineHeight: 14 },
+  failTitle: { color: colors.text, fontSize: 17, fontWeight: typography.weight.semibold, marginBottom: 8 },
+  failBody: { color: colors.textDim, fontSize: 14, lineHeight: 22 },
 });

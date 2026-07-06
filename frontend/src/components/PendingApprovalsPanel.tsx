@@ -8,7 +8,7 @@ import { useOperational } from '@/src/hooks/useOperational';
 import { colors, spacing, typography, radius } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
 
-type Props = { testID?: string };
+type Props = { testID?: string; onAction?: () => void };
 
 function fmtParams(t: (k: any) => string, key: string, params?: Record<string, string>) {
   let s = t(key);
@@ -21,7 +21,7 @@ function fmtParams(t: (k: any) => string, key: string, params?: Record<string, s
 }
 
 /** Employee suggestions that need owner approval before execution. */
-export function PendingApprovalsPanel({ testID = 'pending-approvals' }: Props) {
+export function PendingApprovalsPanel({ testID = 'pending-approvals', onAction }: Props) {
   const { t, isRTL } = useI18n();
   const { pendingActions, approveAction, dismissAction } = useOperational();
 
@@ -38,14 +38,18 @@ export function PendingApprovalsPanel({ testID = 'pending-approvals' }: Props) {
           <View style={[styles.row, isRTL && styles.rowRtl]}>
             <Pressable
               style={styles.approve}
-              onPress={() => { Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success); approveAction(action.id); }}
+              onPress={() => {
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                approveAction(action.id);
+                onAction?.();
+              }}
               testID={`approve-${action.id}`}
             >
               <Text style={styles.approveText}>{t('op.approvals.approve')}</Text>
             </Pressable>
             <Pressable
               style={styles.dismiss}
-              onPress={() => { Haptics.selectionAsync(); dismissAction(action.id); }}
+              onPress={() => { Haptics.selectionAsync(); dismissAction(action.id); onAction?.(); }}
               testID={`dismiss-${action.id}`}
             >
               <Text style={styles.dismissText}>{t('op.approvals.dismiss')}</Text>
