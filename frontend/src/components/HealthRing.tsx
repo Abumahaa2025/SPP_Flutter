@@ -15,6 +15,7 @@ type Props = {
   stroke?: number;
   label?: string;
   sublabel?: string;
+  statusText?: string;
 };
 
 /**
@@ -23,7 +24,7 @@ type Props = {
  * - Center: elegant score with delta caption + micro sublabel.
  */
 export function HealthRing({
-  score, size = 168, stroke = 12, label, sublabel,
+  score, size = 168, stroke = 12, label, sublabel, statusText,
 }: Props) {
   const clamped = Math.max(0, Math.min(100, score));
   const r = (size - stroke) / 2;
@@ -48,9 +49,8 @@ export function HealthRing({
   }, [scoreVal]);
 
   const status =
-    clamped >= 85 ? 'Excellent' :
-    clamped >= 70 ? 'Stable' :
-    'Attention';
+    statusText ??
+    (clamped >= 85 ? 'Excellent' : clamped >= 70 ? 'Stable' : 'Attention');
 
   const numberSize = Math.max(28, Math.round(size * 0.24));
 

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
@@ -30,9 +30,15 @@ export function SetupProgressBar({ compact = false, testID = 'setup-progress' }:
   const { t, isRTL } = useI18n();
   const router = useRouter();
   const { countEnabled } = useNotificationPrefs();
-  const { phases, overallPercent, nextPhase, isFullyReady, state, dismissProgress, ready } = usePropertyOS(countEnabled);
+  const { phases, overallPercent, nextPhase, isFullyReady, state, dismissProgress, markSetupComplete, ready } = usePropertyOS(countEnabled);
 
-  if (!ready || isFullyReady || state.dismissedProgress) return null;
+  useEffect(() => {
+    if (ready && isFullyReady && !state.setupCompleted) {
+      markSetupComplete();
+    }
+  }, [ready, isFullyReady, state.setupCompleted, markSetupComplete]);
+
+  if (!ready || state.setupCompleted || state.dismissedProgress) return null;
 
   const nextLabel = nextPhase ? t(phaseLabelKey(nextPhase)) : t('pos.phase.smartEmployee');
 

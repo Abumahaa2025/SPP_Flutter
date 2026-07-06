@@ -1,22 +1,24 @@
 import React from 'react';
 import { LegalScreen } from '@/src/components/LegalScreen';
+import { useI18n } from '@/src/i18n';
 
 export default function Terms() {
+  const { t } = useI18n();
   return (
     <LegalScreen
       testID="terms-screen"
-      eyebrow="Legal"
+      question={t('page.q.terms')}
       doc={{
-        title: 'Terms of Service',
-        sub: 'The rules that govern your use of SPP.',
+        title: t('legal.terms.title'),
+        sub: t('legal.terms.sub'),
         sections: [
-          { h: 'Acceptance', p: 'By using SPP you agree to these terms. If you do not agree, please discontinue use.' },
-          { h: 'Service', p: 'SPP provides AI-powered decision support for property owners. Recommendations are advisory and never a substitute for professional judgment.' },
-          { h: 'Subscription', p: 'Paid plans renew automatically unless cancelled. You can cancel any time in Settings \u2192 Subscription.' },
-          { h: 'Acceptable use', p: 'Do not reverse-engineer, resell, or use SPP to violate applicable laws. Automated scraping is not permitted.' },
-          { h: 'Limitation of liability', p: 'SPP is provided \u201cas is\u201d. To the maximum extent permitted, we are not liable for indirect or consequential damages.' },
-          { h: 'Termination', p: 'We may suspend or terminate accounts that violate these terms. You can terminate at any time.' },
-          { h: 'Governing law', p: 'These terms are governed by the laws of the United Arab Emirates.' },
+          { h: t('legal.terms.s1.h'), p: t('legal.terms.s1.p') },
+          { h: t('legal.terms.s2.h'), p: t('legal.terms.s2.p') },
+          { h: t('legal.terms.s3.h'), p: t('legal.terms.s3.p') },
+          { h: t('legal.terms.s4.h'), p: t('legal.terms.s4.p') },
+          { h: t('legal.terms.s5.h'), p: t('legal.terms.s5.p') },
+          { h: t('legal.terms.s6.h'), p: t('legal.terms.s6.p') },
+          { h: t('legal.terms.s7.h'), p: t('legal.terms.s7.p') },
         ],
       }}
     />

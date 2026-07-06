@@ -5,9 +5,9 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 
 import { ScreenScaffold } from '@/src/components/ScreenScaffold';
-import { ScreenHeader } from '@/src/components/ScreenHeader';
+import { StoryScreenHeader } from '@/src/components/StoryScreenHeader';
 import { GlassCard } from '@/src/components/GlassCard';
-import { EmptyState } from '@/src/components/EmptyState';
+import { AliveEmpty } from '@/src/components/AliveEmpty';
 import { BrainVerdict } from '@/src/components/BrainVerdict';
 import { api, type ReportT } from '@/src/api/client';
 import { colors, spacing, typography } from '@/src/theme';
@@ -27,12 +27,12 @@ export default function Reports() {
 
   return (
     <ScreenScaffold testID="reports-screen">
-      <ScreenHeader eyebrow="Intelligence" title={t('reports.title')} sub={t('reports.sub')} showBack />
+      <StoryScreenHeader question={t('page.q.reports')} hint={t('reports.sub')} showBack testID="reports-header" />
 
       <BrainVerdict screen="reports" />
 
       {items.length === 0 ? (
-        <EmptyState icon="file" eyebrow="Nothing yet" title="Your first report will land soon." />
+        <AliveEmpty title={t('alive.reports.title')} body={t('alive.reports.body')} />
       ) : items.map((r, i) => (
         <Animated.View key={r.id} entering={FadeInDown.duration(600).delay(60 * i)}>
           <Pressable

@@ -8,7 +8,6 @@ import { ScreenScaffold } from '@/src/components/ScreenScaffold';
 import { StoryScreenHeader } from '@/src/components/StoryScreenHeader';
 import { GlassCard } from '@/src/components/GlassCard';
 import { AliveEmpty } from '@/src/components/AliveEmpty';
-import { BrainVerdict } from '@/src/components/BrainVerdict';
 import { SetupProgressBar } from '@/src/components/SetupProgressBar';
 import { GuidedSetup } from '@/src/components/GuidedSetup';
 import { api, type ContractT, type PropertyT, type TenantT } from '@/src/api/client';
@@ -76,7 +75,6 @@ export default function Contracts() {
       <StoryScreenHeader question={t('page.q.contracts')} hint={t('contracts.sub')} showBack testID="contracts-header" />
       <SetupProgressBar compact testID="contracts-setup-progress" />
       <GuidedSetup flowId="tenant" defaultOpen={sorted.length === 0} testID="contracts-guided" />
-      <BrainVerdict screen="contracts" />
       {sorted.length === 0 ? (
         <AliveEmpty title={t('alive.contracts.title')} body={t('alive.contracts.body')} />
       ) : sorted.map((c, i) => {

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, Alert } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import Animated, { FadeInDown } from 'react-native-reanimated';
@@ -6,17 +6,30 @@ import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 
 import { ScreenScaffold } from '@/src/components/ScreenScaffold';
-import { ScreenHeader } from '@/src/components/ScreenHeader';
+import { StoryScreenHeader } from '@/src/components/StoryScreenHeader';
 import { GlassCard } from '@/src/components/GlassCard';
 import { colors, spacing, typography, radius } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
 import { useNotificationPrefs, useAccountPrefs } from '@/src/hooks/usePreferences';
+import { api, type OwnerT } from '@/src/api/client';
+import { storage } from '@/src/utils/storage';
 
 export default function Profile() {
   const router = useRouter();
   const { t, lang, isRTL } = useI18n();
   const { countEnabled } = useNotificationPrefs();
   const { prefs } = useAccountPrefs();
+  const [owner, setOwner] = useState<OwnerT | null>(null);
+  const [storedName, setStoredName] = useState('');
+
+  useEffect(() => {
+    api.owner().then(setOwner).catch(() => {});
+    storage.getItem<string>('spp.ownerName', '').then((v) => setStoredName(v ?? ''));
+  }, []);
+
+  const displayName = owner?.name?.trim() || storedName.trim() || t('profile.emptyName');
+  const initial = displayName.charAt(0).toUpperCase() || '·';
+  const propertyCount = owner?.properties ?? 0;
 
   const notImpl = (label: string) => {
     Haptics.selectionAsync();
@@ -27,12 +40,7 @@ export default function Profile() {
 
   return (
     <ScreenScaffold testID="profile-screen">
-      <ScreenHeader
-        eyebrow={t('settings.section.account').toUpperCase()}
-        title={t('profile.title')}
-        sub={t('profile.sub')}
-        showBack
-      />
+      <StoryScreenHeader question={t('page.q.profile')} hint={t('profile.sub')} showBack testID="profile-header" />
 
       {/* Identity card */}
       <Animated.View entering={FadeInDown.duration(650)}>
@@ -44,18 +52,18 @@ export default function Profile() {
               style={styles.avatarWrap}
             >
               <View style={styles.avatar}>
-                <Text style={styles.avatarInitial}>A</Text>
+                <Text style={styles.avatarInitial}>{initial}</Text>
               </View>
               <View style={styles.avatarEdit}>
                 <Feather name="camera" size={9} color={colors.bg} />
               </View>
             </Pressable>
             <View style={{ flex: 1 }}>
-              <Text style={[styles.name, dir === 'rtl' && { textAlign: 'right' }]}>Alexander Vale</Text>
-              <Text style={[styles.email, dir === 'rtl' && { textAlign: 'right' }]}>alexander@spp.ai</Text>
+              <Text style={[styles.name, dir === 'rtl' && { textAlign: 'right' }]}>{displayName}</Text>
+              <Text style={[styles.email, dir === 'rtl' && { textAlign: 'right' }]}>{t('profile.emptyEmail')}</Text>
               <View style={[styles.orgRow, dir === 'rtl' && { flexDirection: 'row-reverse' }]}>
                 <Feather name="briefcase" size={11} color={colors.textMuted} />
-                <Text style={styles.org}>Vale Holdings · Owner</Text>
+                <Text style={styles.org}>{t('profile.ownerRole')}</Text>
               </View>
             </View>
           </View>
@@ -72,13 +80,13 @@ export default function Profile() {
 
       {/* Personal */}
       <SectionCard delay={80} title={t('profile.section.personal')}>
-        <FieldRow icon="user" label={t('profile.field.name')} value="Alexander Vale" onPress={() => notImpl(t('profile.field.name'))} testID="f-name" dir={dir} />
+        <FieldRow icon="user" label={t('profile.field.name')} value={displayName} onPress={() => notImpl(t('profile.field.name'))} testID="f-name" dir={dir} />
         <Divider />
-        <FieldRow icon="mail" label={t('profile.field.email')} value="alexander@spp.ai" onPress={() => notImpl(t('profile.field.email'))} testID="f-email" dir={dir} />
+        <FieldRow icon="mail" label={t('profile.field.email')} value={t('profile.emptyEmail')} onPress={() => notImpl(t('profile.field.email'))} testID="f-email" dir={dir} />
         <Divider />
-        <FieldRow icon="phone" label={t('profile.field.phone')} value="+971 ·· masked" onPress={() => notImpl(t('profile.field.phone'))} testID="f-phone" dir={dir} />
+        <FieldRow icon="phone" label={t('profile.field.phone')} value={t('profile.emptyPhone')} onPress={() => notImpl(t('profile.field.phone'))} testID="f-phone" dir={dir} />
         <Divider />
-        <FieldRow icon="briefcase" label={t('profile.field.company')} value="Vale Holdings" onPress={() => notImpl(t('profile.field.company'))} testID="f-company" dir={dir} />
+        <FieldRow icon="briefcase" label={t('profile.field.company')} value={t('profile.emptyCompany')} onPress={() => notImpl(t('profile.field.company'))} testID="f-company" dir={dir} />
       </SectionCard>
 
       {/* Regional & appearance */}
@@ -104,7 +112,7 @@ export default function Profile() {
 
       {/* Portfolio identity */}
       <SectionCard delay={200} title={t('profile.section.portfolio')} accent="gold">
-        <FieldRow icon="grid" label={t('hub.tile.owner')} value="4 properties" onPress={() => router.push('/owner')} testID="f-owner" dir={dir} accent="gold" />
+        <FieldRow icon="grid" label={t('hub.tile.owner')} value={propertyCount > 0 ? t('profile.propertyCount').replace('{count}', String(propertyCount)) : t('profile.noProperties')} onPress={() => router.push('/owner')} testID="f-owner" dir={dir} accent="gold" />
         <Divider />
         <FieldRow icon="star" label={t('profile.field.defaultProperty')} value={prefs.defaultProperty === 'none' ? 'Not set' : prefs.defaultProperty} onPress={() => notImpl(t('profile.field.defaultProperty'))} testID="f-defprop" dir={dir} />
       </SectionCard>
@@ -143,7 +151,7 @@ export default function Profile() {
       <SectionCard delay={440} title={t('profile.section.billing')} accent="gold">
         <FieldRow
           icon="credit-card" label={t('profile.field.subscription')}
-          value="Executive · AED 199/mo"
+          value={t('profile.noSubscription')}
           onPress={() => router.push('/billing')}
           testID="f-sub" dir={dir} accent="gold"
         />

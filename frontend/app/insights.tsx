@@ -1,21 +1,25 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
-import { Feather } from '@expo/vector-icons';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 
 import { ScreenScaffold } from '@/src/components/ScreenScaffold';
-import { ScreenHeader } from '@/src/components/ScreenHeader';
+import { StoryScreenHeader } from '@/src/components/StoryScreenHeader';
+import { ScreenLoading } from '@/src/components/ScreenLoading';
+import { AliveEmpty } from '@/src/components/AliveEmpty';
 import { GlassCard } from '@/src/components/GlassCard';
-import { HealthRing } from '@/src/components/HealthRing';
-import { BrainVerdict } from '@/src/components/BrainVerdict';
-import { api, type Briefing, type PropertyT } from '@/src/api/client';
+import { IntelligenceInsightsSection } from '@/src/components/IntelligenceInsightsSection';
+import { api, type PropertyT } from '@/src/api/client';
+import type { IntelligenceInsight } from '@/src/api/intelligence';
+import { fetchExecutiveCached } from '@/src/api/executive-cache';
+import { kpisFromExecutive } from '@/src/api/executive-map';
+import type { Executive } from '@/src/api/executive';
 import { colors, spacing, typography } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
 
 const fmtCurrency = (n: number) => {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(2)}M`;
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1_000) return `${(n / 1000).toFixed(0)}K`;
   return `${n}`;
 };
@@ -23,166 +27,103 @@ const fmtCurrency = (n: number) => {
 export default function Insights() {
   const { t } = useI18n();
   const router = useRouter();
-  const [b, setB] = useState<Briefing | null>(null);
-  const [props, setProps] = useState<PropertyT[]>([]);
+  const [exec, setExec] = useState<Executive | null | undefined>(undefined);
+  const [props, setProps] = useState<PropertyT[] | null>(null);
+  const [insights, setInsights] = useState<IntelligenceInsight[]>([]);
 
   useEffect(() => {
-    api.briefing().then(setB).catch(() => {});
-    api.properties().then(setProps).catch(() => {});
+    fetchExecutiveCached().then(setExec).catch(() => setExec(null));
+    api.properties().then(setProps).catch(() => setProps([]));
+    api.intelligence().then((r) => setInsights(r.insights)).catch(() => {});
   }, []);
 
-  const bars = props
-    .slice()
-    .sort((a, z) => z.monthly_revenue - a.monthly_revenue);
+  const loading = exec === undefined || props === null;
+  const kpis = exec ? kpisFromExecutive(exec) : null;
+  const bars = (props ?? []).slice().sort((a, z) => z.monthly_revenue - a.monthly_revenue);
   const maxRev = Math.max(1, ...bars.map((p) => p.monthly_revenue));
 
   return (
     <ScreenScaffold testID="insights-screen">
-      <ScreenHeader
-        eyebrow={t('nav.insights')}
-        title={t('insights.title')}
-        sub={t('insights.sub')}
-      />
+      <StoryScreenHeader question={t('page.q.insights')} hint={t('insights.sub')} showBack testID="insights-header" />
 
-      <BrainVerdict screen="insights" />
-
-      {/* KPI Row */}
-      <Animated.View entering={FadeInDown.duration(650).delay(60)}>
-        <GlassCard padding={22} radiusToken="lg" edge="emerald">
-          <View style={styles.kpiTop}>
-            <View style={{ flex: 1 }}>
-              <Text style={styles.kpiEyebrow}>Annualized revenue</Text>
-              <View style={styles.kpiRow}>
-                <Text style={styles.kpiLead}>AED</Text>
-                <Text style={styles.kpiValue}>{fmtCurrency(b?.portfolio_annual_revenue ?? 0)}</Text>
-              </View>
-              <View style={styles.trendRow}>
-                <Feather name="trending-up" size={12} color={colors.emerald} />
-                <Text style={styles.trendText}>+8.2% vs last quarter · outperforming market by 0.9pt</Text>
-              </View>
-            </View>
-            <HealthRing score={b?.avg_health ?? 0} size={110} stroke={9} label="Health" />
-          </View>
-        </GlassCard>
-      </Animated.View>
-
-      {/* Revenue bars */}
-      <Animated.View entering={FadeInDown.duration(650).delay(140)} style={{ marginTop: spacing.lg }}>
-        <GlassCard padding={22} radiusToken="lg">
-          <Text style={styles.sectionEyebrow}>Revenue by property · monthly</Text>
-          <View style={{ marginTop: spacing.md, gap: 14 }}>
-            {bars.map((p) => {
-              const w = (p.monthly_revenue / maxRev) * 100;
-              return (
-                <Pressable
-                  key={p.id}
-                  testID={`insight-bar-${p.id}`}
-                  onPress={() => { Haptics.selectionAsync(); router.push(`/property/${p.id}` as any); }}
-                >
-                  <View style={styles.barRow}>
-                    <Text style={styles.barName} numberOfLines={1}>{p.name}</Text>
-                    <Text style={styles.barValue}>AED {fmtCurrency(p.monthly_revenue)}</Text>
-                  </View>
-                  <View style={styles.barTrack}>
-                    <View style={[styles.barFill, { width: `${w}%` }]} />
-                  </View>
-                </Pressable>
-              );
-            })}
-          </View>
-        </GlassCard>
-      </Animated.View>
-
-      {/* Occupancy + Signal grid */}
-      <View style={styles.grid}>
-        <GridStat
-          delay={220}
-          label="Occupancy"
-          value={`${b?.occupancy ?? 0}%`}
-          hint={`${b?.properties_count ?? 0} properties`}
-          icon="users"
+      {loading ? (
+        <ScreenLoading message={t('home.loading')} testID="insights-loading" />
+      ) : !props?.length ? (
+        <AliveEmpty
+          title={t('alive.insights.title')}
+          body={t('alive.insights.body')}
+          actionLabel={t('alive.portfolio.action')}
+          onAction={() => router.push('/upload')}
+          testID="insights-empty"
         />
-        <GridStat
-          delay={280}
-          label="Signals"
-          value={`${b?.sensor_alerts.length ?? 0}`}
-          hint="active alerts"
-          icon="activity"
-          accent={colors.gold}
-        />
-      </View>
+      ) : (
+        <>
+          <Animated.View entering={FadeInDown.duration(550)}>
+            <GlassCard padding={24} radiusToken="lg" edge="gold">
+              <Text style={styles.summaryLine}>
+                {t('common.currency')} {fmtCurrency(kpis?.portfolio_annual_revenue ?? 0)}
+                {' · '}
+                {t('insights.occupancy')} {kpis?.occupancy ?? 0}%
+              </Text>
+            </GlassCard>
+          </Animated.View>
 
-      {/* Decisions distribution */}
-      <Animated.View entering={FadeInDown.duration(650).delay(340)} style={{ marginTop: spacing.lg }}>
-        <GlassCard padding={22} radiusToken="lg">
-          <Text style={styles.sectionEyebrow}>AI activity · today</Text>
-          <View style={styles.aiRow}>
-            <Feather name="cpu" size={16} color={colors.gold} />
-            <Text style={styles.aiText}>
-              {b?.decisions.length ?? 0} decisions surfaced · {b?.sensor_alerts.length ?? 0} sensor
-              signals · continuously learning your preferences.
-            </Text>
-          </View>
-        </GlassCard>
-      </Animated.View>
+          <IntelligenceInsightsSection insights={insights.slice(0, 3)} delay={80} prominent />
+
+          {!insights.length ? (
+            <AliveEmpty
+              title={t('alive.intelligence.title')}
+              body={t('alive.intelligence.body')}
+              testID="insights-no-discoveries"
+            />
+          ) : null}
+
+          {bars.length > 0 ? (
+            <Animated.View entering={FadeInDown.duration(650).delay(140)} style={{ marginTop: spacing.xl }}>
+              <GlassCard padding={24} radiusToken="lg">
+                <Text style={styles.sectionTitle}>{t('insights.revenueByProp')}</Text>
+                <View style={{ marginTop: spacing.lg, gap: 18 }}>
+                  {bars.map((p) => {
+                    const w = (p.monthly_revenue / maxRev) * 100;
+                    return (
+                      <Pressable
+                        key={p.id}
+                        onPress={() => { Haptics.selectionAsync(); router.push(`/property/${p.id}` as any); }}
+                      >
+                        <Text style={styles.propName}>{p.name}</Text>
+                        <View style={styles.bar}>
+                          <View style={[styles.barFill, { width: `${w}%` }]} />
+                        </View>
+                        <Text style={styles.revText}>{t('common.currency')} {fmtCurrency(p.monthly_revenue)}</Text>
+                      </Pressable>
+                    );
+                  })}
+                </View>
+              </GlassCard>
+            </Animated.View>
+          ) : null}
+        </>
+      )}
     </ScreenScaffold>
   );
 }
 
-function GridStat({
-  label, value, hint, icon, delay = 0, accent = colors.emerald,
-}: { label: string; value: string; hint: string; icon: keyof typeof Feather.glyphMap; delay?: number; accent?: string }) {
-  return (
-    <Animated.View entering={FadeInDown.duration(650).delay(delay)} style={{ flex: 1 }}>
-      <GlassCard padding={18} radiusToken="lg">
-        <Feather name={icon} size={14} color={accent} />
-        <Text style={styles.gsLabel}>{label}</Text>
-        <Text style={styles.gsValue}>{value}</Text>
-        <Text style={styles.gsHint}>{hint}</Text>
-      </GlassCard>
-    </Animated.View>
-  );
-}
-
 const styles = StyleSheet.create({
-  kpiTop: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  kpiEyebrow: {
-    color: colors.textMuted, fontSize: 10.5, letterSpacing: 2,
-    textTransform: 'uppercase', fontWeight: typography.weight.medium,
+  summaryLine: {
+    color: colors.text,
+    fontSize: 17,
+    fontWeight: typography.weight.semibold,
+    lineHeight: 26,
+    textAlign: 'center',
   },
-  kpiRow: { flexDirection: 'row', alignItems: 'baseline', gap: 6, marginTop: 8 },
-  kpiLead: { color: colors.textMuted, fontSize: 12, letterSpacing: 1.2 },
-  kpiValue: {
-    color: colors.text, fontSize: 30, fontWeight: typography.weight.semibold,
-    letterSpacing: typography.letter.tight, fontVariant: ['tabular-nums'],
+  sectionTitle: {
+    color: colors.text,
+    fontSize: 17,
+    fontWeight: typography.weight.semibold,
+    letterSpacing: typography.letter.tight,
   },
-  trendRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
-  trendText: { color: colors.emerald, fontSize: 12 },
-  sectionEyebrow: {
-    color: colors.textMuted, fontSize: 10.5, letterSpacing: 2,
-    textTransform: 'uppercase', fontWeight: typography.weight.medium,
-  },
-  barRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
-  barName: { color: colors.text, fontSize: 13, flex: 1, marginRight: 12, letterSpacing: -0.1 },
-  barValue: { color: colors.textDim, fontSize: 12, fontVariant: ['tabular-nums'], letterSpacing: -0.1 },
-  barTrack: {
-    height: 5, borderRadius: 3, backgroundColor: 'rgba(255,255,255,0.04)',
-    marginTop: 10, overflow: 'hidden',
-  },
-  barFill: {
-    height: 5, borderRadius: 3, backgroundColor: colors.gold,
-    shadowColor: colors.gold, shadowOpacity: 0.55, shadowRadius: 10, shadowOffset: { width: 0, height: 0 },
-  },
-  grid: { flexDirection: 'row', gap: spacing.md, marginTop: spacing.lg },
-  gsLabel: {
-    color: colors.textMuted, fontSize: 10.5, letterSpacing: 1.8,
-    textTransform: 'uppercase', fontWeight: typography.weight.medium, marginTop: 10,
-  },
-  gsValue: {
-    color: colors.text, fontSize: 26, fontWeight: typography.weight.semibold,
-    letterSpacing: typography.letter.tight, marginTop: 4, fontVariant: ['tabular-nums'],
-  },
-  gsHint: { color: colors.textSubtle, fontSize: 11, marginTop: 4 },
-  aiRow: { flexDirection: 'row', gap: 12, marginTop: 14, alignItems: 'flex-start' },
-  aiText: { flex: 1, color: colors.textDim, fontSize: 13, lineHeight: 20 },
+  propName: { color: colors.text, fontSize: 14, fontWeight: typography.weight.medium, marginBottom: 8 },
+  bar: { height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.06)', overflow: 'hidden' },
+  barFill: { height: 4, borderRadius: 2, backgroundColor: colors.gold },
+  revText: { color: colors.textMuted, fontSize: 12, marginTop: 6 },
 });

@@ -5,9 +5,9 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 
 import { ScreenScaffold } from '@/src/components/ScreenScaffold';
-import { ScreenHeader } from '@/src/components/ScreenHeader';
+import { StoryScreenHeader } from '@/src/components/StoryScreenHeader';
 import { GlassCard } from '@/src/components/GlassCard';
-import { EmptyState } from '@/src/components/EmptyState';
+import { AliveEmpty } from '@/src/components/AliveEmpty';
 import { BrainVerdict } from '@/src/components/BrainVerdict';
 import { api, type KnowledgeT } from '@/src/api/client';
 import { colors, spacing, typography } from '@/src/theme';
@@ -20,10 +20,10 @@ export default function Knowledge() {
 
   return (
     <ScreenScaffold testID="knowledge-screen">
-      <ScreenHeader eyebrow="Learn" title={t('knowledge.title')} sub={t('knowledge.sub')} showBack />
+      <StoryScreenHeader question={t('page.q.knowledge')} hint={t('knowledge.sub')} showBack testID="knowledge-header" />
       <BrainVerdict screen="knowledge" />
       {items.length === 0 ? (
-        <EmptyState icon="book-open" eyebrow="Curating" title="Building your library." body="Deep dives on how SPP thinks will land here first." />
+        <AliveEmpty title={t('alive.knowledge.title')} body={t('alive.knowledge.body')} />
       ) : items.map((k, i) => (
         <Animated.View key={k.id} entering={FadeInDown.duration(600).delay(50 * i)}>
           <Pressable

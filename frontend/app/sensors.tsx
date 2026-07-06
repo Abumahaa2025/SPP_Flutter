@@ -5,10 +5,11 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 
 import { ScreenScaffold } from '@/src/components/ScreenScaffold';
-import { ScreenHeader } from '@/src/components/ScreenHeader';
+import { StoryScreenHeader } from '@/src/components/StoryScreenHeader';
 import { GlassCard } from '@/src/components/GlassCard';
-import { EmptyState } from '@/src/components/EmptyState';
+import { AliveEmpty } from '@/src/components/AliveEmpty';
 import { BrainVerdict } from '@/src/components/BrainVerdict';
+import { GuidedSetup } from '@/src/components/GuidedSetup';
 import { api, type PropertyT, type SensorT } from '@/src/api/client';
 import { colors, spacing, typography, radius } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
@@ -49,23 +50,22 @@ export default function Sensors() {
 
   return (
     <ScreenScaffold testID="sensors-screen">
-      <ScreenHeader
-        eyebrow="Sensing"
-        title={t('sensors.title')}
-        sub={t('sensors.sub')}
-        showBack
-      />
+      <StoryScreenHeader question={t('page.q.sensors')} hint={t('sensors.explain')} showBack testID="sensors-header" />
+
+      <GuidedSetup flowId="virtualSensors" defaultOpen={sensors.length === 0} testID="sensors-guided" />
 
       <BrainVerdict screen="sensors" />
 
       <ScrollView
         horizontal
+        nestedScrollEnabled
         showsHorizontalScrollIndicator={false}
         contentContainerStyle={styles.chipRow}
         style={{ marginBottom: spacing.lg, marginHorizontal: -spacing.lg }}
       >
         {(['all', 'attention', 'nominal'] as Filter[]).map((f) => {
           const active = f === filter;
+          const labelKey = f === 'all' ? 'sensors.filter.all' : f === 'attention' ? 'sensors.filter.attention' : 'sensors.filter.nominal';
           return (
             <Pressable
               key={f}
@@ -73,7 +73,7 @@ export default function Sensors() {
               onPress={() => { Haptics.selectionAsync(); setFilter(f); }}
               style={[styles.chip, active && styles.chipActive]}
             >
-              <Text style={[styles.chipText, active && styles.chipTextActive]}>{f}</Text>
+              <Text style={[styles.chipText, active && styles.chipTextActive]}>{t(labelKey)}</Text>
             </Pressable>
           );
         })}
@@ -82,7 +82,7 @@ export default function Sensors() {
       <View style={styles.grid}>
         {filtered.length === 0 ? (
           <View style={{ width: '100%' }}>
-            <EmptyState icon="activity" eyebrow="No signals" title="No sensors match this filter." />
+            <AliveEmpty title={t('alive.sensors.title')} body={t('alive.sensors.body')} />
           </View>
         ) : null}
         {filtered.map((s, i) => {

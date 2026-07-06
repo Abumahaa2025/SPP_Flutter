@@ -71,10 +71,10 @@ export const typography = {
   display: 32,
   largeTitle: 28,
   title: 22,
-  cardTitle: 18,
-  body: 15,
-  small: 13,
-  micro: 11,
+  cardTitle: 19,
+  body: 16,
+  small: 14,
+  micro: 12,
 
   // Number scale (only when necessary)
   numLg: 36,

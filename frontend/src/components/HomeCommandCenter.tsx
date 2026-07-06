@@ -3,165 +3,256 @@ import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import Animated, { FadeInDown } from 'react-native-reanimated';
+import { Feather } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
 
 import { GlassCard } from '@/src/components/GlassCard';
 import { SmartEmployeeMark } from '@/src/components/SmartEmployeeMark';
-import { ExecutiveAskBar } from '@/src/components/ExecutiveAskBar';
-import { HomeStatusPulseCard } from '@/src/components/HomeStatusPulseCard';
-import { AppIcon } from '@/src/components/ui/AppIcon';
-import { PressableScale } from '@/src/components/ui/PressableScale';
-import { PulseRow } from '@/src/components/PulseRow';
-import type { Briefing, NotifT } from '@/src/api/client';
+import { ScreenHint } from '@/src/components/ScreenHint';
+import { PendingApprovalsPanel } from '@/src/components/PendingApprovalsPanel';
+import { SmartEmployeeSetupInsights } from '@/src/components/SmartEmployeeSetupInsights';
+import type { Briefing, DecisionT, NotifT } from '@/src/api/client';
 import { formatNotification } from '@/src/utils/format-notification';
-import { buildPulseItems } from '@/src/utils/pulse-items';
-import { colors, spacing, typography } from '@/src/theme';
+import { usePropertyOS } from '@/src/hooks/usePropertyOS';
+import { useNotificationPrefs } from '@/src/hooks/usePreferences';
+import { colors, spacing, typography, radius } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
 
 type Props = {
   briefing: Briefing | null;
   notifications: NotifT[];
-  dateEyebrow: string;
-  onBriefLayout?: (y: number) => void;
 };
 
-/** Alive command center — employee, ask, brief, alerts. */
-export function HomeCommandCenter({ briefing, notifications, dateEyebrow, onBriefLayout }: Props) {
+function decisionRoute(d: DecisionT): string {
+  if (d.kind === 'maintenance') return '/maintenance';
+  if (d.kind === 'financial') return '/billing';
+  if (d.kind === 'tenant') return '/contracts';
+  return '/brain';
+}
+
+/** Calm daily home — four signals + assistant as the main control point. */
+export function HomeCommandCenter({ briefing, notifications }: Props) {
   const { t, isRTL } = useI18n();
   const router = useRouter();
+  const { countEnabled } = useNotificationPrefs();
+  const { state: osState, isFullyReady, ready } = usePropertyOS(countEnabled);
+
+  const dailyMode = Boolean(osState.setupCompleted && osState.property);
+  const lastNotif = notifications[0];
+  const lastDecision = briefing?.decisions?.[0];
+  const isLive = dailyMode || Boolean(briefing && briefing.properties_count > 0);
+
+  const statusText = dailyMode
+    ? t('home.daily.osStatus')
+        .replace('{units}', String(osState.units.length))
+        .replace('{tenants}', String(osState.tenants.length))
+        .replace('{contracts}', String(osState.contracts.length))
+    : isLive
+      ? t('home.daily.statusLive')
+          .replace('{count}', String(briefing?.properties_count ?? 0))
+          .replace('{occupancy}', String(Math.round(briefing?.occupancy ?? 0)))
+      : t('home.daily.statusReady');
+
+  const nextStep = dailyMode
+    ? (lastDecision?.title ?? t('home.daily.nextOps'))
+    : !ready || (!osState.setupCompleted && !isFullyReady)
+      ? t('home.daily.nextSetup')
+      : lastDecision?.title
+        ?? (briefing?.headline || t('home.daily.nextUpload'));
+
+  const goAssistant = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    router.push('/brain');
+  };
+
+  const goNext = () => {
+    Haptics.selectionAsync();
+    if (dailyMode) {
+      if (lastDecision) {
+        router.push(decisionRoute(lastDecision) as any);
+        return;
+      }
+      if (lastNotif) {
+        const f = formatNotification(lastNotif, (k) => t(k as Parameters<typeof t>[0]));
+        router.push(f.actionRoute as any);
+        return;
+      }
+      router.push('/owner');
+      return;
+    }
+    if (!ready || (!osState.setupCompleted && !isFullyReady)) {
+      router.push('/setup/property-os' as any);
+      return;
+    }
+    if (lastDecision) {
+      router.push(decisionRoute(lastDecision) as any);
+      return;
+    }
+    if (lastNotif) {
+      const f = formatNotification(lastNotif, (k) => t(k as Parameters<typeof t>[0]));
+      router.push(f.actionRoute as any);
+      return;
+    }
+    router.push('/upload');
+  };
 
   return (
     <View testID="home-command-center">
-      <HomeStatusPulseCard briefing={briefing} notifications={notifications} />
+      <ScreenHint text={t('home.daily.hint')} testID="home-daily-hint" />
 
-      <Animated.View entering={FadeInDown.duration(600).delay(40)}>
-        <GlassCard padding={22} radiusToken="lg" edge="gold" testID="employee-card">
-          <View style={[styles.employeeRow, isRTL && styles.rowRtl]}>
-            <SmartEmployeeMark size={52} />
-            <View style={styles.employeeText}>
-              <Text style={[styles.eyebrow, isRTL && styles.rtl]}>{dateEyebrow}</Text>
-              <Text style={[styles.salutation, isRTL && styles.rtl]}>
-                {briefing?.salutation ? `${briefing.salutation}، ${briefing.owner_name}` : t('home.greeting')}
-              </Text>
-              <Text style={[styles.headline, isRTL && styles.rtl]} numberOfLines={2}>
-                {briefing?.headline || t('home.command.lead')}
-              </Text>
-            </View>
-          </View>
-        </GlassCard>
-      </Animated.View>
-
-      <Animated.View entering={FadeInDown.duration(550).delay(90)} style={styles.gap}>
-        <PulseRow
-          testID="home-pulse-row"
-          items={buildPulseItems(briefing, (k) => t(k as Parameters<typeof t>[0])).map((item) => ({
-            ...item,
-            onPress: item.key === 'tasks' && briefing?.decisions.length
-              ? () => router.push('/hub')
-              : item.key === 'maintenance'
-                ? () => router.push('/maintenance')
-                : item.key === 'late'
-                  ? () => router.push('/billing')
-                  : item.key === 'collection'
-                    ? () => router.push('/insights')
-                    : item.onPress,
-          }))}
-        />
-      </Animated.View>
-
-      <View style={styles.gap}>
-        <ExecutiveAskBar delay={80} />
-      </View>
-
-      {briefing?.narrative?.length ? (
-        <Animated.View
-          entering={FadeInDown.duration(650).delay(120)}
-          style={styles.gap}
-          onLayout={(e) => onBriefLayout?.(e.nativeEvent.layout.y)}
-        >
-          <GlassCard padding={22} radiusToken="lg" testID="brief-card">
-            <View style={[styles.briefHead, isRTL && styles.rowRtl]}>
-              <AppIcon name="sunrise" size="sm" accent="gold" />
-              <Text style={[styles.sectionTitle, isRTL && styles.rtl]}>{t('home.command.brief')}</Text>
-            </View>
-            <View style={{ marginTop: 12, gap: 10 }}>
-              {briefing.narrative.map((line, i) => (
-                <View key={i} style={[styles.briefLine, isRTL && styles.rowRtl]}>
-                  <View style={styles.briefDot} />
-                  <Text style={[styles.briefText, isRTL && styles.rtl]}>{line}</Text>
+      <Animated.View entering={FadeInDown.duration(550).delay(20)}>
+        <Pressable onPress={goAssistant} testID="home-assistant-hero">
+          <GlassCard padding={0} radiusToken="lg" edge="gold">
+            <LinearGradient
+              colors={['rgba(212,175,55,0.16)', 'rgba(80,200,120,0.1)', 'transparent']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.assistantGrad}
+            >
+              <View style={[styles.assistantRow, isRTL && styles.rowRtl]}>
+                <SmartEmployeeMark size={56} />
+                <View style={styles.assistantText}>
+                  <Text style={[styles.assistantTitle, isRTL && styles.rtl]}>{t('home.daily.assistant')}</Text>
+                  <Text style={[styles.assistantSub, isRTL && styles.rtl]} numberOfLines={2}>
+                    {t('home.daily.assistantSub')}
+                  </Text>
+                  <View style={[styles.assistantCta, isRTL && styles.rowRtl]}>
+                    <Text style={styles.assistantCtaText}>{t('home.daily.assistantCta')}</Text>
+                    <Feather name="mic" size={14} color={colors.gold} />
+                  </View>
                 </View>
-              ))}
-            </View>
+              </View>
+            </LinearGradient>
           </GlassCard>
-        </Animated.View>
-      ) : null}
-
-      <Animated.View entering={FadeInDown.duration(650).delay(180)}>
-        <View style={[styles.sectionHead, isRTL && styles.rowRtl]}>
-          <Text style={[styles.sectionTitle, isRTL && styles.rtl]}>{t('home.command.notifications')}</Text>
-          <Pressable onPress={() => router.push('/notifications')} hitSlop={8}>
-            <Text style={styles.seeAll}>{t('home.command.seeAll')}</Text>
-          </Pressable>
-        </View>
-        {notifications.length === 0 ? (
-          <GlassCard padding={18} radiusToken="md">
-            <Text style={[styles.emptyNotif, isRTL && styles.rtl]}>{t('home.command.noNotifications')}</Text>
-          </GlassCard>
-        ) : (
-          notifications.slice(0, 3).map((n) => {
-            const f = formatNotification(n, (k) => t(k as Parameters<typeof t>[0]));
-            return (
-              <PressableScale
-                key={n.id}
-                testID={`home-notif-${n.id}`}
-                onPress={() => { Haptics.selectionAsync(); router.push(f.actionRoute as any); }}
-                style={{ marginBottom: spacing.sm }}
-              >
-                <GlassCard padding={16} radiusToken="md" edge={n.priority === 'high' ? 'gold' : 'neutral'}>
-                  <Text style={[styles.notifTitle, isRTL && styles.rtl]} numberOfLines={2}>{f.headline}</Text>
-                  <Text style={[styles.notifRec, isRTL && styles.rtl]} numberOfLines={2}>{f.recommendation}</Text>
-                  <Text style={styles.notifAction}>{t(f.actionLabelKey as 'notif.action.review')}</Text>
-                </GlassCard>
-              </PressableScale>
-            );
-          })
-        )}
+        </Pressable>
       </Animated.View>
+
+      <DailyCard
+        delay={80}
+        testID="home-status"
+        title={t('home.daily.status')}
+        body={statusText}
+        icon="activity"
+        accent="emerald"
+      />
+
+      <DailyCard
+        delay={120}
+        testID="home-last-notif"
+        title={t('home.daily.lastNotif')}
+        body={lastNotif
+          ? formatNotification(lastNotif, (k) => t(k as Parameters<typeof t>[0])).headline
+          : t('home.daily.noNotif')}
+        icon="bell"
+        accent="gold"
+        onPress={lastNotif ? () => {
+          Haptics.selectionAsync();
+          const f = formatNotification(lastNotif, (k) => t(k as Parameters<typeof t>[0]));
+          router.push(f.actionRoute as any);
+        } : undefined}
+        actionLabel={lastNotif ? t('home.daily.tapNotif') : undefined}
+      />
+
+      <DailyCard
+        delay={160}
+        testID="home-last-decision"
+        title={t('home.daily.lastDecision')}
+        body={lastDecision?.title ?? t('home.daily.noDecision')}
+        icon="cpu"
+        accent="gold"
+        onPress={lastDecision ? () => {
+          Haptics.selectionAsync();
+          router.push(decisionRoute(lastDecision) as any);
+        } : goAssistant}
+      />
+
+      <DailyCard
+        delay={200}
+        testID="home-next-step"
+        title={t('home.daily.nextStep')}
+        body={nextStep}
+        icon="arrow-right-circle"
+        accent="emerald"
+        onPress={goNext}
+        highlight
+      />
+
+      {dailyMode ? <PendingApprovalsPanel /> : null}
+      {dailyMode ? <SmartEmployeeSetupInsights briefing={briefing} /> : null}
     </View>
   );
 }
 
+function DailyCard({
+  title, body, icon, accent, delay, testID, onPress, actionLabel, highlight,
+}: {
+  title: string;
+  body: string;
+  icon: keyof typeof Feather.glyphMap;
+  accent: 'gold' | 'emerald';
+  delay: number;
+  testID: string;
+  onPress?: () => void;
+  actionLabel?: string;
+  highlight?: boolean;
+}) {
+  const { isRTL } = useI18n();
+  const color = accent === 'gold' ? colors.gold : colors.emerald;
+
+  const inner = (
+    <GlassCard padding={18} radiusToken="md" edge={highlight ? 'gold' : 'neutral'} testID={testID}>
+      <View style={[styles.cardRow, isRTL && styles.rowRtl]}>
+        <View style={[styles.cardIcon, { borderColor: `${color}44` }]}>
+          <Feather name={icon} size={16} color={color} />
+        </View>
+        <View style={styles.cardText}>
+          <Text style={[styles.cardTitle, isRTL && styles.rtl]}>{title}</Text>
+          <Text style={[styles.cardBody, isRTL && styles.rtl]} numberOfLines={3}>{body}</Text>
+          {actionLabel ? (
+            <Text style={[styles.cardAction, isRTL && styles.rtl]}>{actionLabel}</Text>
+          ) : null}
+        </View>
+      </View>
+    </GlassCard>
+  );
+
+  return (
+    <Animated.View entering={FadeInDown.duration(500).delay(delay)} style={styles.cardWrap}>
+      {onPress ? (
+        <Pressable onPress={onPress} style={({ pressed }) => pressed && { opacity: 0.88 }}>
+          {inner}
+        </Pressable>
+      ) : inner}
+    </Animated.View>
+  );
+}
+
 const styles = StyleSheet.create({
-  gap: { marginTop: spacing.lg },
-  employeeRow: { flexDirection: 'row', gap: 16, alignItems: 'flex-start' },
+  assistantGrad: { borderRadius: radius.lg, padding: 20 },
+  assistantRow: { flexDirection: 'row', gap: 16, alignItems: 'center' },
   rowRtl: { flexDirection: 'row-reverse' },
-  employeeText: { flex: 1, gap: 4 },
-  eyebrow: {
-    color: colors.textMuted, fontSize: 10, letterSpacing: 1.6,
-    textTransform: 'uppercase', fontWeight: typography.weight.medium,
-  },
-  salutation: { color: colors.textDim, fontSize: 14, lineHeight: 20 },
-  headline: {
-    color: colors.text, fontSize: 20, lineHeight: 28,
+  assistantText: { flex: 1, gap: 6 },
+  assistantTitle: {
+    color: colors.text, fontSize: typography.cardTitle,
     fontWeight: typography.weight.semibold, letterSpacing: typography.letter.tight,
   },
-  liveRow: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 8 },
-  liveDot: {
-    width: 6, height: 6, borderRadius: 3, backgroundColor: colors.emerald,
-  },
-  liveText: { color: colors.emerald, fontSize: 11, fontWeight: typography.weight.medium },
+  assistantSub: { color: colors.textDim, fontSize: typography.small, lineHeight: 20 },
+  assistantCta: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 4 },
+  assistantCtaText: { color: colors.gold, fontSize: typography.small, fontWeight: typography.weight.semibold },
   rtl: { writingDirection: 'rtl', textAlign: 'right' },
-  briefHead: { flexDirection: 'row', alignItems: 'center', gap: 8 },
-  sectionTitle: { color: colors.text, fontSize: 15, fontWeight: typography.weight.semibold },
-  briefLine: { flexDirection: 'row', gap: 10, alignItems: 'flex-start' },
-  briefDot: { width: 4, height: 4, borderRadius: 2, backgroundColor: colors.gold, marginTop: 8 },
-  briefText: { flex: 1, color: colors.textDim, fontSize: 14, lineHeight: 22 },
-  sectionHead: {
-    flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center',
-    marginBottom: spacing.sm, marginTop: spacing.lg,
+  cardWrap: { marginTop: spacing.md },
+  cardRow: { flexDirection: 'row', gap: 12, alignItems: 'flex-start' },
+  cardIcon: {
+    width: 36, height: 36, borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth,
+    backgroundColor: 'rgba(255,255,255,0.03)',
+    alignItems: 'center', justifyContent: 'center',
   },
-  seeAll: { color: colors.gold, fontSize: 12, fontWeight: typography.weight.medium },
-  emptyNotif: { color: colors.textMuted, fontSize: 13, lineHeight: 20 },
-  notifTitle: { color: colors.text, fontSize: 14, fontWeight: typography.weight.semibold, lineHeight: 20 },
-  notifRec: { color: colors.textDim, fontSize: 12, lineHeight: 18, marginTop: 6 },
-  notifAction: { color: colors.gold, fontSize: 11, marginTop: 10, fontWeight: typography.weight.medium },
+  cardText: { flex: 1, gap: 4 },
+  cardTitle: {
+    color: colors.textMuted, fontSize: 11, letterSpacing: 0.8,
+    textTransform: 'uppercase', fontWeight: typography.weight.semibold,
+  },
+  cardBody: { color: colors.text, fontSize: typography.body, lineHeight: 24 },
+  cardAction: { color: colors.gold, fontSize: typography.small, marginTop: 4 },
 });

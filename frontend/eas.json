@@ -8,16 +8,19 @@
       "developmentClient": true,
       "distribution": "internal",
       "env": {
-        "EXPO_PUBLIC_BETA_MODE": "true"
+        "EXPO_PUBLIC_BETA_MODE": "true",
+        "EXPO_PUBLIC_BACKEND_URL": "https://spp-beta-api.onrender.com"
       }
     },
     "preview": {
       "distribution": "internal",
+      "channel": "beta",
       "android": {
         "buildType": "apk"
       },
       "env": {
-        "EXPO_PUBLIC_BETA_MODE": "true"
+        "EXPO_PUBLIC_BETA_MODE": "true",
+        "EXPO_PUBLIC_BACKEND_URL": "https://spp-beta-api.onrender.com"
       }
     },
     "production": {

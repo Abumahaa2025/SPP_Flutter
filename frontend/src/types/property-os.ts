@@ -87,6 +87,24 @@ export type SetupPhaseId =
   | 'alerts'
   | 'smartEmployee';
 
+export type UnitHistoryEntry = {
+  unitId: string;
+  tenantName: string;
+  lateAmount?: number;
+  followUpCount?: number;
+  note?: string;
+  endedAt: string;
+};
+
+export type PaymentRecord = {
+  id: string;
+  unitId: string;
+  tenantId: string;
+  amount: number;
+  paidAt: string;
+  method?: PaymentMethod;
+};
+
 export type PropertyOSState = {
   property: PropertyRecord | null;
   units: UnitRecord[];
@@ -95,6 +113,9 @@ export type PropertyOSState = {
   alertsEnabled: boolean;
   technicianPortalToken: string;
   dismissedProgress: boolean;
+  setupCompleted?: boolean;
+  unitHistory?: UnitHistoryEntry[];
+  payments?: PaymentRecord[];
   startedAt?: string;
 };
 

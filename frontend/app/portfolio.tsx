@@ -50,7 +50,7 @@ export default function Portfolio() {
 
   return (
     <ScreenScaffold testID="portfolio-screen">
-      <StoryScreenHeader question={t('page.q.portfolio')} showBack testID="portfolio-header" />
+      <StoryScreenHeader question={t('page.q.portfolio')} hint={t('portfolio.sub')} showBack testID="portfolio-header" />
 
       <SetupProgressBar testID="portfolio-setup-progress" />
 

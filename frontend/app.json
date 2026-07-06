@@ -3,7 +3,7 @@
     "name": "SPP",
     "slug": "spp-beta",
     "owner": "abumahaa2025",
-    "version": "1.0.0-beta.1",
+    "version": "1.0.0-beta.5",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "spp",
@@ -28,6 +28,7 @@
     },
     "plugins": [
       "expo-router",
+      "expo-updates",
       [
         "expo-splash-screen",
         {
@@ -40,6 +41,12 @@
     ],
     "experiments": {
       "typedRoutes": true
+    },
+    "updates": {
+      "url": "https://u.expo.dev/405761ee-fac3-4b25-9784-23f7441535e3"
+    },
+    "runtimeVersion": {
+      "policy": "appVersion"
     },
     "extra": {
       "router": {},

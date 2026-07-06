@@ -8,9 +8,11 @@ import { ScreenScaffold } from '@/src/components/ScreenScaffold';
 import { StoryScreenHeader } from '@/src/components/StoryScreenHeader';
 import { GlassCard } from '@/src/components/GlassCard';
 import { AliveEmpty } from '@/src/components/AliveEmpty';
-import { BrainVerdict } from '@/src/components/BrainVerdict';
 import { GuidedSetup } from '@/src/components/GuidedSetup';
 import { SetupProgressBar } from '@/src/components/SetupProgressBar';
+import { PortalShareCard } from '@/src/components/PortalShareCard';
+import { usePropertyOS } from '@/src/hooks/usePropertyOS';
+import { useNotificationPrefs } from '@/src/hooks/usePreferences';
 import { api, type TenantT, type PropertyT } from '@/src/api/client';
 import { colors, spacing, typography } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
@@ -18,6 +20,8 @@ import { useI18n } from '@/src/i18n';
 export default function Tenants() {
   const { t } = useI18n();
   const router = useRouter();
+  const { countEnabled } = useNotificationPrefs();
+  const { state: osState } = usePropertyOS(countEnabled);
   const [tenants, setTenants] = useState<TenantT[]>([]);
   const [props, setProps] = useState<PropertyT[]>([]);
 
@@ -32,9 +36,20 @@ export default function Tenants() {
     <ScreenScaffold testID="tenants-screen">
       <StoryScreenHeader question={t('page.q.tenants')} hint={t('tenants.sub')} showBack testID="tenants-header" />
       <SetupProgressBar compact testID="tenants-setup-progress" />
-      <GuidedSetup flowId="tenant" defaultOpen={tenants.length === 0} testID="tenants-guided" />
-      <BrainVerdict screen="tenants" />
-      {tenants.length === 0 ? (
+      <GuidedSetup flowId="tenant" defaultOpen={tenants.length === 0 && !osState.tenants.length} testID="tenants-guided" />
+
+      {osState.tenants.length > 0 ? (
+        <View style={{ marginBottom: spacing.lg, gap: spacing.md }}>
+          {osState.tenants.map((tn) => {
+            const unit = osState.units.find((u) => u.id === tn.unitId);
+            return (
+              <PortalShareCard key={tn.id} tenant={tn} unitNumber={unit?.number} testID={`os-tenant-${tn.id}`} />
+            );
+          })}
+        </View>
+      ) : null}
+
+      {tenants.length === 0 && !osState.tenants.length ? (
         <AliveEmpty title={t('alive.tenants.title')} body={t('alive.tenants.body')} />
       ) : tenants.map((tn, i) => {
         const prop = propMap.get(tn.property_id);

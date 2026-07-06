@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, RefreshControl,
 } from 'react-native';
@@ -16,9 +16,7 @@ import { BrandOrb, Wordmark } from '@/src/components/BrandOrb';
 import { AliveEmpty } from '@/src/components/AliveEmpty';
 import { HomeCommandCenter } from '@/src/components/HomeCommandCenter';
 import { SetupProgressBar } from '@/src/components/SetupProgressBar';
-import { SmartEmployeeSetupInsights } from '@/src/components/SmartEmployeeSetupInsights';
 import { useWorkspacePadding } from '@/src/hooks/use-workspace-padding';
-import { useWorkspaceOptional } from '@/src/context/WorkspaceContext';
 import { api, type Briefing, type NotifT } from '@/src/api/client';
 import { clearExecutiveCache, fetchExecutiveCached } from '@/src/api/executive-cache';
 import { mergeBriefingWithExecutive } from '@/src/api/executive-map';
@@ -43,41 +41,15 @@ const EMPTY_BRIEFING: Briefing = {
 
 const AnimatedScroll = Animated.ScrollView;
 
-function useDateEyebrow(lang: 'en' | 'ar') {
-  const [label] = useState(() => {
-    const d = new Date();
-    const locale = lang === 'ar' ? 'ar-SA' : 'en-US';
-    const day = d.toLocaleDateString(locale, { weekday: 'long' });
-    const date = d.toLocaleDateString(locale, { month: 'long', day: 'numeric' });
-    return `${day} · ${date}`;
-  });
-  return label;
-}
-
 export default function Home() {
   const insets = useSafeAreaInsets();
   const router = useRouter();
-  const { t, lang } = useI18n();
+  const { t } = useI18n();
   const [briefing, setBriefing] = useState<Briefing | null>(null);
   const [notifications, setNotifications] = useState<NotifT[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const dateEyebrow = useDateEyebrow(lang);
   const wsPad = useWorkspacePadding();
-  const workspace = useWorkspaceOptional();
-  const scrollRef = useRef<Animated.ScrollView>(null);
-  const briefY = useRef(0);
-
-  useEffect(() => {
-    if (!workspace?.homeAnchor) return;
-    const anchor = workspace.consumeHomeAnchor();
-    if (!anchor) return;
-    const tmr = setTimeout(() => {
-      if (anchor === 'brief') scrollRef.current?.scrollTo({ y: Math.max(0, briefY.current - 12), animated: true });
-    }, 320);
-    return () => clearTimeout(tmr);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [workspace?.homeAnchor]);
 
   const scrollY = useSharedValue(0);
   const onScroll = useAnimatedScrollHandler((e) => {
@@ -149,7 +121,6 @@ export default function Home() {
         </View>
       ) : (
         <AnimatedScroll
-          ref={scrollRef}
           testID="home-scroll"
           onScroll={onScroll}
           scrollEventThrottle={16}
@@ -157,7 +128,7 @@ export default function Home() {
             styles.scroll,
             {
               paddingTop: insets.top + wsPad.paddingTop + spacing.md,
-              paddingBottom: spacing['2xl'],
+              paddingBottom: insets.bottom + wsPad.paddingBottom + spacing['2xl'],
               paddingRight: wsPad.paddingRight + spacing.lg,
             },
           ]}
@@ -182,16 +153,10 @@ export default function Home() {
               />
             </>
           ) : (
-            <>
-              <SetupProgressBar testID="home-setup-progress" />
-              <HomeCommandCenter
-                briefing={briefing}
-                notifications={notifications}
-                dateEyebrow={dateEyebrow}
-                onBriefLayout={(y) => { briefY.current = y; }}
-              />
-              <SmartEmployeeSetupInsights briefing={briefing} />
-            </>
+            <HomeCommandCenter
+              briefing={briefing}
+              notifications={notifications}
+            />
           )}
 
           <Animated.View entering={FadeIn.duration(700).delay(900)} style={styles.footer}>

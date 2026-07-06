@@ -9,6 +9,8 @@ import { useIconFonts } from "@/src/hooks/use-icon-fonts";
 import { setLang } from "@/src/i18n";
 import { storage } from "@/src/utils/storage";
 import { SplashIntro } from "@/src/components/SplashIntro";
+import { WorkspaceProvider } from "@/src/context/WorkspaceContext";
+import { WorkspaceChrome } from "@/src/components/WorkspaceChrome";
 
 LogBox.ignoreAllLogs(true);
 
@@ -34,15 +36,15 @@ export default function RootLayout() {
   // Restore language before rendering any screen.
   useEffect(() => {
     (async () => {
-      const saved = await storage.getItem<'en' | 'ar'>('spp.lang', 'en');
-      setLang(saved ?? 'en');
+      const saved = await storage.getItem<'en' | 'ar'>('spp.lang', 'ar');
+      setLang(saved ?? 'ar');
       setLangReady(true);
     })();
   }, []);
 
-  // Enforce a minimum splash hold for brand presence.
+  // Enforce a minimum splash hold for brand presence (~2s logo entrance).
   useEffect(() => {
-    const t = setTimeout(() => setMinHoldElapsed(true), 1400);
+    const t = setTimeout(() => setMinHoldElapsed(true), 2000);
     return () => clearTimeout(t);
   }, []);
 
@@ -51,14 +53,22 @@ export default function RootLayout() {
     if ((loaded || error) && langReady) SplashScreen.hideAsync();
   }, [loaded, error, langReady]);
 
-  // Cold-start routing: send the user to Home (or first-launch Onboarding),
-  // never to whatever pathname the shell restored.
+  // Cold-start routing: beta login → onboarding → home
   useEffect(() => {
     if (routed) return;
     if (!langReady || !(loaded || error)) return;
     (async () => {
+      const betaMode = process.env.EXPO_PUBLIC_BETA_MODE === 'true';
+      const betaAuthed = await storage.getItem<boolean>('spp.betaAuthed', false);
       const onboarded = await storage.getItem<boolean>('spp.onboarded', false);
-      const target = onboarded ? '/' : '/onboarding';
+
+      let target = '/';
+      if (betaMode && !betaAuthed) {
+        target = '/beta-login';
+      } else if (!onboarded) {
+        target = '/onboarding';
+      }
+
       if (pathname !== target) router.replace(target as any);
       setRouted(true);
     })();
@@ -84,18 +94,21 @@ export default function RootLayout() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <View style={{ flex: 1, backgroundColor: '#050A12' }}>
-          <Stack
-            screenOptions={{
-              headerShown: false,
-              animation: 'slide_from_right',
-              animationDuration: 340,
-              gestureEnabled: true,
-              contentStyle: { backgroundColor: '#050A12' },
-            }}
-          />
-          {introMounted ? <SplashIntro visible={!introDone} /> : null}
-        </View>
+        <WorkspaceProvider>
+          <View style={{ flex: 1, backgroundColor: '#050A12' }}>
+            <Stack
+              screenOptions={{
+                headerShown: false,
+                animation: 'fade_from_bottom',
+                animationDuration: 280,
+                gestureEnabled: true,
+                contentStyle: { backgroundColor: '#050A12' },
+              }}
+            />
+            <WorkspaceChrome />
+            {introMounted ? <SplashIntro visible={!introDone} /> : null}
+          </View>
+        </WorkspaceProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
   );

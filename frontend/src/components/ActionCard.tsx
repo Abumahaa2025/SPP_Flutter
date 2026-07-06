@@ -5,19 +5,13 @@ import * as Haptics from 'expo-haptics';
 import { GlassCard } from './GlassCard';
 import { colors, radius, spacing, typography } from '../theme';
 import type { DecisionT } from '../api/client';
+import { useI18n } from '../i18n';
 
 const kindIcon: Record<string, keyof typeof Feather.glyphMap> = {
   maintenance: 'tool',
   financial: 'trending-up',
   tenant: 'users',
   opportunity: 'star',
-};
-
-const priorityMeta: Record<DecisionT['priority'], { label: string; color: string }> = {
-  critical: { label: 'Critical', color: colors.danger },
-  high: { label: 'High priority', color: colors.gold },
-  medium: { label: 'Recommended', color: colors.emerald },
-  low: { label: 'Watch', color: colors.textMuted },
 };
 
 type Props = {
@@ -33,6 +27,13 @@ type Props = {
  * tighter typography, less visual weight on secondary meta.
  */
 export function ActionCard({ decision, rank, onAccept, onDetails }: Props) {
+  const { t } = useI18n();
+  const priorityMeta: Record<DecisionT['priority'], { label: string; color: string }> = {
+    critical: { label: t('action.priority.critical'), color: colors.danger },
+    high: { label: t('action.priority.high'), color: colors.gold },
+    medium: { label: t('action.priority.medium'), color: colors.emerald },
+    low: { label: t('action.priority.low'), color: colors.textMuted },
+  };
   const meta = priorityMeta[decision.priority];
   const iconName = kindIcon[decision.kind] ?? 'zap';
   const highPriority = decision.priority === 'critical' || decision.priority === 'high';
@@ -55,10 +56,12 @@ export function ActionCard({ decision, rank, onAccept, onDetails }: Props) {
           <Text style={[styles.priorityLabel, { color: meta.color }]}>{meta.label}</Text>
         </View>
         <View style={{ flex: 1 }} />
-        <View style={styles.confidence}>
-          <Text style={styles.confidenceValue}>{decision.confidence}</Text>
-          <Text style={styles.confidenceLabel}>conf.</Text>
-        </View>
+        {(decision.priority === 'critical' || decision.priority === 'high') ? (
+          <View style={styles.confidence}>
+            <Text style={styles.confidenceValue}>{decision.confidence}</Text>
+            <Text style={styles.confidenceLabel}>{t('action.certainty')}</Text>
+          </View>
+        ) : null}
       </View>
 
       {/* Body — icon + title */}
@@ -66,20 +69,15 @@ export function ActionCard({ decision, rank, onAccept, onDetails }: Props) {
         <View style={[styles.iconWrap, highPriority && styles.iconWrapGold]}>
           <Feather name={iconName} size={15} color={highPriority ? colors.gold : colors.textDim} />
         </View>
-        <View style={{ flex: 1 }}>
-          <Text style={styles.title}>{decision.title}</Text>
-        </View>
+        <Text style={[styles.title, { flex: 1 }]}>{decision.title}</Text>
       </View>
 
       <Text style={styles.reason}>{decision.reason}</Text>
-
-      <View style={styles.impactRow}>
-        <View style={styles.impactBar} />
-        <Text style={styles.impact}>{decision.impact}</Text>
-      </View>
+      <Text style={styles.impact}>{decision.impact}</Text>
 
       <View style={styles.hair} />
 
+      <Text style={styles.actionLabel}>{t('action.nextStep')}</Text>
       <View style={styles.actionRow}>
         <Pressable
           testID={`decision-accept-${decision.id}`}
@@ -191,29 +189,21 @@ const styles = StyleSheet.create({
     fontSize: 14,
     lineHeight: 21,
   },
-  impactRow: {
-    marginTop: spacing.md,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 10,
-  },
-  impactBar: {
-    width: 2, height: 12,
-    backgroundColor: colors.emerald,
-    borderRadius: 1,
-    opacity: 0.9,
-  },
   impact: {
-    flex: 1,
+    marginTop: spacing.sm,
     color: colors.emerald,
     fontSize: 12.5,
-    letterSpacing: 0.1,
     lineHeight: 18,
   },
   hair: {
     height: StyleSheet.hairlineWidth,
     backgroundColor: colors.divider,
     marginTop: spacing.lg,
+  },
+  actionLabel: {
+    color: colors.textMuted, fontSize: 10.5, letterSpacing: 1.6,
+    textTransform: 'uppercase', fontWeight: typography.weight.medium,
+    marginTop: spacing.md,
   },
   actionRow: {
     marginTop: spacing.md,

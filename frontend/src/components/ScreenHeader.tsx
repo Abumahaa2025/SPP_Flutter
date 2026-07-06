@@ -5,6 +5,7 @@ import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { colors, spacing, typography, radius } from '../theme';
+import { useI18n } from '../i18n';
 
 type Props = {
   eyebrow?: string;
@@ -13,12 +14,9 @@ type Props = {
   showBack?: boolean;
 };
 
-/**
- * Shared premium screen header — matches the AI Employee Home hero language.
- * Eyebrow, large title, subhead. Optional back button.
- */
 export function ScreenHeader({ eyebrow, title, sub, showBack }: Props) {
   const router = useRouter();
+  const { isRTL } = useI18n();
   return (
     <Animated.View entering={FadeInDown.duration(700).delay(80)} style={styles.wrap}>
       {showBack ? (
@@ -28,12 +26,12 @@ export function ScreenHeader({ eyebrow, title, sub, showBack }: Props) {
           style={styles.back}
           hitSlop={12}
         >
-          <Feather name="arrow-left" size={16} color={colors.textDim} />
+          <Feather name={isRTL ? 'arrow-right' : 'arrow-left'} size={16} color={colors.textDim} />
         </Pressable>
       ) : null}
-      {eyebrow ? <Text style={styles.eyebrow}>{eyebrow}</Text> : null}
-      <Text style={styles.title}>{title}</Text>
-      {sub ? <Text style={styles.sub}>{sub}</Text> : null}
+      {eyebrow ? <Text style={[styles.eyebrow, isRTL && styles.rtl]}>{eyebrow}</Text> : null}
+      <Text style={[styles.title, isRTL && styles.rtl]}>{title}</Text>
+      {sub ? <Text style={[styles.sub, isRTL && styles.rtl]}>{sub}</Text> : null}
     </Animated.View>
   );
 }
@@ -60,4 +58,5 @@ const styles = StyleSheet.create({
     color: colors.textMuted, fontSize: 14.5, lineHeight: 21,
     marginTop: spacing.md, maxWidth: '92%',
   },
+  rtl: { writingDirection: 'rtl', textAlign: 'right', alignSelf: 'stretch' },
 });

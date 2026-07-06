@@ -11,10 +11,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AmbientBackground } from '@/src/components/AmbientBackground';
 import { GlassCard } from '@/src/components/GlassCard';
 import { HealthRing } from '@/src/components/HealthRing';
-import { BrainVerdict } from '@/src/components/BrainVerdict';
-import { api, type PropertyT, type SensorT, type TimelineT, type DecisionT } from '@/src/api/client';
+import { StoryScreenHeader } from '@/src/components/StoryScreenHeader';
+import { ApiField } from '@/src/components/ApiField';
+import { api, type PropertyT, type SensorT, type TimelineT } from '@/src/api/client';
 import { colors, spacing, typography, radius } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
+import { formatDate } from '@/src/utils/locale';
+import { useWorkspacePadding } from '@/src/hooks/use-workspace-padding';
 
 type Tab = 'overview' | 'sensors' | 'timeline';
 
@@ -22,22 +25,23 @@ export default function PropertyDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { t } = useI18n();
+  const wsPad = useWorkspacePadding();
+  const { t, isRTL } = useI18n();
   const [prop, setProp] = useState<PropertyT | null>(null);
   const [sensors, setSensors] = useState<SensorT[]>([]);
   const [timeline, setTimeline] = useState<TimelineT[]>([]);
-  const [propDecision, setPropDecision] = useState<DecisionT | null>(null);
   const [tab, setTab] = useState<Tab>('overview');
+  const healthStatus = (prop?.health_score ?? 0) >= 85
+    ? t('property.ai.excellent')
+    : (prop?.health_score ?? 0) >= 70
+      ? t('property.ai.stable')
+      : t('property.ai.attention');
 
   useEffect(() => {
     if (!id) return;
     api.property(id).then(setProp).catch(() => {});
     api.sensors().then((all) => setSensors(all.filter((s) => s.property_id === id)));
     api.timeline().then((all) => setTimeline(all.filter((tl) => tl.property_id === id)));
-    api.decisions().then((all) => {
-      const d = all.find((x) => x.property_id === id);
-      if (d) setPropDecision(d);
-    });
   }, [id]);
 
   const tabs: { key: Tab; labelKey: any }[] = [
@@ -51,7 +55,10 @@ export default function PropertyDetail() {
       <StatusBar style="light" />
       <AmbientBackground />
       <ScrollView
-        contentContainerStyle={{ paddingBottom: spacing['3xl'] }}
+        contentContainerStyle={{
+          paddingBottom: insets.bottom + wsPad.paddingBottom + spacing.xl,
+          paddingRight: wsPad.paddingRight,
+        }}
         showsVerticalScrollIndicator={false}
       >
         {/* Hero image */}
@@ -65,13 +72,13 @@ export default function PropertyDetail() {
           <Pressable
             testID="detail-back"
             onPress={() => { Haptics.selectionAsync(); router.back(); }}
-            style={[styles.back, { top: insets.top + 12 }]}
+            style={[styles.back, { top: insets.top + wsPad.paddingTop + 4 }]}
             hitSlop={8}
           >
-            <Feather name="arrow-left" size={16} color={colors.text} />
+            <Feather name={isRTL ? 'arrow-right' : 'arrow-left'} size={16} color={colors.text} />
           </Pressable>
           {prop ? (
-            <View style={[styles.kindBadge, { top: insets.top + 12 }]}>
+            <View style={[styles.kindBadge, { top: insets.top + wsPad.paddingTop + 4 }]}>
               <Text style={styles.kindBadgeText}>{prop.kind.toUpperCase()}</Text>
             </View>
           ) : null}
@@ -79,36 +86,33 @@ export default function PropertyDetail() {
 
         <View style={styles.body}>
           <Animated.View entering={FadeInDown.duration(600)}>
+            <StoryScreenHeader question={t('page.q.property')} hint={t('property.pageLead')} testID="property-header" />
             <Text style={styles.city}>{prop?.city.toUpperCase()}</Text>
             <Text style={styles.name}>{prop?.name}</Text>
-            <Text style={styles.address}>{prop?.address}</Text>
+            <Text style={[styles.address, isRTL && styles.rtl]}>{prop?.address}</Text>
           </Animated.View>
-
-          {propDecision ? (
-            <View style={{ marginTop: spacing.xl }}>
-              <BrainVerdict
-                screen={`property-${id}`}
-                fallback={{
-                  headline: propDecision.title,
-                  why: propDecision.reason,
-                  action: propDecision.recommended_action,
-                  route: '/maintenance',
-                }}
-              />
-            </View>
-          ) : null}
 
           {/* Health & KPI card */}
           <Animated.View entering={FadeInDown.duration(650).delay(100)} style={{ marginTop: spacing.xl }}>
             <GlassCard padding={22} radiusToken="lg" edge="emerald">
               <View style={styles.healthRow}>
-                <HealthRing score={prop?.health_score ?? 0} size={128} stroke={10} label="Health" />
+                <HealthRing
+                  score={prop?.health_score ?? 0}
+                  size={128}
+                  stroke={10}
+                  label={t('property.healthLabel')}
+                  statusText={
+                    (prop?.health_score ?? 0) >= 85 ? t('healthRing.excellent')
+                      : (prop?.health_score ?? 0) >= 70 ? t('healthRing.stable')
+                        : t('healthRing.attention')
+                  }
+                />
                 <View style={{ flex: 1, gap: 16 }}>
-                  <Stat label="Occupancy" value={`${Math.round((prop?.occupancy ?? 0) * 100)}%`} />
+                  <Stat label={t('property.occupancy')} value={`${Math.round((prop?.occupancy ?? 0) * 100)}%`} />
                   <Divider />
-                  <Stat label="Units" value={`${prop?.units ?? 0}`} />
+                  <Stat label={t('property.units')} value={`${prop?.units ?? 0}`} />
                   <Divider />
-                  <Stat label="Monthly" value={`AED ${((prop?.monthly_revenue ?? 0) / 1000).toFixed(0)}K`} />
+                  <Stat label={t('property.monthly')} value={`${t('common.currency')} ${((prop?.monthly_revenue ?? 0) / 1000).toFixed(0)}K`} />
                 </View>
               </View>
             </GlassCard>
@@ -139,18 +143,12 @@ export default function PropertyDetail() {
           {tab === 'overview' ? (
             <View style={{ marginTop: spacing.md, gap: spacing.md }}>
               <GlassCard padding={22} radiusToken="lg">
-                <Text style={styles.sectionEyebrow}>AI summary</Text>
-                <Text style={styles.summary}>
-                  {(prop?.health_score ?? 0) >= 85
-                    ? 'This property is in excellent condition. No action required this week.'
-                    : (prop?.health_score ?? 0) >= 70
-                      ? 'Stable overall. A few sensor readings are worth reviewing.'
-                      : 'Attention required — SPP has surfaced actions on your Home screen.'}
-                </Text>
-              </GlassCard>
-              <GlassCard padding={22} radiusToken="lg">
-                <Text style={styles.sectionEyebrow}>Kind</Text>
-                <Text style={styles.summary}>{(prop?.kind ?? '').replace(/^./, (c) => c.toUpperCase())}</Text>
+                <Text style={styles.sectionEyebrow}>{t('property.overview')}</Text>
+                <ApiField label={t('property.field.health')} value={String(prop?.health_score ?? 0)} />
+                <ApiField label={t('property.field.occupancy')} value={`${Math.round((prop?.occupancy ?? 0) * 100)}%`} />
+                <ApiField label={t('property.field.units')} value={String(prop?.units ?? 0)} />
+                <ApiField label={t('property.field.rent')} value={`${t('common.currency')} ${prop?.monthly_revenue ?? 0}`} />
+                <ApiField label={t('property.aiSummary')} value={healthStatus} highlight="gold" />
               </GlassCard>
             </View>
           ) : null}
@@ -167,12 +165,13 @@ export default function PropertyDetail() {
                   </View>
                 </GlassCard>
               ))}
-              {sensors.length === 0 ? <Empty text="No sensors configured yet." /> : null}
+              {sensors.length === 0 ? <Empty text={t('property.sensorsEmpty')} /> : null}
             </View>
           ) : null}
 
           {tab === 'timeline' ? (
             <View style={{ marginTop: spacing.md }}>
+              <Text style={styles.timelineExplain}>{t('property.timelineExplain')}</Text>
               {timeline.map((tl) => (
                 <View key={tl.id} style={styles.tlRow}>
                   <View style={styles.tlSpine}>
@@ -182,11 +181,11 @@ export default function PropertyDetail() {
                   <View style={{ flex: 1, paddingBottom: 22 }}>
                     <Text style={styles.tlTitle}>{tl.title}</Text>
                     <Text style={styles.tlSub}>{tl.subtitle}</Text>
-                    <Text style={styles.tlAt}>{new Date(tl.at).toLocaleDateString()}</Text>
+                    <Text style={styles.tlAt}>{formatDate(tl.at)}</Text>
                   </View>
                 </View>
               ))}
-              {timeline.length === 0 ? <Empty text="Nothing on the timeline yet." /> : null}
+              {timeline.length === 0 ? <Empty text={t('property.timelineEmpty')} /> : null}
             </View>
           ) : null}
         </View>
@@ -253,6 +252,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.6, marginTop: 8, lineHeight: 36,
   },
   address: { color: colors.textMuted, fontSize: 14, marginTop: 6 },
+  rtl: { writingDirection: 'rtl', textAlign: 'right' },
 
   healthRow: { flexDirection: 'row', gap: spacing.md, alignItems: 'center' },
   statLabel: { color: colors.textMuted, fontSize: 10.5, letterSpacing: 1.8, textTransform: 'uppercase' },
@@ -278,6 +278,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase', fontWeight: typography.weight.medium,
   },
   summary: { color: colors.textDim, fontSize: 14.5, lineHeight: 22, marginTop: 10 },
+  timelineExplain: { color: colors.textMuted, fontSize: 13, lineHeight: 20, marginBottom: spacing.md },
 
   sensorRow: { flexDirection: 'row', alignItems: 'center', gap: 10 },
   sensorDot: { width: 8, height: 8, borderRadius: 4 },

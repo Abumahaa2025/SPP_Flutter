@@ -8,13 +8,16 @@ import Animated, {
 } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 import { GlassCard } from './GlassCard';
-import { api, type VerdictT } from '../api/client';
+import type { VerdictT } from '../api/client';
+import { fetchExecutiveCached } from '../api/executive-cache';
+import { buildVerdictCache, resolveExecutiveVerdict } from '../api/executive-map';
 import { colors, spacing, typography, radius } from '../theme';
+import { useI18n } from '../i18n';
 
 type Props = {
-  /** Screen key: 'home' | 'portfolio' | 'health' | ... */
+  /** Screen key: 'portfolio' | 'health' | 'property-{id}' | ... */
   screen: string;
-  /** Fallback in case backend is unavailable. */
+  /** Local fallback only when /api/executive is unreachable. */
   fallback?: VerdictT;
   /** Cached bag of verdicts to avoid re-fetching on every mount. */
   cache?: Record<string, VerdictT | null>;
@@ -23,18 +26,11 @@ type Props = {
 
 /**
  * The Brain — speaking on every surface with one voice.
- *
- * Cinematic, calm, action-first. Renders:
- *   • Breathing brand dot + "SPP · BRAIN VERDICT" eyebrow
- *   • Headline (the recommendation)
- *   • Why line (justification with quantified impact)
- *   • Gold action pill (routes to the decisive next screen)
- *
- * Every screen mounts this at the very top — the answer to
- * "What should I do next?" arrives before any data.
+ * All recommendations come from GET /api/executive only.
  */
 export function BrainVerdict({ screen, fallback, cache, onLoaded }: Props) {
   const router = useRouter();
+  const { t } = useI18n();
   const [verdict, setVerdict] = useState<VerdictT | null>(
     cache?.[screen] ?? fallback ?? null,
   );
@@ -50,11 +46,18 @@ export function BrainVerdict({ screen, fallback, cache, onLoaded }: Props) {
   useEffect(() => {
     if (cache?.[screen]) { setVerdict(cache[screen]); return; }
     let alive = true;
-    api.verdicts().then((bag) => {
-      if (!alive) return;
-      setVerdict(bag[screen] ?? fallback ?? null);
-      onLoaded?.(bag);
-    }).catch(() => {});
+    fetchExecutiveCached()
+      .then((exec) => {
+        if (!alive) return;
+        const bag = buildVerdictCache(exec);
+        const fromExec = resolveExecutiveVerdict(exec, screen) ?? bag[screen] ?? fallback ?? null;
+        setVerdict(fromExec);
+        onLoaded?.({ ...bag, [screen]: fromExec });
+      })
+      .catch(() => {
+        if (!alive) return;
+        if (fallback) setVerdict(fallback);
+      });
     return () => { alive = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [screen]);
@@ -81,9 +84,7 @@ export function BrainVerdict({ screen, fallback, cache, onLoaded }: Props) {
             <Animated.View style={[styles.halo, halo]} />
             <View style={styles.dot} />
           </View>
-          <Text style={styles.eyebrow}>SPP · BRAIN VERDICT</Text>
-          <View style={{ flex: 1 }} />
-          <Feather name="cpu" size={12} color={colors.textMuted} />
+          <Text style={styles.eyebrow}>{t('brain.verdict.eyebrow')}</Text>
         </View>
 
         <Text style={styles.headline}>{verdict.headline}</Text>

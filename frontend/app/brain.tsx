@@ -6,63 +6,133 @@ import {
 import { Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import Animated, { FadeIn, FadeInDown, FadeInUp } from 'react-native-reanimated';
+import { useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { AmbientBackground } from '@/src/components/AmbientBackground';
-import { GlassTabBar } from '@/src/components/GlassTabBar';
 import { GlassCard } from '@/src/components/GlassCard';
-import { ScreenHeader } from '@/src/components/ScreenHeader';
+import { StoryScreenHeader } from '@/src/components/StoryScreenHeader';
 import { BrandOrb } from '@/src/components/BrandOrb';
 import { api, type ChatMsg } from '@/src/api/client';
 import { colors, spacing, typography, radius } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
+import { CHAT_INPUT_BOTTOM } from '@/src/constants/chrome';
+import { useWorkspacePadding } from '@/src/hooks/use-workspace-padding';
+import { usePropertyOS } from '@/src/hooks/usePropertyOS';
+import { useOperational } from '@/src/hooks/useOperational';
+import { useNotificationPrefs } from '@/src/hooks/usePreferences';
+import {
+  continueDailyOps, dailyOpsSuggestions, parseDailyOps, type OpsPending,
+} from '@/src/utils/daily-ops-engine';
+import type { TenantRecord } from '@/src/types/property-os';
 
 const SESSION_ID = 'owner_1';
 
 export default function Brain() {
-  const { t } = useI18n();
+  const { t, lang } = useI18n();
   const insets = useSafeAreaInsets();
+  const wsPad = useWorkspacePadding();
+  const params = useLocalSearchParams<{ q?: string }>();
+  const { countEnabled } = useNotificationPrefs();
+  const { state: osState, endContract, recordPayment, ensureTechnicianPortal } = usePropertyOS(countEnabled);
+  const { openTicket } = useOperational();
   const [messages, setMessages] = useState<ChatMsg[]>([]);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
+  const [chipSuggestions, setChipSuggestions] = useState<string[]>([]);
   const scrollRef = useRef<ScrollView>(null);
+  const prefillHandled = useRef(false);
+  const pendingOps = useRef<OpsPending | null>(null);
+  const osRef = useRef(osState);
+  osRef.current = osState;
+
+  const dailyMode = Boolean(osState.property && (osState.setupCompleted || osState.units.length > 0));
 
   useEffect(() => {
     api.chatHistory(SESSION_ID).then(setMessages).catch(() => {});
   }, []);
 
+  useEffect(() => {
+    const q = typeof params.q === 'string' ? params.q : undefined;
+    if (q && !prefillHandled.current) {
+      prefillHandled.current = true;
+      setText(q);
+    }
+  }, [params.q]);
+
   const scrollToEnd = () => setTimeout(() => scrollRef.current?.scrollToEnd({ animated: true }), 80);
+
+  const pushAssistant = (replyText: string, suggestions?: string[]) => {
+    const reply: ChatMsg = {
+      id: `a-${Date.now()}`, role: 'assistant', text: replyText, at: new Date().toISOString(),
+    };
+    setMessages((m) => [...m, reply]);
+    setChipSuggestions(suggestions ?? []);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    scrollToEnd();
+  };
+
+  const tryDailyOps = (body: string): boolean => {
+    const mutations = {
+      endContract: (cid: string, uid: string, tenant: TenantRecord) => {
+        endContract(cid, uid, tenant);
+      },
+      recordPayment: (uid: string, tid: string, amt: number) => recordPayment(uid, tid, amt),
+      getState: () => osRef.current,
+      ensureTechnicianPortal,
+      openMaintenanceTicket: (
+        unitId: string,
+        title: string,
+        tenantId?: string,
+        unitNumber?: string,
+      ) => {
+        void openTicket(unitId, title, tenantId, undefined, unitNumber);
+      },
+    };
+
+    if (pendingOps.current) {
+      const result = continueDailyOps(body, pendingOps.current, osRef.current, lang, mutations);
+      pendingOps.current = result.pending ?? null;
+      pushAssistant(result.text, result.suggestions);
+      return true;
+    }
+
+    const parsed = parseDailyOps(body, osRef.current, lang, mutations);
+    if (!parsed) return false;
+    pendingOps.current = parsed.pending ?? null;
+    pushAssistant(parsed.text, parsed.suggestions);
+    return true;
+  };
 
   const send = async (raw?: string) => {
     const body = (raw ?? text).trim();
     if (!body || sending) return;
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setText('');
+    setChipSuggestions([]);
     const now = new Date().toISOString();
     const optimistic: ChatMsg = { id: `local-${Date.now()}`, role: 'user', text: body, at: now };
     setMessages((m) => [...m, optimistic]);
     scrollToEnd();
     setSending(true);
     try {
+      if (dailyMode && tryDailyOps(body)) {
+        return;
+      }
       const r = await api.chatSend(SESSION_ID, body);
-      const reply: ChatMsg = { id: `a-${Date.now()}`, role: 'assistant', text: r.reply, at: r.at };
-      setMessages((m) => [...m, reply]);
-      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      pendingOps.current = null;
+      pushAssistant(r.reply);
     } catch {
-      const reply: ChatMsg = {
-        id: `err-${Date.now()}`, role: 'assistant',
-        text: 'I couldn\u2019t reach the Brain just now. Try again in a moment.',
-        at: new Date().toISOString(),
-      };
-      setMessages((m) => [...m, reply]);
+      pushAssistant(dailyMode ? t('brain.ops.fallback') : t('brain.error'));
     } finally {
       setSending(false);
-      scrollToEnd();
     }
   };
 
-  const suggestions = [t('brain.q1'), t('brain.q2'), t('brain.q3'), t('brain.q4')];
+  const suggestions = dailyMode
+    ? dailyOpsSuggestions(osState, lang)
+    : [t('brain.q1'), t('brain.q2'), t('brain.q3'), t('brain.q4')];
   const isEmpty = messages.length === 0;
 
   return (
@@ -76,9 +146,10 @@ export default function Brain() {
         <ScrollView
           ref={scrollRef}
           contentContainerStyle={{
-            paddingTop: insets.top + spacing.xl,
-            paddingBottom: 240,
+            paddingTop: insets.top + wsPad.paddingTop + spacing.md,
+            paddingBottom: insets.bottom + CHAT_INPUT_BOTTOM + 64,
             paddingHorizontal: spacing.lg,
+            paddingRight: wsPad.paddingRight + spacing.lg,
           }}
           showsVerticalScrollIndicator={false}
           testID="chat-scroll"
@@ -91,11 +162,16 @@ export default function Brain() {
                   <BrandOrb size={72} />
                 </View>
                 <Animated.Text entering={FadeInDown.duration(700).delay(150)} style={styles.emptyTitle}>
-                  {t('brain.empty.title')}
+                  {t('page.q.chat')}
                 </Animated.Text>
                 <Animated.Text entering={FadeInDown.duration(700).delay(250)} style={styles.emptyBody}>
-                  {t('brain.empty.body')}
+                  {dailyMode ? t('ops.mode.examples') : t('brain.empty.body')}
                 </Animated.Text>
+                {dailyMode ? (
+                  <Animated.Text entering={FadeInDown.duration(700).delay(320)} style={styles.dailyBadge}>
+                    {t('ops.mode.active')}
+                  </Animated.Text>
+                ) : null}
               </Animated.View>
 
               <View style={styles.suggestBlock}>
@@ -120,10 +196,10 @@ export default function Brain() {
               </View>
             </>
           ) : (
-            <ScreenHeader
-              eyebrow={t('nav.brain')}
-              title={t('brain.title')}
-              sub={t('brain.subtitle')}
+            <StoryScreenHeader
+              question={t('page.q.chat')}
+              hint={t('brain.sub')}
+              testID="brain-header"
             />
           )}
 
@@ -151,6 +227,16 @@ export default function Brain() {
             </Animated.View>
           ))}
 
+          {chipSuggestions.length > 0 ? (
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chipRow}>
+              {chipSuggestions.map((s) => (
+                <Pressable key={s} onPress={() => send(s)} style={styles.chip}>
+                  <Text style={styles.chipText}>{s}</Text>
+                </Pressable>
+              ))}
+            </ScrollView>
+          ) : null}
+
           {sending ? (
             <View style={[styles.bubbleRow, styles.assistantRow]}>
               <View style={styles.assistantAvatar}>
@@ -164,7 +250,7 @@ export default function Brain() {
         </ScrollView>
 
         <View
-          style={[styles.inputWrap, { bottom: 100 + insets.bottom }]}
+          style={[styles.inputWrap, { bottom: insets.bottom + CHAT_INPUT_BOTTOM }]}
           pointerEvents="box-none"
         >
           <View style={styles.inputBar}>
@@ -195,7 +281,6 @@ export default function Brain() {
           </View>
         </View>
       </KeyboardAvoidingView>
-      <GlassTabBar />
     </View>
   );
 }
@@ -227,8 +312,12 @@ const styles = StyleSheet.create({
     fontWeight: typography.weight.semibold, textAlign: 'center',
   },
   emptyBody: {
-    color: colors.textMuted, fontSize: 14, lineHeight: 21,
-    textAlign: 'center', maxWidth: 300,
+    color: colors.textMuted, fontSize: typography.body, lineHeight: 24,
+    textAlign: 'center', maxWidth: 320,
+  },
+  dailyBadge: {
+    color: colors.emerald, fontSize: typography.small, textAlign: 'center',
+    marginTop: spacing.sm, fontWeight: typography.weight.medium,
   },
   suggestBlock: { marginTop: spacing.lg },
   suggestLabel: {
@@ -240,7 +329,14 @@ const styles = StyleSheet.create({
     width: 5, height: 5, borderRadius: 3, backgroundColor: colors.gold,
     shadowColor: colors.gold, shadowOpacity: 0.8, shadowRadius: 5, shadowOffset: { width: 0, height: 0 },
   },
-  suggestText: { color: colors.text, fontSize: 14, flex: 1, lineHeight: 20 },
+  suggestText: { color: colors.text, fontSize: typography.body, flex: 1, lineHeight: 22 },
+  chipRow: { gap: 8, paddingVertical: spacing.sm, paddingHorizontal: 2 },
+  chip: {
+    paddingHorizontal: 14, paddingVertical: 10, borderRadius: radius.pill,
+    borderWidth: StyleSheet.hairlineWidth, borderColor: colors.emeraldEdge,
+    backgroundColor: colors.emeraldSoft,
+  },
+  chipText: { color: colors.emerald, fontSize: typography.small },
 
   bubbleRow: { flexDirection: 'row', gap: 8, marginTop: spacing.md, alignItems: 'flex-end' },
   userRow: { justifyContent: 'flex-end' },
@@ -264,8 +360,8 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.035)', borderColor: colors.border,
     borderBottomLeftRadius: 6,
   },
-  userText: { color: colors.text, fontSize: 14, lineHeight: 21 },
-  assistantText: { color: colors.textDim, fontSize: 14, lineHeight: 21 },
+  userText: { color: colors.text, fontSize: typography.body, lineHeight: 24 },
+  assistantText: { color: colors.textDim, fontSize: typography.body, lineHeight: 24 },
 
   inputWrap: {
     position: 'absolute', left: spacing.md + 4, right: spacing.md + 4,
@@ -285,7 +381,7 @@ const styles = StyleSheet.create({
     shadowColor: colors.emerald, shadowOpacity: 0.9, shadowRadius: 6, shadowOffset: { width: 0, height: 0 },
   },
   input: {
-    flex: 1, color: colors.text, fontSize: 14, paddingVertical: 12,
+    flex: 1, color: colors.text, fontSize: typography.body, paddingVertical: 12,
   },
   sendBtn: {
     width: 38, height: 38, borderRadius: 19,

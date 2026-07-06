@@ -1,10 +1,17 @@
-const RAW = process.env.EXPO_PUBLIC_BACKEND_URL;
-export const API_BASE = `${RAW}/api`;
+import type { IntelligenceResponse, PortfolioMemory } from './intelligence';
+import { getLang } from '../i18n';
+import { apiUrl } from '../constants/backend';
+
+export const API_BASE = apiUrl('');
 
 async function req<T>(path: string, init?: RequestInit): Promise<T> {
+  const headers: Record<string, string> = {
+    'Content-Type': 'application/json',
+    'Accept-Language': getLang(),
+  };
   const res = await fetch(`${API_BASE}${path}`, {
-    headers: { 'Content-Type': 'application/json' },
     ...init,
+    headers: { ...headers, ...(init?.headers as Record<string, string> | undefined) },
   });
   if (!res.ok) {
     const text = await res.text().catch(() => '');
@@ -15,6 +22,7 @@ async function req<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   briefing: () => req<Briefing>('/briefing'),
+  executive: () => req<import('./executive').Executive>('/executive'),
   properties: () => req<PropertyT[]>('/properties'),
   property: (id: string) => req<PropertyT>(`/properties/${id}`),
   decisions: () => req<DecisionT[]>('/decisions'),
@@ -28,12 +36,22 @@ export const api = {
   guides: () => req<GuideT[]>('/guides'),
   owner: () => req<OwnerT>('/owner'),
   verdicts: () => req<Record<string, VerdictT | null>>('/verdicts'),
+  portfolioMemory: () => req<PortfolioMemory>('/portfolio-memory'),
+  intelligence: () => req<IntelligenceResponse>('/intelligence'),
   chatSend: (session_id: string, text: string) =>
     req<{ reply: string; at: string }>('/chat', {
       method: 'POST',
       body: JSON.stringify({ session_id, text }),
     }),
   chatHistory: (sid: string) => req<ChatMsg[]>(`/chat/${sid}`),
+  loadDemo: () => req<{ ok: boolean; mode: string }>('/demo/load', { method: 'POST' }),
+  clearDemo: () => req<{ ok: boolean; mode: string }>('/demo/clear', { method: 'POST' }),
+  betaLogin: (email: string, password: string) =>
+    req<{ ok: boolean; persona: string; email: string }>('/beta/login', {
+      method: 'POST',
+      body: JSON.stringify({ email, password }),
+    }),
+  betaInfo: () => req<{ beta: boolean; gas_disabled: boolean }>('/beta/info'),
 };
 
 // Types
@@ -126,3 +144,5 @@ export type VerdictT = {
   action: string;
   route: string;
 };
+
+export type { Executive, ExecutiveDailyBrief, ExecutiveRankedItem, ExecutiveAgenda } from './executive';

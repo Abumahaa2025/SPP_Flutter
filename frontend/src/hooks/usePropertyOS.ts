@@ -2,13 +2,21 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { storage } from '@/src/utils/storage';
 import type {
   ContractRecord,
+  PaymentRecord,
   PropertyOSState,
   PropertyRecord,
   SetupPhaseId,
   SetupPhaseProgress,
   TenantRecord,
+  UnitHistoryEntry,
   UnitRecord,
 } from '@/src/types/property-os';
+import {
+  onContractEnded,
+  onPaymentRecorded,
+  onSetupCompleted,
+  onTenantAdded,
+} from '@/src/utils/operational-flow-engine';
 
 const KEY = 'spp.propertyOS';
 
@@ -20,6 +28,9 @@ const DEFAULT: PropertyOSState = {
   alertsEnabled: false,
   technicianPortalToken: '',
   dismissedProgress: false,
+  setupCompleted: false,
+  unitHistory: [],
+  payments: [],
 };
 
 function uid(prefix: string) {
@@ -162,6 +173,8 @@ export function usePropertyOS(notifEnabledCount = 0) {
       whatsAppMessage: buildWhatsAppWelcome(input.name, portal.url, lang),
     };
     persist({ ...state, tenants: [...state.tenants, tenant] });
+    const unit = state.units.find((u) => u.id === input.unitId);
+    void onTenantAdded(tenant, unit?.number);
     return tenant;
   }, [persist, state]);
 
@@ -191,6 +204,55 @@ export function usePropertyOS(notifEnabledCount = 0) {
     persist({ ...state, dismissedProgress: false });
   }, [persist, state]);
 
+  const markSetupComplete = useCallback(() => {
+    persist({
+      ...state,
+      setupCompleted: true,
+      dismissedProgress: true,
+    });
+    void onSetupCompleted();
+  }, [persist, state]);
+
+  const endContract = useCallback((contractId: string, unitId: string, tenant: TenantRecord) => {
+    const contract = state.contracts.find((c) => c.id === contractId);
+    const historyEntry: UnitHistoryEntry = {
+      unitId,
+      tenantName: tenant.name,
+      lateAmount: 0,
+      followUpCount: 0,
+      note: contract ? `Contract ${contract.number} ended` : undefined,
+      endedAt: new Date().toISOString(),
+    };
+    const unit = state.units.find((u) => u.id === unitId);
+    persist({
+      ...state,
+      contracts: state.contracts.filter((c) => c.id !== contractId),
+      units: state.units.map((u) => (u.id === unitId ? { ...u, status: 'vacant' as const } : u)),
+      unitHistory: [...(state.unitHistory ?? []), historyEntry],
+    });
+    void onContractEnded(state, tenant, unit?.number);
+  }, [persist, state]);
+
+  const recordPayment = useCallback((unitId: string, tenantId: string, amount: number) => {
+    const payment: PaymentRecord = {
+      id: uid('pay'),
+      unitId,
+      tenantId,
+      amount,
+      paidAt: new Date().toISOString(),
+    };
+    const next: PropertyOSState = {
+      ...state,
+      payments: [...(state.payments ?? []), payment],
+    };
+    persist(next);
+    void onPaymentRecorded(next, payment);
+  }, [persist, state]);
+
+  const reopenSetup = useCallback(() => {
+    persist({ ...state, setupCompleted: false, dismissedProgress: false });
+  }, [persist, state]);
+
   return {
     state,
     ready,
@@ -206,6 +268,10 @@ export function usePropertyOS(notifEnabledCount = 0) {
     ensureTechnicianPortal,
     dismissProgress,
     resetProgressDismiss,
+    markSetupComplete,
+    endContract,
+    recordPayment,
+    reopenSetup,
   };
 }
 

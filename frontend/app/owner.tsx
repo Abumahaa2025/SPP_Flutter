@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import Animated, { FadeInDown } from 'react-native-reanimated';
@@ -6,133 +6,149 @@ import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 
 import { ScreenScaffold } from '@/src/components/ScreenScaffold';
-import { ScreenHeader } from '@/src/components/ScreenHeader';
+import { StoryScreenHeader } from '@/src/components/StoryScreenHeader';
 import { GlassCard } from '@/src/components/GlassCard';
-import { BrandOrb, Wordmark } from '@/src/components/BrandOrb';
-import { BrainVerdict } from '@/src/components/BrainVerdict';
-import { api, type OwnerT, type Briefing } from '@/src/api/client';
-import { colors, spacing, typography, radius } from '@/src/theme';
+import { usePropertyOS } from '@/src/hooks/usePropertyOS';
+import { useOperational } from '@/src/hooks/useOperational';
+import { useNotificationPrefs } from '@/src/hooks/usePreferences';
+import { colors, spacing, typography } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
 
-const fmt = (n: number) => {
-  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
-  if (n >= 1_000) return `${(n / 1000).toFixed(0)}K`;
-  return `${n}`;
+type HubLink = {
+  key: string;
+  icon: keyof typeof Feather.glyphMap;
+  labelKey: string;
+  hintKey: string;
+  route: string;
+  tone?: 'gold' | 'emerald';
 };
 
-export default function Owner() {
-  const { t } = useI18n();
-  const router = useRouter();
-  const [owner, setOwner] = useState<OwnerT | null>(null);
-  const [brief, setBrief] = useState<Briefing | null>(null);
+const LINKS: HubLink[] = [
+  { key: 'properties', icon: 'home', labelKey: 'op.owner.properties', hintKey: 'op.owner.properties.hint', route: '/portfolio', tone: 'gold' },
+  { key: 'units', icon: 'grid', labelKey: 'op.owner.units', hintKey: 'op.owner.units.hint', route: '/portfolio' },
+  { key: 'tenants', icon: 'users', labelKey: 'op.owner.tenants', hintKey: 'op.owner.tenants.hint', route: '/tenants' },
+  { key: 'contracts', icon: 'file-text', labelKey: 'op.owner.contracts', hintKey: 'op.owner.contracts.hint', route: '/contracts', tone: 'gold' },
+  { key: 'payments', icon: 'dollar-sign', labelKey: 'op.owner.payments', hintKey: 'op.owner.payments.hint', route: '/operational/payments', tone: 'emerald' },
+  { key: 'maintenance', icon: 'tool', labelKey: 'op.owner.maintenance', hintKey: 'op.owner.maintenance.hint', route: '/maintenance', tone: 'emerald' },
+  { key: 'portfolio', icon: 'layers', labelKey: 'op.owner.portfolio', hintKey: 'op.owner.portfolio.hint', route: '/portfolio' },
+  { key: 'reports', icon: 'bar-chart-2', labelKey: 'op.owner.reports', hintKey: 'op.owner.reports.hint', route: '/reports' },
+  { key: 'services', icon: 'zap', labelKey: 'op.owner.services', hintKey: 'op.owner.services.hint', route: '/operational/services', tone: 'gold' },
+];
 
-  useEffect(() => {
-    api.owner().then(setOwner).catch(() => {});
-    api.briefing().then(setBrief).catch(() => {});
-  }, []);
+function fmtEvent(t: (k: any) => string, key: string, params?: Record<string, string>) {
+  let s = t(key);
+  if (params) Object.entries(params).forEach(([k, v]) => { s = s.replace(`{${k}}`, v); });
+  return s;
+}
+
+export default function Owner() {
+  const { t, isRTL } = useI18n();
+  const router = useRouter();
+  const { countEnabled } = useNotificationPrefs();
+  const { state } = usePropertyOS(countEnabled);
+  const { recentEvents } = useOperational();
+
+  const payments = state.payments?.length ?? 0;
 
   return (
     <ScreenScaffold testID="owner-screen">
-      <ScreenHeader eyebrow="Identity" title={t('owner.title')} sub={t('owner.sub')} showBack />
+      <StoryScreenHeader
+        question={t('op.owner.title')}
+        hint={t('op.owner.sub')}
+        showBack
+        testID="owner-header"
+      />
 
-      <BrainVerdict screen="owner" />
+      {state.property ? (
+        <Animated.View entering={FadeInDown.duration(500)}>
+          <GlassCard padding={20} radiusToken="lg" edge="gold">
+            <Text style={[styles.propName, isRTL && styles.rtl]}>{state.property.name}</Text>
+            <Text style={[styles.propCity, isRTL && styles.rtl]}>{state.property.city}</Text>
+            <View style={[styles.kpiRow, isRTL && styles.rowRtl]}>
+              <Kpi label={t('op.owner.kpi.units')} value={String(state.units.length)} />
+              <Kpi label={t('op.owner.kpi.tenants')} value={String(state.tenants.length)} />
+              <Kpi label={t('op.owner.kpi.contracts')} value={String(state.contracts.length)} />
+              <Kpi label={t('op.owner.kpi.payments')} value={String(payments)} />
+            </View>
+          </GlassCard>
+        </Animated.View>
+      ) : null}
 
-      {/* Identity card */}
-      <Animated.View entering={FadeInDown.duration(650)}>
-        <GlassCard padding={26} radiusToken="lg" edge="gold" bright>
-          <View style={{ alignItems: 'center' }}>
-            <BrandOrb size={56} />
-            <Text style={styles.name}>{owner?.name ?? '—'}</Text>
-            <View style={styles.tagline}>
-              <Wordmark size="sm" color={colors.textMuted} />
-            </View>
-          </View>
-
-          <View style={styles.stats}>
-            <View style={styles.stat}>
-              <Text style={styles.statLabel}>{t('owner.value')}</Text>
-              <View style={styles.statValueRow}>
-                <Text style={styles.statLead}>AED</Text>
-                <Text style={styles.statValue}>{fmt(owner?.portfolio_value ?? 0)}</Text>
-              </View>
-            </View>
-            <View style={styles.statSep} />
-            <View style={styles.stat}>
-              <Text style={styles.statLabel}>{t('owner.properties')}</Text>
-              <Text style={styles.statValueSolo}>{owner?.properties ?? brief?.properties_count ?? 0}</Text>
-            </View>
-            <View style={styles.statSep} />
-            <View style={styles.stat}>
-              <Text style={styles.statLabel}>HEALTH</Text>
-              <Text style={styles.statValueSolo}>{brief?.avg_health ?? '—'}</Text>
-            </View>
-          </View>
-        </GlassCard>
-      </Animated.View>
-
-      {/* Quick links */}
-      <View style={styles.linkGrid}>
-        <QuickLink icon="grid" label="Portfolio" onPress={() => router.push('/portfolio')} testID="ol-portfolio" />
-        <QuickLink icon="users" label="Tenants" onPress={() => router.push('/tenants')} testID="ol-tenants" />
-        <QuickLink icon="file-text" label="Contracts" onPress={() => router.push('/contracts')} testID="ol-contracts" />
-        <QuickLink icon="file" label="Reports" onPress={() => router.push('/reports')} testID="ol-reports" />
+      <View style={styles.grid}>
+        {LINKS.map((link, i) => (
+          <Animated.View key={link.key} entering={FadeInDown.duration(450).delay(40 + i * 30)} style={styles.tileWrap}>
+            <Pressable
+              testID={`owner-${link.key}`}
+              onPress={() => { Haptics.selectionAsync(); router.push(link.route as any); }}
+              style={({ pressed }) => [pressed && { opacity: 0.88 }]}
+            >
+              <GlassCard padding={14} radiusToken="md" edge={link.tone === 'gold' ? 'gold' : link.tone === 'emerald' ? 'emerald' : 'neutral'}>
+                <View style={[styles.tileRow, isRTL && styles.rowRtl]}>
+                  <Feather name={link.icon} size={16} color={link.tone === 'emerald' ? colors.emerald : colors.gold} />
+                  <View style={styles.tileText}>
+                    <Text style={[styles.tileLabel, isRTL && styles.rtl]}>{t(link.labelKey as any)}</Text>
+                    <Text style={[styles.tileHint, isRTL && styles.rtl]} numberOfLines={2}>{t(link.hintKey as any)}</Text>
+                  </View>
+                </View>
+              </GlassCard>
+            </Pressable>
+          </Animated.View>
+        ))}
       </View>
 
-      {/* Brand signature */}
-      <View style={styles.signature}>
-        <View style={styles.sigLine} />
-        <Wordmark size="sm" color={colors.textSubtle} showTagline />
-        <View style={styles.sigLine} />
-      </View>
+      {state.technicianPortalToken ? (
+        <Pressable
+          onPress={() => router.push(`/portal/tech?t=${state.technicianPortalToken}` as any)}
+          style={styles.techLink}
+        >
+          <Text style={styles.techLinkText}>{t('ops.technician')} →</Text>
+        </Pressable>
+      ) : null}
+
+      {recentEvents.length ? (
+        <View style={styles.events}>
+          <Text style={[styles.eventsTitle, isRTL && styles.rtl]}>{t('op.owner.events')}</Text>
+          {recentEvents.slice(0, 5).map((ev) => (
+            <Text key={ev.id} style={[styles.eventLine, isRTL && styles.rtl]}>
+              · {fmtEvent(t, ev.summaryKey, ev.summaryParams)}
+            </Text>
+          ))}
+        </View>
+      ) : null}
     </ScreenScaffold>
   );
 }
 
-function QuickLink({ icon, label, onPress, testID }: { icon: keyof typeof Feather.glyphMap; label: string; onPress: () => void; testID: string }) {
+function Kpi({ label, value }: { label: string; value: string }) {
   return (
-    <Pressable
-      testID={testID}
-      onPress={() => { Haptics.selectionAsync(); onPress(); }}
-      style={styles.link}
-    >
-      <View style={styles.linkIcon}>
-        <Feather name={icon} size={14} color={colors.textDim} />
-      </View>
-      <Text style={styles.linkText}>{label}</Text>
-    </Pressable>
+    <View style={styles.kpi}>
+      <Text style={styles.kpiValue}>{value}</Text>
+      <Text style={styles.kpiLabel}>{label}</Text>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  name: {
-    color: colors.text, fontSize: 22, fontWeight: typography.weight.semibold,
-    letterSpacing: -0.4, marginTop: 8,
+  propName: { color: colors.text, fontSize: typography.cardTitle, fontWeight: typography.weight.semibold },
+  propCity: { color: colors.textMuted, fontSize: typography.small, marginTop: 4 },
+  rtl: { writingDirection: 'rtl', textAlign: 'right' },
+  rowRtl: { flexDirection: 'row-reverse' },
+  kpiRow: { flexDirection: 'row', marginTop: spacing.lg, gap: 8 },
+  kpi: { flex: 1, alignItems: 'center' },
+  kpiValue: { color: colors.text, fontSize: 18, fontWeight: typography.weight.semibold },
+  kpiLabel: { color: colors.textMuted, fontSize: 9, marginTop: 4, textAlign: 'center' },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm, marginTop: spacing.lg },
+  tileWrap: { width: '48%' },
+  tileRow: { flexDirection: 'row', gap: 10, alignItems: 'flex-start' },
+  tileText: { flex: 1, gap: 3 },
+  tileLabel: { color: colors.text, fontSize: 13, fontWeight: typography.weight.semibold },
+  tileHint: { color: colors.textMuted, fontSize: 11, lineHeight: 16 },
+  techLink: { marginTop: spacing.md, paddingVertical: 8 },
+  techLinkText: { color: colors.emerald, fontSize: typography.small },
+  events: { marginTop: spacing.xl },
+  eventsTitle: {
+    color: colors.textMuted, fontSize: 11, letterSpacing: 0.8,
+    textTransform: 'uppercase', fontWeight: typography.weight.semibold, marginBottom: spacing.sm,
   },
-  tagline: { marginTop: 6 },
-  stats: { flexDirection: 'row', marginTop: spacing.xl, gap: 12, alignItems: 'flex-start' },
-  stat: { flex: 1 },
-  statSep: { width: StyleSheet.hairlineWidth, height: 40, backgroundColor: colors.divider },
-  statLabel: { color: colors.textMuted, fontSize: 10, letterSpacing: 1.6, fontWeight: typography.weight.medium },
-  statValueRow: { flexDirection: 'row', alignItems: 'baseline', gap: 4, marginTop: 6 },
-  statLead: { color: colors.textMuted, fontSize: 10, letterSpacing: 1.2 },
-  statValue: { color: colors.text, fontSize: 22, fontWeight: typography.weight.semibold, letterSpacing: -0.4, fontVariant: ['tabular-nums'] },
-  statValueSolo: { color: colors.text, fontSize: 22, fontWeight: typography.weight.semibold, letterSpacing: -0.4, marginTop: 6, fontVariant: ['tabular-nums'] },
-
-  linkGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, marginTop: spacing.xl },
-  link: {
-    flexGrow: 1, flexBasis: '46%', maxWidth: '48%',
-    borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border,
-    backgroundColor: 'rgba(255,255,255,0.02)',
-    borderRadius: radius.md, paddingVertical: 14, alignItems: 'center', gap: 8,
-  },
-  linkIcon: {
-    width: 32, height: 32, borderRadius: 16,
-    borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border,
-    backgroundColor: 'rgba(255,255,255,0.02)',
-    alignItems: 'center', justifyContent: 'center',
-  },
-  linkText: { color: colors.textDim, fontSize: 11, letterSpacing: 1.4, textTransform: 'uppercase', fontWeight: typography.weight.medium },
-
-  signature: { alignItems: 'center', marginTop: spacing['2xl'], gap: 14 },
-  sigLine: { width: 40, height: StyleSheet.hairlineWidth, backgroundColor: colors.border },
+  eventLine: { color: colors.textDim, fontSize: typography.small, lineHeight: 20, marginBottom: 4 },
 });

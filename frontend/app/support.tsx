@@ -5,50 +5,53 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 
 import { ScreenScaffold } from '@/src/components/ScreenScaffold';
-import { ScreenHeader } from '@/src/components/ScreenHeader';
+import { StoryScreenHeader } from '@/src/components/StoryScreenHeader';
 import { GlassCard } from '@/src/components/GlassCard';
 import { colors, spacing, typography } from '@/src/theme';
-
-const channels = [
-  { icon: 'message-circle' as const, label: 'WhatsApp priority line', hint: 'Reply within 15 min', href: 'https://wa.me/971000000000', accent: 'emerald' },
-  { icon: 'mail' as const, label: 'Email your executive', hint: 'support@spp.ai · 4h SLA', href: 'mailto:support@spp.ai', accent: 'gold' },
-  { icon: 'phone' as const, label: 'Concierge call', hint: 'By appointment · 24/7', href: 'tel:+971000000000' },
-] as const;
-
-const faqs = [
-  { q: 'How is the Morning Brief generated?', a: 'The Unified Brain composes it from your live portfolio state, sensor drift and open decisions — nightly.' },
-  { q: 'Where is my data stored?', a: 'Encrypted at rest. Only your organization can access it.' },
-  { q: 'Can I switch AI models?', a: 'Yes. GPT-5.2 today; Claude and Gemini are drop-in via one config line.' },
-];
+import { useI18n } from '@/src/i18n';
 
 export default function Support() {
+  const { t, isRTL } = useI18n();
+
+  const channels = [
+    { icon: 'message-circle' as const, labelKey: 'support.channel.whatsapp', hintKey: 'support.channel.whatsappHint', href: 'https://wa.me/971000000000', accent: 'emerald' as const },
+    { icon: 'mail' as const, labelKey: 'support.channel.email', hintKey: 'support.channel.emailHint', href: 'mailto:support@spp.ai', accent: 'gold' as const },
+    { icon: 'phone' as const, labelKey: 'support.channel.phone', hintKey: 'support.channel.phoneHint', href: 'tel:+971000000000' },
+  ];
+
+  const faqs = [
+    { q: t('support.faq1.q'), a: t('support.faq1.a') },
+    { q: t('support.faq2.q'), a: t('support.faq2.a') },
+    { q: t('support.faq3.q'), a: t('support.faq3.a') },
+  ];
+
   return (
     <ScreenScaffold testID="support-screen">
-      <ScreenHeader eyebrow="Help" title="Contact & Support" sub="Talk to a human, or ask the Brain." showBack />
+      <StoryScreenHeader question={t('page.q.support')} hint={t('support.sub')} showBack testID="support-header" />
 
       {channels.map((c, i) => (
-        <Animated.View key={c.label} entering={FadeInDown.duration(600).delay(60 * i)}>
+        <Animated.View key={c.labelKey} entering={FadeInDown.duration(600).delay(60 * i)}>
           <Pressable
             testID={`support-${c.icon}`}
             onPress={() => { Haptics.selectionAsync(); Linking.openURL(c.href).catch(() => {}); }}
             style={{ marginBottom: spacing.md }}
           >
-            <GlassCard padding={20} radiusToken="lg" edge={('accent' in c ? c.accent : 'neutral') as any}>
+            <GlassCard padding={20} radiusToken="lg" edge={c.accent ?? 'neutral'}>
               <View style={styles.row}>
                 <View style={[
                   styles.iconChip,
-                  ('accent' in c && c.accent === 'gold') && { borderColor: colors.goldEdge, backgroundColor: colors.goldSoft },
-                  ('accent' in c && c.accent === 'emerald') && { borderColor: colors.emeraldEdge, backgroundColor: colors.emeraldSoft },
+                  c.accent === 'gold' && { borderColor: colors.goldEdge, backgroundColor: colors.goldSoft },
+                  c.accent === 'emerald' && { borderColor: colors.emeraldEdge, backgroundColor: colors.emeraldSoft },
                 ]}>
                   <Feather
                     name={c.icon}
                     size={16}
-                    color={('accent' in c && c.accent === 'gold') ? colors.gold : ('accent' in c && c.accent === 'emerald') ? colors.emerald : colors.textDim}
+                    color={c.accent === 'gold' ? colors.gold : c.accent === 'emerald' ? colors.emerald : colors.textDim}
                   />
                 </View>
                 <View style={{ flex: 1 }}>
-                  <Text style={styles.label}>{c.label}</Text>
-                  <Text style={styles.hint}>{c.hint}</Text>
+                  <Text style={[styles.label, isRTL && styles.rtl]}>{t(c.labelKey as 'support.channel.whatsapp')}</Text>
+                  <Text style={[styles.hint, isRTL && styles.rtl]}>{t(c.hintKey as 'support.channel.whatsappHint')}</Text>
                 </View>
                 <Feather name="arrow-up-right" size={16} color={colors.textDim} />
               </View>
@@ -58,12 +61,12 @@ export default function Support() {
       ))}
 
       <View style={{ marginTop: spacing.lg }}>
-        <Text style={styles.faqTitle}>FREQUENT QUESTIONS</Text>
+        <Text style={styles.faqTitle}>{t('support.faqTitle').toUpperCase()}</Text>
         {faqs.map((f, i) => (
           <Animated.View key={f.q} entering={FadeInDown.duration(600).delay(200 + 60 * i)} style={{ marginTop: spacing.sm }}>
             <GlassCard padding={18} radiusToken="lg">
-              <Text style={styles.q}>{f.q}</Text>
-              <Text style={styles.a}>{f.a}</Text>
+              <Text style={[styles.q, isRTL && styles.rtl]}>{f.q}</Text>
+              <Text style={[styles.a, isRTL && styles.rtl]}>{f.a}</Text>
             </GlassCard>
           </Animated.View>
         ))}
@@ -80,4 +83,5 @@ const styles = StyleSheet.create({
   faqTitle: { color: colors.textMuted, fontSize: 10.5, letterSpacing: 2, fontWeight: typography.weight.medium, marginBottom: spacing.sm },
   q: { color: colors.text, fontSize: 14, fontWeight: typography.weight.semibold, letterSpacing: -0.1 },
   a: { color: colors.textDim, fontSize: 13, lineHeight: 20, marginTop: 8 },
+  rtl: { writingDirection: 'rtl', textAlign: 'right' },
 });

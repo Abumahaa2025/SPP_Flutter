@@ -6,17 +6,22 @@ import * as Haptics from 'expo-haptics';
 import { useRouter } from 'expo-router';
 
 import { ScreenScaffold } from '@/src/components/ScreenScaffold';
-import { ScreenHeader } from '@/src/components/ScreenHeader';
+import { StoryScreenHeader } from '@/src/components/StoryScreenHeader';
 import { GlassCard } from '@/src/components/GlassCard';
 import { colors, spacing, typography, radius } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
 import { storage } from '@/src/utils/storage';
 import { useNotificationPrefs } from '@/src/hooks/usePreferences';
+import { useDemoMode } from '@/src/hooks/useDemoMode';
+import { useConnections } from '@/src/hooks/useConnections';
+import { signOutSession } from '@/src/services/beta-auth';
 
 export default function Settings() {
   const { t, lang, setLang, isRTL } = useI18n();
   const router = useRouter();
   const { prefs, update, countEnabled } = useNotificationPrefs();
+  const { demoMode, setDemoMode } = useDemoMode();
+  const { connections } = useConnections();
   const [pendingRTL, setPendingRTL] = useState(false);
 
   // Language change — RTL requires a native reload to fully mirror the layout.
@@ -49,9 +54,9 @@ export default function Settings() {
     );
   };
 
-  const showPhase4 = (label: string) => {
+  const openSetup = (path: string) => {
     Haptics.selectionAsync();
-    Alert.alert(label, t('common.phase4'), [{ text: t('common.done') }]);
+    router.push(path as any);
   };
 
   const signOut = () => {
@@ -64,9 +69,9 @@ export default function Settings() {
         {
           text: t('settings.action.signout'),
           style: 'destructive',
-          onPress: () => {
-            // Session-only sign out — Phase 4 will wire this to backend/session tokens.
-            router.replace('/onboarding');
+          onPress: async () => {
+            await signOutSession();
+            router.replace('/beta-login' as never);
           },
         },
       ]
@@ -77,31 +82,20 @@ export default function Settings() {
 
   return (
     <ScreenScaffold testID="settings-screen">
-      <ScreenHeader
-        eyebrow={t('settings.title').toUpperCase()}
-        title={t('settings.title')}
-        sub={t('settings.sub')}
-        showBack
-      />
+      <StoryScreenHeader question={t('page.q.settings')} hint={t('settings.sub')} showBack testID="settings-header" />
 
       {/* Account */}
       <Section title={t('settings.section.account')} delay={0} dir={dir}>
-        <NavRow icon="user" label={t('profile.title')} hint="Alexander Vale · alexander@spp.ai"
+        <NavRow icon="user" label={t('profile.title')} hint={t('settings.demo.profile')}
                 onPress={() => router.push('/profile')} testID="s-profile" dir={dir} />
-        <Divider />
-        <NavRow icon="credit-card" label={t('profile.field.subscription')} hint="Executive · AED 199/mo"
-                onPress={() => router.push('/billing')} accent="gold" testID="s-billing" dir={dir} />
-        <Divider />
-        <NavRow icon="grid" label={t('hub.tile.owner')} hint="4 properties · Vale Holdings"
-                onPress={() => router.push('/owner')} testID="s-owner" dir={dir} />
       </Section>
 
       {/* Preferences · Language */}
       <Section title={t('settings.language')} delay={60} dir={dir}>
         <View style={styles.langRow}>
-          <LangBtn active={lang === 'en'} label="English" hint="Left to right"
+          <LangBtn active={lang === 'en'} label={t('settings.lang.en')} hint={t('settings.lang.enHint')}
                    onPress={() => changeLang('en')} testID="lang-en" />
-          <LangBtn active={lang === 'ar'} label="العربية" hint="من اليمين إلى اليسار"
+          <LangBtn active={lang === 'ar'} label={t('settings.lang.ar')} hint={t('settings.lang.arHint')}
                    onPress={() => changeLang('ar')} testID="lang-ar" />
         </View>
         {(pendingRTL || (lang === 'ar' && I18nManager.isRTL === false)) ? (
@@ -151,27 +145,60 @@ export default function Settings() {
         <ReadRow icon="wind" label={t('settings.reduceMotion')} value={t('settings.reduceMotion.value')} dir={dir} />
       </Section>
 
-      {/* Connected services (Phase 4 placeholders) */}
+      {/* Connected services */}
       <Section title={t('settings.section.services')} delay={240} dir={dir}>
         <ServiceRow icon="database" label={t('settings.services.sheets')} hint={t('settings.services.sheets.hint')}
-                    status="phase4" onPress={() => showPhase4(t('settings.services.sheets'))}
-                    testID="svc-sheets" dir={dir} t={t} />
+                    connected={connections.sheets.connected} summary={connections.sheets.summary}
+                    onPress={() => openSetup('/setup/sheets')} testID="svc-sheets" dir={dir} t={t} />
         <Divider />
-        <ServiceRow icon="home" label={t('settings.services.homeAssistant')} hint={t('settings.services.homeAssistant.hint')}
-                    status="phase4" onPress={() => showPhase4(t('settings.services.homeAssistant'))}
-                    testID="svc-ha" dir={dir} t={t} />
+        <ServiceRow icon="mail" label={t('settings.services.email')} hint={t('settings.services.email.hint')}
+                    connected={connections.email.connected} summary={connections.email.summary}
+                    onPress={() => openSetup('/setup/email')} testID="svc-email" dir={dir} t={t} />
         <Divider />
         <ServiceRow icon="message-circle" label={t('settings.services.whatsapp')} hint={t('settings.services.whatsapp.hint')}
-                    status="phase4" onPress={() => showPhase4(t('settings.services.whatsapp'))}
-                    testID="svc-wa" dir={dir} t={t} />
+                    connected={connections.whatsapp.connected} summary={connections.whatsapp.summary}
+                    onPress={() => openSetup('/setup/whatsapp')} testID="svc-wa" dir={dir} t={t} />
+        <Divider />
+        <ServiceRow icon="cpu" label={t('settings.services.greenApi')} hint={t('settings.services.greenApi.hint')}
+                    connected={connections.greenApi.connected} summary={connections.greenApi.summary}
+                    onPress={() => openSetup('/setup/greenApi')} testID="svc-green" dir={dir} t={t} />
+        <Divider />
+        <ServiceRow icon="home" label={t('settings.services.homeAssistant')} hint={t('settings.services.homeAssistant.hint')}
+                    connected={connections.homeAssistant.connected} summary={connections.homeAssistant.summary}
+                    onPress={() => openSetup('/setup/homeAssistant')} testID="svc-ha" dir={dir} t={t} />
         <Divider />
         <ServiceRow icon="cpu" label={t('settings.services.openai')} hint={t('settings.services.openai.hint')}
-                    status="active" onPress={() => Haptics.selectionAsync()} testID="svc-oai" dir={dir} t={t} />
+                    connected statusLabel={t('settings.services.status.active')}
+                    onPress={() => Haptics.selectionAsync()} testID="svc-oai" dir={dir} t={t} />
+      </Section>
+
+      {/* Backup & data */}
+      <Section title={t('settings.section.data')} delay={300} accent="gold" dir={dir}>
+        <NavRow icon="hard-drive" label={t('settings.backup')} hint={t('settings.backup.hint')}
+                onPress={() => openSetup('/setup/backup')} testID="s-backup" dir={dir} />
+        <Divider />
+        <NavRow icon="download" label={t('settings.importExport')} hint={t('settings.importExport.hint')}
+                onPress={() => openSetup('/setup/import')} testID="s-import" dir={dir} />
+        <Divider />
+        <ToggleRow
+          icon="database"
+          label={t('settings.demoMode')}
+          hint={t('settings.demoMode.hint')}
+          value={demoMode}
+          onChange={(v) => { void setDemoMode(v); }}
+          dir={dir}
+        />
+        <View style={styles.countRow}>
+          <View style={[styles.countDot, { backgroundColor: demoMode ? colors.gold : colors.emerald }]} />
+          <Text style={styles.countText}>
+            {demoMode ? t('settings.demoMode.on') : t('settings.demoMode.off')}
+          </Text>
+        </View>
       </Section>
 
       {/* Brain */}
-      <Section title={t('settings.brain')} delay={300} accent="emerald" dir={dir}>
-        <ReadRow icon="cpu" label={t('settings.brain.model')} value="GPT-5.2" accent dir={dir} />
+      <Section title={t('settings.brain')} delay={390} accent="emerald" dir={dir}>
+        <ReadRow icon="cpu" label={t('settings.manager.model')} value="GPT-5.2" accent dir={dir} />
         <Divider />
         <ReadRow icon="shield" label={t('settings.brain.memory')} value={t('settings.brain.memory.value')} dir={dir} />
         <Divider />
@@ -179,15 +206,21 @@ export default function Settings() {
       </Section>
 
       {/* Privacy & security */}
-      <Section title={t('settings.section.privacy')} delay={360} dir={dir}>
-        <NavRow icon="lock" label={t('profile.field.password')} hint={t('settings.passwordAge')}
-                onPress={() => showPhase4(t('profile.field.password'))} testID="s-password" dir={dir} />
+      <Section title={t('settings.section.privacy')} delay={450} dir={dir}>
+        <NavRow icon="user" label={t('settings.accountMgmt')} hint={t('settings.accountMgmt.hint')}
+                onPress={() => openSetup('/setup/account')} testID="s-account" dir={dir} />
         <Divider />
-        <NavRow icon="shield" label={t('profile.field.twofa')} hint={t('common.comingSoon')}
-                onPress={() => showPhase4(t('profile.field.twofa'))} testID="s-2fa" dir={dir} />
+        <NavRow icon="shield" label={t('settings.security')} hint={t('settings.security.hint')}
+                onPress={() => openSetup('/setup/security')} testID="s-security" dir={dir} accent="gold" />
+        <Divider />
+        <NavRow icon="lock" label={t('profile.field.password')} hint={t('settings.passwordAge')}
+                onPress={() => openSetup('/setup/security')} testID="s-password" dir={dir} />
+        <Divider />
+        <NavRow icon="shield" label={t('profile.field.twofa')} hint={t('settings.twofa.hint')}
+                onPress={() => openSetup('/setup/security')} testID="s-2fa" dir={dir} />
         <Divider />
         <NavRow icon="download" label={t('profile.field.dataExport')} hint={t('profile.field.dataExport.hint')}
-                onPress={() => showPhase4(t('profile.field.dataExport'))} testID="s-export" dir={dir} />
+                onPress={() => openSetup('/setup/import')} testID="s-export" dir={dir} />
         <Divider />
         <NavRow icon="file-text" label={t('settings.privacyPolicy')} onPress={() => router.push('/privacy')} testID="s-privacy" dir={dir} />
         <Divider />
@@ -195,7 +228,10 @@ export default function Settings() {
       </Section>
 
       {/* Help & About */}
-      <Section title={t('settings.section.help')} delay={420} dir={dir}>
+      <Section title={t('settings.section.help')} delay={510} dir={dir}>
+        <NavRow icon="play-circle" label={t('settings.learnCenter')} hint={t('settings.learnCenter.hint')}
+                onPress={() => router.push('/guides')} testID="s-guides" dir={dir} accent="gold" />
+        <Divider />
         <NavRow icon="life-buoy" label={t('settings.contactSupport')} hint={t('settings.contactSupport.hint')}
                 onPress={() => router.push('/support')} testID="s-support" dir={dir} />
         <Divider />
@@ -217,7 +253,7 @@ export default function Settings() {
 
       <View style={styles.footer}>
         <View style={styles.footerLine} />
-        <Text style={styles.footerText}>SPP · v1.0.0 · {t('settings.footerLabel')}</Text>
+        <Text style={styles.footerText}>SPP · 1.0.0-beta.2 · {t('settings.footerLabel')}</Text>
         <Text style={styles.footerSub}>{t('settings.footerMotto')}</Text>
       </View>
     </ScreenScaffold>
@@ -281,8 +317,14 @@ function ToggleRow({ icon, label, hint, value, onChange, dir }: { icon: keyof ty
   );
 }
 
-function ServiceRow({ icon, label, hint, status, onPress, testID, dir, t }: { icon: keyof typeof Feather.glyphMap; label: string; hint: string; status: 'phase4' | 'active'; onPress: () => void; testID: string; dir: 'rtl' | 'ltr'; t: (k: any) => string }) {
-  const isActive = status === 'active';
+function ServiceRow({ icon, label, hint, connected, summary, statusLabel, onPress, testID, dir, t }: {
+  icon: keyof typeof Feather.glyphMap; label: string; hint: string;
+  connected?: boolean; summary?: string; statusLabel?: string;
+  onPress: () => void; testID: string; dir: 'rtl' | 'ltr'; t: (k: any) => string;
+}) {
+  const isActive = connected || !!statusLabel;
+  const chipText = statusLabel
+    ?? (connected ? (summary ? `··${summary}` : t('settings.services.status.connected')) : t('settings.services.status.setup'));
   return (
     <Pressable testID={testID} onPress={onPress} style={[styles.row, dir === 'rtl' && styles.rowRTL]}>
       <Feather name={icon} size={14} color={isActive ? colors.emerald : colors.textMuted} />
@@ -292,9 +334,7 @@ function ServiceRow({ icon, label, hint, status, onPress, testID, dir, t }: { ic
       </View>
       <View style={[styles.chip, isActive ? styles.chipActive : styles.chipPhase]}>
         <View style={[styles.chipDot, { backgroundColor: isActive ? colors.emerald : colors.gold }]} />
-        <Text style={[styles.chipText, { color: isActive ? colors.emerald : colors.gold }]}>
-          {isActive ? t('settings.services.status.active') : t('settings.services.status.notConnected')}
-        </Text>
+        <Text style={[styles.chipText, { color: isActive ? colors.emerald : colors.gold }]}>{chipText}</Text>
       </View>
     </Pressable>
   );

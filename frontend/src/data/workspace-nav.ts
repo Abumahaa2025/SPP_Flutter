@@ -1,6 +1,7 @@
 import type React from 'react';
 import type { Feather } from '@expo/vector-icons';
 import type { SourceApp } from '@/src/utils/source-web';
+import { WORKSPACE_BRAND_ONLY_HEIGHT } from '@/src/constants/chrome';
 
 type FeatherIcon = React.ComponentProps<typeof Feather>['name'];
 
@@ -203,11 +204,12 @@ export const WORKSPACE_NAV: WorkspaceNavGroup[] = [
 ];
 
 export const WORKSPACE_SIDEBAR_WIDTH = 320;
-export const WORKSPACE_BRAND_HEIGHT = 54;
-export const WORKSPACE_QUICK_HEIGHT = 44;
-export const WORKSPACE_ASK_HEIGHT = 44;
-export const WORKSPACE_TOTAL_HEADER_HEIGHT =
-  WORKSPACE_BRAND_HEIGHT + WORKSPACE_QUICK_HEIGHT + WORKSPACE_ASK_HEIGHT;
+export const WORKSPACE_BRAND_HEIGHT = WORKSPACE_BRAND_ONLY_HEIGHT;
+/** @deprecated quick row removed in polish phase */
+export const WORKSPACE_QUICK_HEIGHT = 0;
+/** @deprecated ask row removed in polish phase */
+export const WORKSPACE_ASK_HEIGHT = 0;
+export const WORKSPACE_TOTAL_HEADER_HEIGHT = WORKSPACE_BRAND_HEIGHT;
 /** @deprecated use WORKSPACE_QUICK_HEIGHT */
 export const WORKSPACE_ACTION_HEIGHT = WORKSPACE_QUICK_HEIGHT;
 /** @deprecated use WORKSPACE_TOTAL_HEADER_HEIGHT */

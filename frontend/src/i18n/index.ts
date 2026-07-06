@@ -2,6 +2,9 @@ import { I18nManager } from 'react-native';
 import { useSyncExternalStore } from 'react';
 import { workspaceEn, workspaceAr } from './workspace-keys';
 import { propertyOsEn, propertyOsAr } from './property-os-keys';
+import { dailyOpsEn, dailyOpsAr } from './daily-ops-keys';
+import { polishEn, polishAr } from './polish-keys';
+import { operationalEn, operationalAr } from './operational-keys';
 
 type Lang = 'en' | 'ar';
 
@@ -9,6 +12,9 @@ const dict = {
   en: {
     ...workspaceEn,
     ...propertyOsEn,
+    ...dailyOpsEn,
+    ...polishEn,
+    ...operationalEn,
     'app.name': 'SPP',
     'app.tagline': 'AI Operating System for Real Estate',
 
@@ -231,12 +237,6 @@ const dict = {
     'os.proactive.performance.stable': 'Mostly healthy — a few items deserve a look.',
     'os.proactive.performance.attention': 'I found properties that need your attention.',
     'os.proactive.documents': 'Drop any file — I will explain what it means.',
-
-    'nav.os.home': 'Today',
-    'nav.os.team': 'Team',
-    'nav.os.assistant': 'Ask',
-    'nav.os.upload': 'Documents',
-    'nav.os.portfolio': 'Portfolio',
 
     'cmd.live': 'Live',
     'cmd.lead': 'SPP already worked before you arrived.',
@@ -1715,6 +1715,9 @@ const dict = {
   ar: {
     ...workspaceAr,
     ...propertyOsAr,
+    ...dailyOpsAr,
+    ...polishAr,
+    ...operationalAr,
     'app.name': 'SPP',
     'app.tagline': 'نظام تشغيل بالذكاء الاصطناعي للعقارات',
 
@@ -1935,12 +1938,6 @@ const dict = {
     'os.proactive.performance.stable': 'صحية في الغالب — بعض البنود تستحق نظرة.',
     'os.proactive.performance.attention': 'وجدت عقارات تحتاج انتباهك.',
     'os.proactive.documents': 'أرسل أي ملف — سأشرح ما يعنيه.',
-
-    'nav.os.home': 'اليوم',
-    'nav.os.team': 'الفريق',
-    'nav.os.assistant': 'اسأل',
-    'nav.os.upload': 'المستندات',
-    'nav.os.portfolio': 'المحفظة',
 
     'cmd.live': 'مباشر',
     'cmd.lead': 'SPP عمل قبل وصولك.',

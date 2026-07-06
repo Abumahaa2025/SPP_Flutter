@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import {
-  View, Text, StyleSheet, Pressable, ScrollView, Alert, Linking, Platform,
+  View, Text, StyleSheet, Pressable, ScrollView, Linking, Platform,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import Animated, { FadeInDown } from 'react-native-reanimated';
@@ -11,8 +11,9 @@ import { ScreenScaffold } from '@/src/components/ScreenScaffold';
 import { StoryScreenHeader } from '@/src/components/StoryScreenHeader';
 import { GlassCard } from '@/src/components/GlassCard';
 import { SetupProgressBar } from '@/src/components/SetupProgressBar';
+import { WizardSuccessToast } from '@/src/components/WizardSuccessToast';
 import {
-  WizardChipGroup, WizardInfoBox, WizardTextField, WizardToggle,
+  WizardChipGroup, WizardInfoBox, WizardTextField, WizardToggle, WizardPhaseIntro,
 } from '@/src/components/WizardFormFields';
 import { colors, spacing, typography, radius } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
@@ -57,6 +58,8 @@ const emptyUnitDraft = () => ({
   notes: '',
 });
 
+type FieldErrors = Record<string, string>;
+
 export function PropertySetupWizard() {
   const { t, isRTL, lang } = useI18n();
   const router = useRouter();
@@ -64,14 +67,29 @@ export function PropertySetupWizard() {
   const { countEnabled, update: updateNotif } = useNotificationPrefs();
   const {
     state, phases, saveProperty, addUnit, addTenant, addContract,
-    enableAlerts, ensureTechnicianPortal, nextPhase,
+    enableAlerts, ensureTechnicianPortal, nextPhase, markSetupComplete,
   } = usePropertyOS(countEnabled);
 
+  const skipWelcome = Boolean(params.phase) || Boolean(state.property);
+  const [showWelcome, setShowWelcome] = useState(!skipWelcome);
   const initialPhase = (params.phase as SetupPhaseId) || nextPhase || 'property';
   const [phase, setPhase] = useState<SetupPhaseId>(
     PHASES.includes(initialPhase) ? initialPhase : 'property',
   );
   const [lastTenant, setLastTenant] = useState<typeof state.tenants[0] | null>(null);
+  const [successToast, setSuccessToast] = useState<string | null>(null);
+  const [advancing, setAdvancing] = useState(false);
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+
+  const reqErr = t('pos.field.requiredError');
+  const clearErr = (key: string) => {
+    setFieldErrors((prev) => {
+      if (!prev[key]) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  };
 
   // Property draft
   const [propName, setPropName] = useState(state.property?.name ?? '');
@@ -81,10 +99,8 @@ export function PropertySetupWizard() {
   const [buildings, setBuildings] = useState(String(state.property?.buildingCount ?? 1));
   const [unitCount, setUnitCount] = useState(String(state.property?.unitCount ?? 1));
 
-  // Unit draft
   const [unitDraft, setUnitDraft] = useState(emptyUnitDraft);
 
-  // Tenant draft
   const [tenantName, setTenantName] = useState('');
   const [tenantPhone, setTenantPhone] = useState('');
   const [tenantEmail, setTenantEmail] = useState('');
@@ -92,7 +108,6 @@ export function PropertySetupWizard() {
   const [tenantUnitId, setTenantUnitId] = useState(state.units[0]?.id ?? '');
   const [moveIn, setMoveIn] = useState(new Date().toISOString().slice(0, 10));
 
-  // Contract draft
   const [contractNum, setContractNum] = useState('');
   const [contractStart, setContractStart] = useState(new Date().toISOString().slice(0, 10));
   const [contractEnd, setContractEnd] = useState('');
@@ -111,30 +126,66 @@ export function PropertySetupWizard() {
     label: t(`pos.unitType.${v}` as 'pos.unitType.apartment'),
   })), [t]);
 
-  const canContinueProperty = Boolean(propName.trim() && city.trim() && Number(unitCount) > 0);
-  const canContinueUnit = Boolean(unitDraft.number.trim() && Number(unitDraft.rentAmount) > 0);
-  const canContinueTenant = Boolean(tenantName.trim() && tenantPhone.trim() && tenantUnitId);
-  const canContinueContract = Boolean(
-    contractNum.trim() && contractStart && contractEnd && contractTenantId && Number(contractRent) > 0,
-  );
-
   const goPhase = (p: SetupPhaseId) => {
     Haptics.selectionAsync();
+    setFieldErrors({});
     setPhase(p);
   };
 
-  const blockIfIncomplete = (required: boolean) => {
-    if (!required) {
-      Alert.alert('', t('pos.wizard.blocked'));
-      return true;
-    }
-    return false;
+  const advanceWithToast = (message: string, next: SetupPhaseId | (() => void)) => {
+    setSuccessToast(message);
+    setAdvancing(true);
+    setTimeout(() => {
+      setSuccessToast(null);
+      setAdvancing(false);
+      if (typeof next === 'function') next();
+      else goPhase(next);
+    }, 1000);
+  };
+
+  const validateProperty = () => {
+    const errs: FieldErrors = {};
+    if (!propName.trim()) errs.propName = reqErr;
+    if (!city.trim()) errs.city = reqErr;
+    if (!unitCount.trim() || Number(unitCount) <= 0) errs.unitCount = reqErr;
+    setFieldErrors(errs);
+    return Object.keys(errs).length === 0;
+  };
+
+  const validateUnit = () => {
+    const errs: FieldErrors = {};
+    if (!unitDraft.number.trim()) errs.unitNumber = reqErr;
+    if (!unitDraft.rentAmount.trim() || Number(unitDraft.rentAmount) <= 0) errs.rentAmount = reqErr;
+    setFieldErrors(errs);
+    return Object.keys(errs).length === 0;
+  };
+
+  const validateTenant = () => {
+    const errs: FieldErrors = {};
+    if (!tenantName.trim()) errs.tenantName = reqErr;
+    if (!tenantPhone.trim()) errs.tenantPhone = reqErr;
+    if (!tenantUnitId) errs.tenantUnitId = reqErr;
+    setFieldErrors(errs);
+    return Object.keys(errs).length === 0;
+  };
+
+  const validateContract = () => {
+    const errs: FieldErrors = {};
+    if (!contractNum.trim()) errs.contractNum = reqErr;
+    if (!contractStart.trim()) errs.contractStart = reqErr;
+    if (!contractEnd.trim()) errs.contractEnd = reqErr;
+    if (!contractTenantId) errs.contractTenantId = reqErr;
+    if (!contractRent.trim() || Number(contractRent) <= 0) errs.contractRent = reqErr;
+    setFieldErrors(errs);
+    return Object.keys(errs).length === 0;
   };
 
   const onContinue = () => {
+    if (advancing) return;
     Haptics.selectionAsync();
+
     if (phase === 'property') {
-      if (blockIfIncomplete(canContinueProperty)) return;
+      if (!validateProperty()) return;
       saveProperty({
         name: propName.trim(),
         type: propType,
@@ -143,11 +194,12 @@ export function PropertySetupWizard() {
         buildingCount: Math.max(0, Number(buildings) || 0),
         unitCount: Math.max(1, Number(unitCount) || 1),
       });
-      goPhase('units');
+      advanceWithToast(t('pos.toast.property'), 'units');
       return;
     }
+
     if (phase === 'units') {
-      if (blockIfIncomplete(canContinueUnit)) return;
+      if (!validateUnit()) return;
       addUnit({
         number: unitDraft.number.trim(),
         type: unitDraft.type,
@@ -179,14 +231,16 @@ export function PropertySetupWizard() {
       });
       const target = state.property?.unitCount ?? 1;
       if (state.units.length + 1 >= target) {
-        goPhase('tenants');
+        advanceWithToast(t('pos.toast.units'), 'tenants');
       } else {
         setUnitDraft(emptyUnitDraft());
+        setFieldErrors({});
       }
       return;
     }
+
     if (phase === 'tenants') {
-      if (blockIfIncomplete(canContinueTenant)) return;
+      if (!validateTenant()) return;
       const tenant = addTenant({
         name: tenantName.trim(),
         phone: tenantPhone.trim(),
@@ -199,11 +253,12 @@ export function PropertySetupWizard() {
       setContractTenantId(tenant?.id ?? '');
       const unit = state.units.find((u) => u.id === tenantUnitId);
       if (unit) setContractRent(String(unit.rentAmount));
-      goPhase('contracts');
+      advanceWithToast(t('pos.toast.tenant'), 'contracts');
       return;
     }
+
     if (phase === 'contracts') {
-      if (blockIfIncomplete(canContinueContract)) return;
+      if (!validateContract()) return;
       const tenant = state.tenants.find((x) => x.id === contractTenantId) ?? lastTenant;
       addContract({
         number: contractNum.trim(),
@@ -216,17 +271,20 @@ export function PropertySetupWizard() {
         depositAmount: Number(contractDeposit) || 0,
         specialTerms: contractTerms.trim() || undefined,
       });
-      goPhase('alerts');
+      advanceWithToast(t('pos.toast.contract'), 'alerts');
       return;
     }
+
     if (phase === 'alerts') {
       enableAlerts();
       updateNotif('priorities', true);
       updateNotif('contractRenewals', true);
       updateNotif('maintenance', true);
+      markSetupComplete();
       goPhase('smartEmployee');
       return;
     }
+
     router.replace('/');
   };
 
@@ -243,8 +301,33 @@ export function PropertySetupWizard() {
   const techLink = ensureTechnicianPortal();
   const tenantPortal = lastTenant ?? state.tenants[state.tenants.length - 1];
 
+  if (showWelcome) {
+    return (
+      <ScreenScaffold testID="property-os-welcome">
+        <View style={styles.welcomeWrap}>
+          <Animated.View entering={FadeInDown.duration(600)}>
+            <GlassCard padding={28} radiusToken="lg" edge="gold">
+              <Text style={[styles.welcomeTitle, isRTL && styles.rtl]}>{t('pos.welcome.title')}</Text>
+              <Text style={[styles.welcomeBody, isRTL && styles.rtl]}>{t('pos.welcome.body')}</Text>
+              <Pressable
+                testID="pos-welcome-start"
+                style={styles.welcomeBtn}
+                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium); setShowWelcome(false); }}
+              >
+                <Text style={styles.welcomeBtnText}>{t('pos.welcome.start')}</Text>
+                <Feather name="arrow-right" size={16} color={colors.bg} />
+              </Pressable>
+            </GlassCard>
+          </Animated.View>
+        </View>
+      </ScreenScaffold>
+    );
+  }
+
   return (
     <ScreenScaffold testID="property-os-wizard">
+      {successToast ? <WizardSuccessToast message={successToast} /> : null}
+
       <StoryScreenHeader
         question={t('pos.wizard.title')}
         hint={t('pos.wizard.subtitle')}
@@ -252,36 +335,38 @@ export function PropertySetupWizard() {
         testID="property-os-header"
       />
 
-      <SetupProgressBar compact testID="property-os-progress" />
+      {phase !== 'smartEmployee' ? (
+        <SetupProgressBar compact testID="property-os-progress" />
+      ) : null}
 
-      <Animated.View entering={FadeInDown.duration(500)}>
-        <GlassCard padding={16} radiusToken="lg" edge="gold">
-          <View style={[styles.phaseNav, isRTL && styles.rowRtl]}>
-            {PHASES.map((p, i) => {
-              const meta = phases.find((x) => x.id === p);
-              const active = p === phase;
-              const done = meta?.complete;
-              return (
-                <Pressable
-                  key={p}
-                  onPress={() => {
-                    if (i <= phaseIndex || done) goPhase(p);
-                  }}
-                  style={[styles.phaseDot, active && styles.phaseDotActive, done && styles.phaseDotDone]}
-                >
-                  <Text style={[styles.phaseDotText, (active || done) && styles.phaseDotTextActive]}>
-                    {i + 1}
-                  </Text>
-                </Pressable>
-              );
-            })}
-          </View>
-          <Text style={[styles.phaseTitle, isRTL && styles.rtl]}>
-            {t(`pos.phase.${phase}` as 'pos.phase.property')}
-            {currentPhaseMeta ? ` · ${currentPhaseMeta.percent}%` : ''}
-          </Text>
-        </GlassCard>
-      </Animated.View>
+      {phase !== 'smartEmployee' ? (
+        <Animated.View entering={FadeInDown.duration(500)}>
+          <GlassCard padding={16} radiusToken="lg" edge="gold">
+            <View style={[styles.phaseNav, isRTL && styles.rowRtl]}>
+              {PHASES.map((p, i) => {
+                const meta = phases.find((x) => x.id === p);
+                const active = p === phase;
+                const done = meta?.complete;
+                return (
+                  <Pressable
+                    key={p}
+                    onPress={() => { if (i <= phaseIndex || done) goPhase(p); }}
+                    style={[styles.phaseDot, active && styles.phaseDotActive, done && styles.phaseDotDone]}
+                  >
+                    <Text style={[styles.phaseDotText, (active || done) && styles.phaseDotTextActive]}>
+                      {i + 1}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+            <Text style={[styles.phaseTitle, isRTL && styles.rtl]}>
+              {t(`pos.phase.${phase}` as 'pos.phase.property')}
+              {currentPhaseMeta ? ` · ${currentPhaseMeta.percent}%` : ''}
+            </Text>
+          </GlassCard>
+        </Animated.View>
+      ) : null}
 
       <ScrollView
         showsVerticalScrollIndicator={false}
@@ -290,27 +375,66 @@ export function PropertySetupWizard() {
       >
         {phase === 'property' ? (
           <PhaseCard>
-            <Text style={[styles.lead, isRTL && styles.rtl]}>{t('pos.property.lead')}</Text>
-            <WizardInfoBox why={t('pos.property.why')} example={t('pos.property.example')} />
-            <WizardTextField label={t('pos.property.name')} value={propName} onChangeText={setPropName} placeholder={t('pos.property.namePh')} testID="pos-prop-name" />
-            <WizardChipGroup label={t('pos.property.type')} options={(['residential', 'commercial', 'mixed', 'land', 'other'] as PropertyType[]).map((v) => ({ value: v, label: t(`pos.type.${v}` as 'pos.type.residential') }))} value={propType} onChange={setPropType} testID="pos-prop-type" />
-            <WizardTextField label={t('pos.property.city')} value={city} onChangeText={setCity} placeholder={t('pos.property.cityPh')} testID="pos-prop-city" />
-            <WizardTextField label={t('pos.property.district')} value={district} onChangeText={setDistrict} placeholder={t('pos.property.districtPh')} testID="pos-prop-district" />
-            <WizardTextField label={t('pos.property.buildings')} value={buildings} onChangeText={setBuildings} keyboard="numeric" testID="pos-prop-buildings" />
-            <WizardTextField label={t('pos.property.unitCount')} value={unitCount} onChangeText={setUnitCount} keyboard="numeric" testID="pos-prop-units" />
+            <WizardPhaseIntro text={t('pos.intro.property')} />
+            <WizardTextField
+              label={t('pos.property.name')} required
+              hint={t('pos.hint.property.name')}
+              value={propName} onChangeText={(v) => { setPropName(v); clearErr('propName'); }}
+              placeholder={t('pos.property.namePh')} testID="pos-prop-name"
+              error={fieldErrors.propName}
+            />
+            <WizardChipGroup
+              label={t('pos.property.type')}
+              hint={t('pos.hint.property.type')}
+              options={(['residential', 'commercial', 'mixed', 'land', 'other'] as PropertyType[]).map((v) => ({
+                value: v, label: t(`pos.type.${v}` as 'pos.type.residential'),
+              }))}
+              value={propType} onChange={setPropType} testID="pos-prop-type"
+            />
+            <WizardTextField
+              label={t('pos.property.city')} required
+              hint={t('pos.hint.property.city')}
+              value={city} onChangeText={(v) => { setCity(v); clearErr('city'); }}
+              placeholder={t('pos.property.cityPh')} testID="pos-prop-city"
+              error={fieldErrors.city}
+            />
+            <WizardTextField
+              label={t('pos.property.district')}
+              hint={t('pos.hint.property.district')}
+              value={district} onChangeText={setDistrict}
+              placeholder={t('pos.property.districtPh')} testID="pos-prop-district"
+            />
+            <WizardTextField
+              label={t('pos.property.buildings')}
+              hint={t('pos.hint.property.buildings')}
+              value={buildings} onChangeText={setBuildings} keyboard="numeric" testID="pos-prop-buildings"
+            />
+            <WizardTextField
+              label={t('pos.property.unitCount')} required
+              hint={t('pos.hint.property.unitCount')}
+              value={unitCount} onChangeText={(v) => { setUnitCount(v); clearErr('unitCount'); }}
+              keyboard="numeric" testID="pos-prop-units"
+              error={fieldErrors.unitCount}
+            />
           </PhaseCard>
         ) : null}
 
         {phase === 'units' ? (
           <PhaseCard>
-            <Text style={[styles.lead, isRTL && styles.rtl]}>{t('pos.units.lead')}</Text>
-            <WizardInfoBox why={t('pos.units.why')} example={t('pos.units.example')} />
+            <WizardPhaseIntro text={t('pos.intro.units')} />
             {state.units.length > 0 ? (
               <Text style={[styles.saved, isRTL && styles.rtl]}>
                 {t('pos.units.saved').replace('{n}', String(state.units.length))}
               </Text>
             ) : null}
-            <WizardTextField label={t('pos.units.number')} value={unitDraft.number} onChangeText={(v) => setUnitDraft((d) => ({ ...d, number: v }))} placeholder={t('pos.units.numberPh')} testID="pos-unit-num" />
+            <WizardTextField
+              label={t('pos.units.number')} required
+              hint={t('pos.hint.units.number')}
+              value={unitDraft.number}
+              onChangeText={(v) => { setUnitDraft((d) => ({ ...d, number: v })); clearErr('unitNumber'); }}
+              placeholder={t('pos.units.numberPh')} testID="pos-unit-num"
+              error={fieldErrors.unitNumber}
+            />
             <WizardChipGroup label={t('pos.units.type')} options={unitTypeOptions} value={unitDraft.type} onChange={(v) => setUnitDraft((d) => ({ ...d, type: v }))} testID="pos-unit-type" />
             {unitDraft.type === 'apartment' ? (
               <>
@@ -327,13 +451,20 @@ export function PropertySetupWizard() {
             <WizardToggle label={t('pos.units.elevator')} value={unitDraft.elevator} onChange={(v) => setUnitDraft((d) => ({ ...d, elevator: v }))} />
             <WizardToggle label={t('pos.units.furnished')} value={unitDraft.furnished} onChange={(v) => setUnitDraft((d) => ({ ...d, furnished: v }))} />
             <WizardChipGroup label={t('pos.units.status')} options={(['occupied', 'vacant', 'reserved', 'maintenance'] as UnitStatus[]).map((v) => ({ value: v, label: t(`pos.status.${v}` as 'pos.status.occupied') }))} value={unitDraft.status} onChange={(v) => setUnitDraft((d) => ({ ...d, status: v }))} />
-            <WizardTextField label={t('pos.rent.amount')} value={unitDraft.rentAmount} onChangeText={(v) => setUnitDraft((d) => ({ ...d, rentAmount: v }))} keyboard="numeric" testID="pos-unit-rent" />
+            <WizardTextField
+              label={t('pos.rent.amount')} required
+              hint={t('pos.hint.units.rent')}
+              value={unitDraft.rentAmount}
+              onChangeText={(v) => { setUnitDraft((d) => ({ ...d, rentAmount: v })); clearErr('rentAmount'); }}
+              keyboard="numeric" testID="pos-unit-rent"
+              error={fieldErrors.rentAmount}
+            />
             <WizardChipGroup label={t('pos.rent.period')} options={(['monthly', 'semi_annual', 'annual'] as RentPeriod[]).map((v) => ({ value: v, label: t(`pos.rent.${v}` as 'pos.rent.monthly') }))} value={unitDraft.rentPeriod} onChange={(v) => setUnitDraft((d) => ({ ...d, rentPeriod: v }))} />
             <WizardChipGroup label={t('pos.rent.paymentMethod')} options={(['transfer', 'cash', 'platform'] as PaymentMethod[]).map((v) => ({ value: v, label: t(`pos.pay.${v}` as 'pos.pay.transfer') }))} value={unitDraft.paymentMethod} onChange={(v) => setUnitDraft((d) => ({ ...d, paymentMethod: v }))} />
             <WizardTextField label={t('pos.rent.dueDay')} value={unitDraft.paymentDueDay} onChangeText={(v) => setUnitDraft((d) => ({ ...d, paymentDueDay: v }))} keyboard="numeric" />
-            <WizardChipGroup label={t('pos.services.electricity')} options={(['tenant', 'owner', 'included'] as ServiceResponsibility[]).map((v) => ({ value: v, label: t(`pos.svc.${v}` as 'pos.svc.tenant') }))} value={unitDraft.electricity} onChange={(v) => setUnitDraft((d) => ({ ...d, electricity: v }))} />
+            <WizardChipGroup label={t('pos.services.electricity')} hint={t('pos.hint.services.electricity')} options={(['tenant', 'owner', 'included'] as ServiceResponsibility[]).map((v) => ({ value: v, label: t(`pos.svc.${v}` as 'pos.svc.tenant') }))} value={unitDraft.electricity} onChange={(v) => setUnitDraft((d) => ({ ...d, electricity: v }))} />
             <WizardTextField label={t('pos.meter.electricity')} value={unitDraft.electricityMeter} onChangeText={(v) => setUnitDraft((d) => ({ ...d, electricityMeter: v }))} />
-            <WizardChipGroup label={t('pos.services.water')} options={(['tenant', 'owner', 'included'] as ServiceResponsibility[]).map((v) => ({ value: v, label: t(`pos.svc.${v}` as 'pos.svc.tenant') }))} value={unitDraft.water} onChange={(v) => setUnitDraft((d) => ({ ...d, water: v }))} />
+            <WizardChipGroup label={t('pos.services.water')} hint={t('pos.hint.services.water')} options={(['tenant', 'owner', 'included'] as ServiceResponsibility[]).map((v) => ({ value: v, label: t(`pos.svc.${v}` as 'pos.svc.tenant') }))} value={unitDraft.water} onChange={(v) => setUnitDraft((d) => ({ ...d, water: v }))} />
             <WizardTextField label={t('pos.meter.water')} value={unitDraft.waterMeter} onChangeText={(v) => setUnitDraft((d) => ({ ...d, waterMeter: v }))} />
             <WizardChipGroup label={t('pos.services.internet')} options={[{ value: 'tenant' as const, label: t('pos.svc.internetTenant') }, { value: 'included' as const, label: t('pos.svc.internetIncluded') }]} value={unitDraft.internet} onChange={(v) => setUnitDraft((d) => ({ ...d, internet: v }))} />
             <WizardChipGroup label={t('pos.services.gas')} options={(['central', 'independent'] as GasType[]).map((v) => ({ value: v, label: t(`pos.gas.${v}` as 'pos.gas.central') }))} value={unitDraft.gas} onChange={(v) => setUnitDraft((d) => ({ ...d, gas: v }))} />
@@ -342,53 +473,68 @@ export function PropertySetupWizard() {
             {unitDraft.hasInsurance ? (
               <WizardTextField label={t('pos.insurance.amount')} value={unitDraft.insuranceAmount} onChangeText={(v) => setUnitDraft((d) => ({ ...d, insuranceAmount: v }))} keyboard="numeric" />
             ) : null}
-            <WizardTextField label={t('pos.units.notes')} value={unitDraft.notes} onChangeText={(v) => setUnitDraft((d) => ({ ...d, notes: v }))} placeholder={t('pos.units.notesPh')} />
+            <WizardTextField label={t('pos.units.notes')} hint={t('pos.hint.units.notes')} value={unitDraft.notes} onChangeText={(v) => setUnitDraft((d) => ({ ...d, notes: v }))} placeholder={t('pos.units.notesPh')} />
           </PhaseCard>
         ) : null}
 
         {phase === 'tenants' ? (
           <PhaseCard>
-            <Text style={[styles.lead, isRTL && styles.rtl]}>{t('pos.tenant.lead')}</Text>
-            <WizardInfoBox why={t('pos.tenant.why')} example={t('pos.tenant.example')} />
-            <WizardTextField label={t('pos.tenant.name')} value={tenantName} onChangeText={setTenantName} testID="pos-tenant-name" />
-            <WizardTextField label={t('pos.tenant.phone')} value={tenantPhone} onChangeText={setTenantPhone} keyboard="phone-pad" testID="pos-tenant-phone" />
-            <WizardTextField label={t('pos.tenant.email')} value={tenantEmail} onChangeText={setTenantEmail} keyboard="email-address" />
-            <WizardTextField label={t('pos.tenant.nationalId')} value={tenantId} onChangeText={setTenantId} />
+            <WizardPhaseIntro text={t('pos.intro.tenants')} />
+            <WizardTextField
+              label={t('pos.tenant.name')} required
+              hint={t('pos.hint.tenant.name')}
+              value={tenantName} onChangeText={(v) => { setTenantName(v); clearErr('tenantName'); }}
+              testID="pos-tenant-name" error={fieldErrors.tenantName}
+            />
+            <WizardTextField
+              label={t('pos.tenant.phone')} required
+              hint={t('pos.hint.tenant.phone')}
+              value={tenantPhone} onChangeText={(v) => { setTenantPhone(v); clearErr('tenantPhone'); }}
+              keyboard="phone-pad" testID="pos-tenant-phone" error={fieldErrors.tenantPhone}
+            />
+            <WizardTextField label={t('pos.tenant.email')} hint={t('pos.hint.tenant.email')} value={tenantEmail} onChangeText={setTenantEmail} keyboard="email-address" />
+            <WizardTextField label={t('pos.tenant.nationalId')} hint={t('pos.hint.tenant.nationalId')} value={tenantId} onChangeText={setTenantId} />
             <WizardChipGroup
-              label={t('pos.tenant.unit')}
+              label={t('pos.tenant.unit')} required
               options={state.units.map((u) => ({ value: u.id, label: u.number }))}
-              value={tenantUnitId}
-              onChange={setTenantUnitId}
-              testID="pos-tenant-unit"
+              value={tenantUnitId} onChange={(v) => { setTenantUnitId(v); clearErr('tenantUnitId'); }}
+              testID="pos-tenant-unit" error={fieldErrors.tenantUnitId}
             />
             <WizardTextField label={t('pos.tenant.moveIn')} value={moveIn} onChangeText={setMoveIn} placeholder="YYYY-MM-DD" />
-            {tenantPortal ? (
-              <PortalPreview
-                title={t('pos.portal.tenant.lead')}
-                link={tenantPortal.portalUrl}
-                extra={tenantPortal.whatsAppMessage}
-                onShare={shareWhatsApp}
-                shareLabel={t('pos.portal.shareWhatsapp')}
-                isRTL={isRTL}
-              />
-            ) : null}
           </PhaseCard>
         ) : null}
 
         {phase === 'contracts' ? (
           <PhaseCard>
-            <Text style={[styles.lead, isRTL && styles.rtl]}>{t('pos.contract.lead')}</Text>
-            <WizardInfoBox why={t('pos.contract.why')} example={t('pos.contract.example')} />
-            <WizardTextField label={t('pos.contract.number')} value={contractNum} onChangeText={setContractNum} testID="pos-contract-num" />
-            <WizardChipGroup
-              label={t('pos.tenant.name')}
-              options={state.tenants.map((x) => ({ value: x.id, label: x.name }))}
-              value={contractTenantId}
-              onChange={setContractTenantId}
+            <WizardPhaseIntro text={t('pos.intro.contracts')} />
+            <WizardTextField
+              label={t('pos.contract.number')} required
+              hint={t('pos.hint.contract.number')}
+              value={contractNum} onChangeText={(v) => { setContractNum(v); clearErr('contractNum'); }}
+              testID="pos-contract-num" error={fieldErrors.contractNum}
             />
-            <WizardTextField label={t('pos.contract.start')} value={contractStart} onChangeText={setContractStart} placeholder="YYYY-MM-DD" />
-            <WizardTextField label={t('pos.contract.end')} value={contractEnd} onChangeText={setContractEnd} placeholder="YYYY-MM-DD" />
-            <WizardTextField label={t('pos.contract.rent')} value={contractRent} onChangeText={setContractRent} keyboard="numeric" />
+            <WizardChipGroup
+              label={t('pos.tenant.name')} required
+              options={state.tenants.map((x) => ({ value: x.id, label: x.name }))}
+              value={contractTenantId} onChange={(v) => { setContractTenantId(v); clearErr('contractTenantId'); }}
+              error={fieldErrors.contractTenantId}
+            />
+            <WizardTextField
+              label={t('pos.contract.start')} required
+              value={contractStart} onChangeText={(v) => { setContractStart(v); clearErr('contractStart'); }}
+              placeholder="YYYY-MM-DD" error={fieldErrors.contractStart}
+            />
+            <WizardTextField
+              label={t('pos.contract.end')} required
+              hint={t('pos.hint.contract.end')}
+              value={contractEnd} onChangeText={(v) => { setContractEnd(v); clearErr('contractEnd'); }}
+              placeholder="YYYY-MM-DD" error={fieldErrors.contractEnd}
+            />
+            <WizardTextField
+              label={t('pos.contract.rent')} required
+              value={contractRent} onChangeText={(v) => { setContractRent(v); clearErr('contractRent'); }}
+              keyboard="numeric" error={fieldErrors.contractRent}
+            />
             <WizardTextField label={t('pos.contract.deposit')} value={contractDeposit} onChangeText={setContractDeposit} keyboard="numeric" />
             <WizardTextField label={t('pos.contract.terms')} value={contractTerms} onChangeText={setContractTerms} />
           </PhaseCard>
@@ -396,43 +542,71 @@ export function PropertySetupWizard() {
 
         {phase === 'alerts' ? (
           <PhaseCard>
-            <Text style={[styles.lead, isRTL && styles.rtl]}>{t('pos.alerts.lead')}</Text>
+            <WizardPhaseIntro text={t('pos.intro.alerts')} />
             <WizardInfoBox why={t('pos.alerts.why')} example={t('pos.alerts.enable')} />
-            <PortalPreview
-              title={t('pos.portal.tech.lead')}
-              subtitle={t('pos.portal.tech.why')}
-              link={techLink}
-              isRTL={isRTL}
-            />
+            <PortalPreview title={t('pos.portal.tech.lead')} subtitle={t('pos.portal.tech.why')} link={techLink} isRTL={isRTL} />
           </PhaseCard>
         ) : null}
 
         {phase === 'smartEmployee' ? (
-          <PhaseCard>
-            <Text style={[styles.lead, isRTL && styles.rtl]}>{t('pos.ready.lead')}</Text>
-            <WizardInfoBox why={t('pos.ready.why')} example={t('pos.ready.goHome')} />
-          </PhaseCard>
+          <Animated.View entering={FadeInDown.duration(600)} style={{ marginTop: spacing.lg }}>
+            <GlassCard padding={28} radiusToken="lg" edge="emerald" testID="pos-complete-screen">
+              <Text style={[styles.completeTitle, isRTL && styles.rtl]}>{t('pos.complete.title')}</Text>
+              <View style={styles.checklist}>
+                {[t('pos.complete.property'), t('pos.complete.units'), t('pos.complete.contracts'), t('pos.complete.smart')].map((line) => (
+                  <Text key={line} style={[styles.checkItem, isRTL && styles.rtl]}>{line}</Text>
+                ))}
+              </View>
+              {tenantPortal ? (
+                <PortalPreview
+                  title={t('pos.portal.tenant.lead')}
+                  link={tenantPortal.portalUrl}
+                  extra={tenantPortal.whatsAppMessage}
+                  onShare={shareWhatsApp}
+                  shareLabel={t('pos.portal.shareWhatsapp')}
+                  isRTL={isRTL}
+                />
+              ) : null}
+              <Pressable testID="pos-complete-cta" style={styles.completeCta} onPress={() => { markSetupComplete(); router.replace('/operational/services' as any); }}>
+                <Text style={styles.completeCtaText}>{t('pos.complete.cta')}</Text>
+                <Feather name="arrow-right" size={16} color={colors.bg} />
+              </Pressable>
+            </GlassCard>
+          </Animated.View>
         ) : null}
 
-        <Animated.View entering={FadeInDown.duration(500).delay(80)} style={styles.actions}>
-          {phaseIndex > 0 ? (
-            <Pressable style={styles.secondaryBtn} onPress={() => goPhase(PHASES[phaseIndex - 1])}>
-              <Text style={styles.secondaryText}>{t('pos.back')}</Text>
+        {phase !== 'smartEmployee' ? (
+          <Animated.View entering={FadeInDown.duration(500).delay(80)} style={styles.actions}>
+            {phaseIndex > 0 ? (
+              <Pressable style={styles.secondaryBtn} onPress={() => goPhase(PHASES[phaseIndex - 1])} disabled={advancing}>
+                <Text style={styles.secondaryText}>{t('pos.back')}</Text>
+              </Pressable>
+            ) : null}
+            <Pressable
+              style={[styles.primaryBtn, advancing && styles.primaryBtnDisabled]}
+              onPress={onContinue}
+              disabled={advancing}
+              testID="pos-wizard-continue"
+            >
+              <Text style={styles.primaryText}>
+                {phase === 'units' && state.units.length + 1 < (state.property?.unitCount ?? 1)
+                  ? t('pos.units.addAnother')
+                  : t('pos.continue')}
+              </Text>
+              <Feather name="arrow-right" size={14} color={colors.bg} />
             </Pressable>
-          ) : null}
-          <Pressable style={styles.primaryBtn} onPress={onContinue} testID="pos-wizard-continue">
-            <Text style={styles.primaryText}>
-              {phase === 'smartEmployee' ? t('pos.ready.goHome') : phase === 'units' && state.units.length + 1 < (state.property?.unitCount ?? 1) ? t('pos.units.addAnother') : t('pos.continue')}
-            </Text>
-            <Feather name="arrow-right" size={14} color={colors.bg} />
-          </Pressable>
-        </Animated.View>
+          </Animated.View>
+        ) : null}
 
-        <Pressable style={styles.importLink} onPress={() => router.push('/upload')}>
-          <Feather name="upload" size={14} color={colors.gold} />
-          <Text style={styles.importText}>{t('pos.wizard.importAlt')}</Text>
-        </Pressable>
-        <Text style={[styles.importHint, isRTL && styles.rtl]}>{t('pos.wizard.importHint')}</Text>
+        {phase !== 'smartEmployee' ? (
+          <>
+            <Pressable style={styles.importLink} onPress={() => router.push('/upload')}>
+              <Feather name="upload" size={14} color={colors.gold} />
+              <Text style={styles.importText}>{t('pos.wizard.importAlt')}</Text>
+            </Pressable>
+            <Text style={[styles.importHint, isRTL && styles.rtl]}>{t('pos.wizard.importHint')}</Text>
+          </>
+        ) : null}
       </ScrollView>
     </ScreenScaffold>
   );
@@ -476,6 +650,19 @@ function PortalPreview({
 }
 
 const styles = StyleSheet.create({
+  welcomeWrap: { flex: 1, justifyContent: 'center', paddingVertical: spacing['2xl'] },
+  welcomeTitle: {
+    color: colors.text, fontSize: 24, fontWeight: typography.weight.semibold,
+    letterSpacing: typography.letter.tight, textAlign: 'center',
+  },
+  welcomeBody: {
+    color: colors.textDim, fontSize: 15, lineHeight: 24, marginTop: 14, textAlign: 'center',
+  },
+  welcomeBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: colors.emerald, borderRadius: radius.md, paddingVertical: 16, marginTop: 28,
+  },
+  welcomeBtnText: { color: colors.bg, fontSize: 15, fontWeight: typography.weight.semibold },
   phaseNav: { flexDirection: 'row', justifyContent: 'space-between', gap: 4 },
   rowRtl: { flexDirection: 'row-reverse' },
   phaseDot: {
@@ -488,13 +675,24 @@ const styles = StyleSheet.create({
   phaseDotTextActive: { color: colors.text },
   phaseTitle: { color: colors.textMuted, fontSize: 12, marginTop: 12 },
   rtl: { writingDirection: 'rtl', textAlign: 'right' },
-  lead: { color: colors.text, fontSize: 15, lineHeight: 22, fontWeight: typography.weight.medium },
-  saved: { color: colors.emerald, fontSize: 12, marginTop: spacing.sm },
+  saved: { color: colors.emerald, fontSize: 12, marginBottom: spacing.sm },
+  completeTitle: {
+    color: colors.text, fontSize: 22, fontWeight: typography.weight.semibold,
+    textAlign: 'center', lineHeight: 30,
+  },
+  checklist: { marginTop: 20, gap: 10 },
+  checkItem: { color: colors.textDim, fontSize: 14.5, lineHeight: 22 },
+  completeCta: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    backgroundColor: colors.emerald, borderRadius: radius.md, paddingVertical: 18, marginTop: 24,
+  },
+  completeCtaText: { color: colors.bg, fontSize: 16, fontWeight: typography.weight.semibold },
   actions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.lg },
   primaryBtn: {
     flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
     backgroundColor: colors.emerald, borderRadius: radius.md, paddingVertical: 16,
   },
+  primaryBtnDisabled: { opacity: 0.55 },
   primaryText: { color: colors.bg, fontSize: 14, fontWeight: typography.weight.semibold },
   secondaryBtn: {
     paddingVertical: 16, paddingHorizontal: 18, borderRadius: radius.md,
