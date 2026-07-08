@@ -21,7 +21,7 @@ export const operationalEn = {
   'op.approvals.dismiss': 'Not now',
   'op.approvals.empty': 'No pending approvals — SPP is monitoring.',
 
-  'op.owner.title': 'Owner portal',
+  'op.owner.title': 'Property operations',
   'op.owner.sub': 'Daily property operations — everything in one place.',
   'op.owner.properties': 'Properties',
   'op.owner.properties.hint': 'Buildings and portfolio overview.',
@@ -114,8 +114,8 @@ export const operationalAr = {
   'op.approvals.dismiss': 'ليس الآن',
   'op.approvals.empty': 'لا موافقات معلّقة — SPP يراقب.',
 
-  'op.owner.title': 'مركز إدارة العقار',
-  'op.owner.sub': 'كل ما تحتاجه لتشغيل عقارك يوميًا — في مكان واحد.',
+  'op.owner.title': 'تشغيل العقار',
+  'op.owner.sub': 'كل أدوات التشغيل اليومي — في مكان واحد.',
   'op.owner.properties': 'العقارات',
   'op.owner.properties.hint': 'المباني ونظرة المحفظة.',
   'op.owner.units': 'الوحدات',

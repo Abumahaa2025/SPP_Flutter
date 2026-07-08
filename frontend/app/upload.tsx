@@ -1,6 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import {
-  View, Text, StyleSheet, Pressable,
+  View, Text, StyleSheet, Pressable, Platform, ActivityIndicator,
 } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
@@ -19,6 +19,7 @@ import { useI18n } from '@/src/i18n';
 import { analyzePickedFiles, buildUploadFileMeta, buildFilePreview, previewWithMapping, type FilePreview } from '@/src/utils/upload-analyze';
 import { buildResultsFromParsedData, parsedToFileMeta, type ParsedFileData } from '@/src/utils/upload-parse';
 import { OperationHint } from '@/src/components/OperationHint';
+import { JourneyGuide } from '@/src/components/JourneyGuide';
 import {
   fetchPortfolioAnalysis,
   applyPortfolioAnalysis,
@@ -29,6 +30,7 @@ import { UploadExecutiveReport } from '@/src/components/UploadExecutiveReport';
 import { UploadPortfolioPrompt } from '@/src/components/UploadPortfolioPrompt';
 import { UploadSmartDecisions } from '@/src/components/UploadSmartDecisions';
 import { UploadNextActions } from '@/src/components/UploadNextActions';
+import { PhaseSaveResult } from '@/src/components/PhaseSaveResult';
 import { storage } from '@/src/utils/storage';
 import { UX_BUILD_STAMP } from '@/src/constants/build';
 import { apiUrl } from '@/src/constants/backend';
@@ -51,42 +53,59 @@ export default function UploadScreen() {
   const [preview, setPreview] = useState<FilePreview | null>(null);
   const [importFailed, setImportFailed] = useState(false);
   const [previewReady, setPreviewReady] = useState(false);
+  const [pickError, setPickError] = useState<string | null>(null);
+  const [picking, setPicking] = useState(false);
 
   const pickFiles = useCallback(async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    const res = await DocumentPicker.getDocumentAsync({
-      multiple: true,
-      copyToCacheDirectory: true,
-      type: [
-        'application/pdf',
-        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        'application/vnd.ms-excel',
-        'application/msword',
-        'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-        'image/*',
-      ],
-    });
-    if (res.canceled || !res.assets?.length) return;
-    const next: Picked[] = res.assets.map((a) => ({
-      name: a.name,
-      mimeType: a.mimeType ?? undefined,
-      size: a.size ?? undefined,
-      uri: a.uri,
-    }));
-    setFiles((prev) => [...prev, ...next]);
-    setResults([]);
-    setPortfolioAnalysis(null);
-    setPromptDone(false);
-    setAnalysisSource(null);
-    setAnalysisError(null);
-    setStep(1);
-    setPreview(null);
-    setPreviewReady(false);
-    setImportFailed(false);
-    const pre = await buildFilePreview(next[0]);
-    setPreview(pre);
-    setPreviewReady(true);
-  }, []);
+    setPickError(null);
+    setPicking(true);
+    try {
+      const res = await DocumentPicker.getDocumentAsync({
+        multiple: true,
+        copyToCacheDirectory: true,
+        type: Platform.OS === 'android'
+          ? '*/*'
+          : [
+            'application/pdf',
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            'application/vnd.ms-excel',
+            'application/msword',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'image/*',
+            'text/csv',
+            'text/comma-separated-values',
+          ],
+      });
+      if (res.canceled || !res.assets?.length) return;
+      const next: Picked[] = res.assets.map((a) => ({
+        name: a.name,
+        mimeType: a.mimeType ?? undefined,
+        size: a.size ?? undefined,
+        uri: a.uri,
+      }));
+      setFiles((prev) => [...prev, ...next]);
+      setResults([]);
+      setPortfolioAnalysis(null);
+      setPromptDone(false);
+      setAnalysisSource(null);
+      setAnalysisError(null);
+      setStep(1);
+      setPreview(null);
+      setPreviewReady(true);
+      setImportFailed(false);
+      try {
+        const pre = await buildFilePreview(next[0]);
+        setPreview(pre);
+      } catch {
+        setPreview(null);
+      }
+    } catch {
+      setPickError(t('upload.pickError' as any));
+    } finally {
+      setPicking(false);
+    }
+  }, [t]);
 
   const removeFile = (name: string) => {
     Haptics.selectionAsync();
@@ -187,6 +206,20 @@ export default function UploadScreen() {
     setPreview(previewWithMapping(preview, mapping));
   };
 
+  const resetUpload = () => {
+    setFiles([]);
+    setResults([]);
+    setPortfolioAnalysis(null);
+    setPromptDone(false);
+    setAnalysisSource(null);
+    setAnalysisError(null);
+    setStep(1);
+    setPreview(null);
+    setPreviewReady(false);
+    setImportFailed(false);
+    setPickError(null);
+  };
+
   const onPromptChoice = async (key: 'update' | 'review' | 'cancel') => {
     if (!portfolioAnalysis) return;
     if (key === 'update') {
@@ -235,8 +268,62 @@ export default function UploadScreen() {
       <GuidedSetup flowId="pdf" defaultOpen={files.length === 0} testID="upload-guided" />
 
       <View style={{ marginTop: spacing.md }}>
+        <JourneyGuide
+          where={t('page.q.upload')}
+          now={t('upload.sub')}
+          benefit={t('journey.upload.explain.review' as any)}
+          next={t('journey.upload.doneNext' as any)}
+          testID="upload-journey-guide"
+        />
+      </View>
+
+      <View style={{ marginTop: spacing.sm }}>
         <OperationHint feature="import" />
       </View>
+
+      {pickError ? (
+        <Animated.View entering={FadeInDown.duration(400)} style={{ marginTop: spacing.md }}>
+          <GlassCard padding={16} radiusToken="md" edge="gold">
+            <Text style={styles.failBody}>{pickError}</Text>
+            <Pressable style={[styles.primaryBtn, { marginTop: spacing.sm }]} onPress={pickFiles}>
+              <Text style={styles.primaryText}>{t('journey.upload.failRetry')}</Text>
+            </Pressable>
+          </GlassCard>
+        </Animated.View>
+      ) : null}
+
+      {picking ? (
+        <View style={styles.pickingRow}>
+          <ActivityIndicator color={colors.gold} />
+          <Text style={styles.pickingText}>{t('upload.picking' as any)}</Text>
+        </View>
+      ) : null}
+
+      {files.length > 0 && !busy && !results.length ? (
+        <Animated.View entering={FadeInDown.duration(400)} style={styles.fileBlock}>
+          <Text style={styles.fileBlockTitle}>{t('upload.selectedFiles')}</Text>
+          {files.map((f) => (
+            <View key={f.name} style={styles.fileRow}>
+              <Feather name="file" size={16} color={colors.gold} />
+              <View style={{ flex: 1 }}>
+                <Text style={styles.fileName} numberOfLines={2}>{f.name}</Text>
+                {f.size ? (
+                  <Text style={styles.fileSize}>
+                    {t('upload.fileSize' as any)}: {Math.round(f.size / 1024)} KB
+                  </Text>
+                ) : null}
+              </View>
+              <Pressable onPress={() => removeFile(f.name)} hitSlop={8}>
+                <Feather name="x" size={16} color={colors.textMuted} />
+              </Pressable>
+            </View>
+          ))}
+          <Pressable style={styles.addMoreBtn} onPress={pickFiles} disabled={picking}>
+            <Feather name="plus" size={14} color={colors.gold} />
+            <Text style={styles.addMoreText}>{t('upload.addMore')}</Text>
+          </Pressable>
+        </Animated.View>
+      ) : null}
 
       {importFailed ? (
         <Animated.View entering={FadeInDown.duration(500)} style={{ marginTop: spacing.lg }}>
@@ -285,7 +372,7 @@ export default function UploadScreen() {
         </Animated.View>
       ) : null}
 
-      {!busy && !results.length && !previewReady ? (
+      {!busy && !results.length && files.length === 0 && !previewReady && !picking ? (
         <Animated.View entering={FadeInDown.duration(600).delay(80)} style={styles.dropZone}>
           <Pressable onPress={pickFiles} style={styles.dropInner} testID="upload-pick-btn">
             <Feather name="upload-cloud" size={36} color={colors.gold} />
@@ -336,6 +423,21 @@ export default function UploadScreen() {
               </Animated.View>
             ))}
           </View>
+          <View style={{ marginTop: spacing.xl }}>
+            <PhaseSaveResult
+              rows={[
+                { label: t('upload.selectedFiles'), value: files.map((f) => f.name).join(' · ') || '—' },
+                { label: t('upload.reportTitle'), value: `${results.length}` },
+              ]}
+              nextHint={t('upload.doneActions' as any)}
+              actions={[
+                { label: t('upload.viewPortfolio' as any), onPress: () => router.push('/portfolio' as any), primary: true },
+                { label: t('upload.uploadMore' as any), onPress: resetUpload },
+                { label: t('result.goHome' as any), onPress: () => router.replace('/') },
+              ]}
+              testID="upload-done-actions"
+            />
+          </View>
         </Animated.View>
       ) : null}
     </ScreenScaffold>
@@ -362,7 +464,13 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border,
     backgroundColor: 'rgba(255,255,255,0.03)',
   },
+  fileBlockTitle: { color: colors.text, fontSize: 14, fontWeight: typography.weight.semibold, marginBottom: 8 },
   fileRow: { flexDirection: 'row', alignItems: 'center', gap: 10, paddingVertical: 12 },
+  fileSize: { color: colors.textMuted, fontSize: 11, marginTop: 2 },
+  pickingRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: spacing.lg },
+  pickingText: { color: colors.textDim, fontSize: 13 },
+  addMoreBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: spacing.sm, alignSelf: 'flex-start' },
+  addMoreText: { color: colors.gold, fontSize: 12, fontWeight: typography.weight.medium },
   fileName: { flex: 1, color: colors.text, fontSize: 14 },
   actions: { flexDirection: 'row', gap: 10, marginTop: spacing.md },
   secondaryBtn: {

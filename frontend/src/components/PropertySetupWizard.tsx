@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import {
-  View, Text, StyleSheet, Pressable, ScrollView, Linking, Platform,
+  View, Text, StyleSheet, Pressable, Linking, Platform,
 } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import Animated, { FadeInDown } from 'react-native-reanimated';
@@ -14,9 +14,10 @@ import { SetupProgressBar } from '@/src/components/SetupProgressBar';
 import { WizardSuccessToast } from '@/src/components/WizardSuccessToast';
 import { JourneyWelcome } from '@/src/components/journey/JourneyWelcome';
 import { JourneyPhaseCard } from '@/src/components/journey/JourneyPhaseCard';
-import { JourneySuccessCard } from '@/src/components/journey/JourneySuccessCard';
 import { JourneyLaunchComplete } from '@/src/components/journey/JourneyLaunchComplete';
 import { JourneyValueTip } from '@/src/components/journey/JourneyValueTip';
+import { PhaseSaveResult } from '@/src/components/PhaseSaveResult';
+import { PortalShareCard } from '@/src/components/PortalShareCard';
 import {
   ALERTS_SUCCESS, PHASE_EMOJI, PHASE_INTRO, PHASE_SUCCESS, visiblePhases,
 } from '@/src/components/journey/journey-phases';
@@ -28,8 +29,8 @@ import { useI18n } from '@/src/i18n';
 import { usePropertyOS } from '@/src/hooks/usePropertyOS';
 import { useNotificationPrefs } from '@/src/hooks/usePreferences';
 import type {
-  GasType, MaintenanceResponsibility, PaymentMethod, PropertyType,
-  RentPeriod, ServiceResponsibility, SetupPhaseId, UnitStatus, UnitType,
+  ContractRecord, GasType, MaintenanceResponsibility, PaymentMethod, PropertyType,
+  RentPeriod, ServiceResponsibility, SetupPhaseId, UnitRecord, UnitStatus, UnitType,
 } from '@/src/types/property-os';
 
 const PHASES: SetupPhaseId[] = [
@@ -86,6 +87,8 @@ export function PropertySetupWizard() {
     PHASES.includes(initialPhase) ? initialPhase : 'property',
   );
   const [lastTenant, setLastTenant] = useState<typeof state.tenants[0] | null>(null);
+  const [lastSavedUnit, setLastSavedUnit] = useState<UnitRecord | null>(null);
+  const [lastContract, setLastContract] = useState<ContractRecord | null>(null);
   const [phaseView, setPhaseView] = useState<PhaseView>(skipWelcome ? 'intro' : 'intro');
   const [successPhase, setSuccessPhase] = useState<SetupPhaseId | null>(null);
   const [successToast, setSuccessToast] = useState<string | null>(null);
@@ -220,7 +223,7 @@ export function PropertySetupWizard() {
 
     if (phase === 'units') {
       if (!validateUnit()) return;
-      addUnit({
+      const unit = addUnit({
         number: unitDraft.number.trim(),
         type: unitDraft.type,
         rooms: unitDraft.type === 'apartment' ? Number(unitDraft.rooms) || undefined : undefined,
@@ -249,15 +252,8 @@ export function PropertySetupWizard() {
         insuranceAmount: unitDraft.hasInsurance ? Number(unitDraft.insuranceAmount) || undefined : undefined,
         notes: unitDraft.notes || undefined,
       });
-      const target = state.property?.unitCount ?? 1;
-      if (state.units.length + 1 >= target) {
-        finishPhase('units');
-      } else {
-        setUnitDraft(emptyUnitDraft());
-        setFieldErrors({});
-        setSuccessToast(t('pos.toast.units'));
-        setTimeout(() => setSuccessToast(null), 1200);
-      }
+      setLastSavedUnit(unit);
+      finishPhase('units');
       return;
     }
 
@@ -282,7 +278,7 @@ export function PropertySetupWizard() {
     if (phase === 'contracts') {
       if (!validateContract()) return;
       const tenant = state.tenants.find((x) => x.id === contractTenantId) ?? lastTenant;
-      addContract({
+      const contract = addContract({
         number: contractNum.trim(),
         tenantId: contractTenantId,
         unitId: tenant?.unitId ?? tenantUnitId,
@@ -293,6 +289,7 @@ export function PropertySetupWizard() {
         depositAmount: Number(contractDeposit) || 0,
         specialTerms: contractTerms.trim() || undefined,
       });
+      setLastContract(contract);
       finishPhase('contracts');
       return;
     }
@@ -314,11 +311,14 @@ export function PropertySetupWizard() {
     const tenant = lastTenant ?? state.tenants[state.tenants.length - 1];
     if (!tenant) return;
     const url = Platform.select({
-      ios: `whatsapp://send?text=${encodeURIComponent(tenant.whatsAppMessage)}`,
-      default: `https://wa.me/?text=${encodeURIComponent(tenant.whatsAppMessage)}`,
+      ios: `whatsapp://send?phone=${tenant.phone.replace(/\D/g, '')}&text=${encodeURIComponent(tenant.whatsAppMessage)}`,
+      default: `https://wa.me/${tenant.phone.replace(/\D/g, '')}?text=${encodeURIComponent(tenant.whatsAppMessage)}`,
     });
     Linking.openURL(url!).catch(() => {});
   };
+
+  const goHome = () => router.replace('/');
+  const viewOwner = () => router.push('/owner' as any);
 
   const techLink = ensureTechnicianPortal();
   const tenantPortal = lastTenant ?? state.tenants[state.tenants.length - 1];
@@ -337,6 +337,25 @@ export function PropertySetupWizard() {
     );
   }
 
+  const addAnotherUnit = () => {
+    setSuccessPhase(null);
+    setPhaseView('form');
+    setUnitDraft(emptyUnitDraft());
+    setFieldErrors({});
+    setPhase('units');
+  };
+
+  const addAnotherTenant = () => {
+    setSuccessPhase(null);
+    setPhaseView('form');
+    setTenantName('');
+    setTenantPhone('');
+    setTenantEmail('');
+    setTenantId('');
+    setFieldErrors({});
+    setPhase('tenants');
+  };
+
   if (successPhase && phaseView === 'success') {
     const cfg = successPhase === 'alerts'
       ? ALERTS_SUCCESS
@@ -344,13 +363,112 @@ export function PropertySetupWizard() {
         ? PHASE_SUCCESS[successPhase as keyof typeof PHASE_SUCCESS]
         : null);
     if (cfg) {
+      const nextHint = t(cfg.nextKey as any);
+
+      if (successPhase === 'tenants' && lastTenant) {
+        const unit = state.units.find((u) => u.id === lastTenant.unitId);
+        const contract = state.contracts.find((c) => c.tenantId === lastTenant.id);
+        return (
+          <ScreenScaffold testID="property-os-success-tenant">
+            <PhaseSaveResult
+              rows={[
+                { label: t('pos.tenant.name'), value: lastTenant.name },
+                { label: t('pos.tenant.unit'), value: unit?.number ?? '—' },
+                { label: t('pos.contract.number'), value: contract?.number ?? t('result.noContractYet' as any) },
+                { label: t('pos.portal.link'), value: lastTenant.portalUrl },
+                { label: t('pos.units.status'), value: t('result.status.active' as any) },
+              ]}
+              nextHint={nextHint}
+              actions={[
+                { label: t('result.sendLink' as any), onPress: shareWhatsApp, primary: true },
+                { label: t('result.addContract' as any), onPress: onSuccessContinue },
+                { label: t('result.addAnother' as any), onPress: addAnotherTenant },
+                { label: t('result.viewManage' as any), onPress: () => router.push('/tenants' as any) },
+                { label: t('result.goHome' as any), onPress: goHome },
+              ]}
+            >
+              <PortalShareCard tenant={lastTenant} unitNumber={unit?.number} />
+            </PhaseSaveResult>
+          </ScreenScaffold>
+        );
+      }
+
+      if (successPhase === 'units' && lastSavedUnit) {
+        return (
+          <ScreenScaffold testID="property-os-success-unit">
+            <PhaseSaveResult
+              rows={[
+                { label: t('pos.units.number'), value: lastSavedUnit.number },
+                { label: t('pos.rent.amount'), value: String(lastSavedUnit.rentAmount) },
+                { label: t('pos.units.status'), value: t(`pos.status.${lastSavedUnit.status}` as 'pos.status.occupied') },
+              ]}
+              nextHint={nextHint}
+              actions={[
+                { label: t('result.continue' as any), onPress: onSuccessContinue, primary: true },
+                { label: t('result.addAnother' as any), onPress: addAnotherUnit },
+                { label: t('result.viewManage' as any), onPress: viewOwner },
+                { label: t('result.goHome' as any), onPress: goHome },
+              ]}
+            />
+          </ScreenScaffold>
+        );
+      }
+
+      if (successPhase === 'property') {
+        return (
+          <ScreenScaffold testID="property-os-success-property">
+            <PhaseSaveResult
+              rows={[
+                { label: t('pos.property.name'), value: propName.trim() },
+                { label: t('pos.property.city'), value: city.trim() },
+                { label: t('pos.property.unitCount'), value: unitCount },
+              ]}
+              nextHint={nextHint}
+              actions={[
+                { label: t('result.continue' as any), onPress: onSuccessContinue, primary: true },
+                { label: t('result.viewManage' as any), onPress: viewOwner },
+                { label: t('result.goHome' as any), onPress: goHome },
+              ]}
+            />
+            <View style={{ marginTop: spacing.md }}>
+              <JourneyValueTip />
+            </View>
+          </ScreenScaffold>
+        );
+      }
+
+      if (successPhase === 'contracts' && lastContract) {
+        const tenant = state.tenants.find((x) => x.id === lastContract.tenantId) ?? lastTenant;
+        const unit = state.units.find((u) => u.id === lastContract.unitId);
+        return (
+          <ScreenScaffold testID="property-os-success-contract">
+            <PhaseSaveResult
+              rows={[
+                { label: t('pos.contract.number'), value: lastContract.number },
+                { label: t('pos.tenant.name'), value: tenant?.name ?? '—' },
+                { label: t('pos.tenant.unit'), value: unit?.number ?? '—' },
+                { label: t('pos.contract.rent'), value: String(lastContract.rentAmount) },
+              ]}
+              nextHint={nextHint}
+              actions={[
+                { label: t('result.continue' as any), onPress: onSuccessContinue, primary: true },
+                { label: t('result.viewManage' as any), onPress: () => router.push('/contracts' as any) },
+                { label: t('result.goHome' as any), onPress: goHome },
+              ]}
+            />
+          </ScreenScaffold>
+        );
+      }
+
       return (
         <ScreenScaffold testID="property-os-success">
-          <JourneySuccessCard
-            titleKey={cfg.titleKey}
-            checklistKeys={cfg.checklistKeys}
-            nextKey={cfg.nextKey}
-            onContinue={onSuccessContinue}
+          <PhaseSaveResult
+            rows={cfg.checklistKeys.map((k) => ({ label: '✓', value: t(k as any) }))}
+            nextHint={nextHint}
+            actions={[
+              { label: t('result.continue' as any), onPress: onSuccessContinue, primary: true },
+              { label: t('result.goHome' as any), onPress: goHome },
+            ]}
           />
           <View style={{ marginTop: spacing.md }}>
             <JourneyValueTip />
@@ -438,11 +556,7 @@ export function PropertySetupWizard() {
         </Animated.View>
       ) : null}
 
-      <ScrollView
-        showsVerticalScrollIndicator={false}
-        keyboardShouldPersistTaps="handled"
-        contentContainerStyle={{ paddingBottom: spacing['2xl'] }}
-      >
+      <View style={{ paddingBottom: spacing['2xl'] }}>
         {phase === 'property' && phaseView === 'form' ? (
           <PhaseCard>
             <WizardPhaseIntro text={t('pos.intro.property')} />
@@ -659,11 +773,7 @@ export function PropertySetupWizard() {
               disabled={advancing}
               testID="pos-wizard-continue"
             >
-              <Text style={styles.primaryText}>
-                {phase === 'units' && state.units.length + 1 < (state.property?.unitCount ?? 1)
-                  ? t('pos.units.addAnother')
-                  : t('pos.continue')}
-              </Text>
+              <Text style={styles.primaryText}>{t('pos.continue')}</Text>
               <Feather name="arrow-right" size={14} color={colors.bg} />
             </Pressable>
           </Animated.View>
@@ -678,7 +788,7 @@ export function PropertySetupWizard() {
             <Text style={[styles.importHint, isRTL && styles.rtl]}>{t('pos.wizard.importHint')}</Text>
           </>
         ) : null}
-      </ScrollView>
+      </View>
     </ScreenScaffold>
   );
 }

@@ -17,11 +17,13 @@ type Props = {
   testID?: string;
 };
 
+/** Visible setup journey for owners — alerts stay in calc, shown as “Go live”. */
 const PHASE_ORDER: SetupPhaseId[] = [
-  'property', 'units', 'tenants', 'contracts', 'alerts', 'smartEmployee',
+  'property', 'units', 'tenants', 'contracts', 'smartEmployee',
 ];
 
 function phaseLabelKey(id: SetupPhaseId) {
+  if (id === 'smartEmployee') return 'pos.phase.operations' as const;
   return `pos.phase.${id}` as const;
 }
 
@@ -40,7 +42,9 @@ export function SetupProgressBar({ compact = false, testID = 'setup-progress' }:
 
   if (!ready || state.setupCompleted || state.dismissedProgress) return null;
 
-  const nextLabel = nextPhase ? t(phaseLabelKey(nextPhase)) : t('pos.phase.smartEmployee');
+  const nextLabel = nextPhase
+    ? t(phaseLabelKey(nextPhase === 'alerts' ? 'smartEmployee' : nextPhase))
+    : t('pos.phase.operations' as any);
 
   const goNext = () => {
     Haptics.selectionAsync();
@@ -60,6 +64,14 @@ export function SetupProgressBar({ compact = false, testID = 'setup-progress' }:
           {t('pos.progress.overall').replace('{pct}', String(overallPercent)).replace('{next}', nextLabel)}
         </Text>
 
+        {nextPhase ? (
+          <Text style={[styles.nextHint, isRTL && styles.rtl]}>
+            {t('pos.progress.nextLine' as any).replace('{next}', nextLabel)}
+          </Text>
+        ) : (
+          <Text style={[styles.nextHint, isRTL && styles.rtl]}>{t('pos.progress.done' as any)}</Text>
+        )}
+
         <View style={styles.barTrack}>
           <View style={[styles.barFill, { width: `${overallPercent}%` }]} />
         </View>
@@ -75,6 +87,7 @@ export function SetupProgressBar({ compact = false, testID = 'setup-progress' }:
                 <View key={id} style={[styles.phaseRow, isRTL && styles.rowRtl]}>
                   <Feather name={icon as 'check-circle'} size={13} color={iconColor} />
                   <Text style={[styles.phaseLabel, isRTL && styles.rtl, phase.current && styles.phaseCurrent]}>
+                    {phase.complete ? '✅ ' : phase.current ? '⏳ ' : '○ '}
                     {t(phaseLabelKey(id))}
                   </Text>
                   <Text style={styles.phasePct}>{phase.percent}%</Text>
@@ -104,6 +117,7 @@ const styles = StyleSheet.create({
   title: { flex: 1, color: colors.text, fontSize: 13, fontWeight: typography.weight.semibold },
   pct: { color: colors.gold, fontSize: 12, fontWeight: typography.weight.semibold, fontVariant: ['tabular-nums'] },
   sub: { color: colors.textDim, fontSize: 12, lineHeight: 18, marginTop: 8 },
+  nextHint: { color: colors.gold, fontSize: 12, lineHeight: 18, marginTop: 6, fontWeight: typography.weight.medium },
   rtl: { writingDirection: 'rtl', textAlign: 'right' },
   barTrack: {
     height: 4, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.08)',

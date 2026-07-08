@@ -1,13 +1,14 @@
 /** UI/UX polish phase — calm chrome, daily nav, page guidance. */
 export const polishEn = {
   'nav.os.home': 'Home',
+  'nav.os.operations': 'Property ops',
   'nav.os.notifications': 'Alerts',
   'nav.os.assistant': 'Assistant',
   'nav.os.upload': 'Upload',
   'nav.os.more': 'More',
 
   'more.title': 'More',
-  'more.sub': 'Settings and integrations — used occasionally.',
+  'more.sub': 'Settings, integrations, and upload — used occasionally.',
   'more.section.property': 'Property management',
   'more.section.rare': 'Settings & integrations',
   'more.section.account': 'Account',
@@ -57,7 +58,7 @@ export const polishEn = {
   'contracts.sub': 'Manage lease contracts — SPP tracks renewals and alerts automatically.',
   'portfolio.sub': 'Your buildings and units — occupancy and health in one view.',
   'tenants.sub': 'Tenant relationships — contracts, portal, and messages.',
-  'upload.sub': 'Upload receipts or contracts — SPP explains each file before saving.',
+  'upload.sub': 'Upload a contract or rent sheet — we explain each file before saving.',
   'settings.sub': 'Preferences and connections — change only when you need to.',
   'brain.sub': 'Your smart employee — daily operations by text, voice coming soon.',
   'notifications.sub': 'Alerts ranked by impact — tap any item to act.',
@@ -75,13 +76,14 @@ export const polishEn = {
 
 export const polishAr = {
   'nav.os.home': 'الرئيسية',
+  'nav.os.operations': 'تشغيل العقار',
   'nav.os.notifications': 'الإشعارات',
   'nav.os.assistant': 'المساعد الذكي',
   'nav.os.upload': 'رفع',
   'nav.os.more': 'المزيد',
 
   'more.title': 'المزيد',
-  'more.sub': 'الإعدادات والتكاملات — تُستخدم بين الحين والآخر.',
+  'more.sub': 'الإعدادات والتكاملات والرفع — تُستخدم بين الحين والآخر.',
   'more.section.property': 'إدارة العقار',
   'more.section.rare': 'الإعدادات والتكاملات',
   'more.section.account': 'الحساب',
@@ -131,7 +133,7 @@ export const polishAr = {
   'contracts.sub': 'هنا تدير عقود الإيجار، ويتابع SPP التجديد والتنبيهات تلقائيًا.',
   'portfolio.sub': 'مبانيك ووحداتك — الإشغال والصحة في مكان واحد.',
   'tenants.sub': 'علاقات المستأجرين — العقود والبوابة والرسائل.',
-  'upload.sub': 'ارفع سندات أو عقودًا — يشرح SPP كل ملف قبل الحفظ.',
+  'upload.sub': 'ارفع عقدًا أو كشف إيجار — نشرح كل ملف قبل الحفظ.',
   'settings.sub': 'التفضيلات والربط — غيّرها فقط عند الحاجة.',
   'brain.sub': 'موظفك الذكي — تشغيل يومي بالكتابة، وصوتًا قريبًا.',
   'notifications.sub': 'تنبيهات مرتبة حسب الأثر — اضغط أي عنصر للتنفيذ.',

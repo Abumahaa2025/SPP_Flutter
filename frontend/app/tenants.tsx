@@ -40,6 +40,7 @@ export default function Tenants() {
 
       {osState.tenants.length > 0 ? (
         <View style={{ marginBottom: spacing.lg, gap: spacing.md }}>
+          <Text style={styles.localBadge}>{t('result.localData' as any)}</Text>
           {osState.tenants.map((tn) => {
             const unit = osState.units.find((u) => u.id === tn.unitId);
             return (
@@ -105,6 +106,10 @@ export default function Tenants() {
 }
 
 const styles = StyleSheet.create({
+  localBadge: {
+    color: colors.gold, fontSize: 10, letterSpacing: 1.2, textTransform: 'uppercase',
+    fontWeight: typography.weight.semibold,
+  },
   row: { flexDirection: 'row', alignItems: 'center', gap: 14 },
   avatar: {
     width: 44, height: 44, borderRadius: 22,

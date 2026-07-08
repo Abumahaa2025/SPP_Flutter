@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import {
-  View, Text, StyleSheet, Pressable, TextInput, Alert,
+  View, Text, StyleSheet, Pressable, Alert,
 } from 'react-native';
+import { KeyboardAwareTextInput } from '@/src/components/KeyboardAwareTextInput';
 import { Feather } from '@expo/vector-icons';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
@@ -197,7 +198,7 @@ export function ServiceSetupScreen({ flowId }: Props) {
               <Text style={[styles.fieldLabel, isRTL && styles.rtl]}>
                 {t(f.labelKey as 'setup.sheets.field.account')}
               </Text>
-              <TextInput
+              <KeyboardAwareTextInput
                 testID={`setup-field-${f.key}`}
                 value={draft[f.key] ?? ''}
                 onChangeText={(v) => setDraft((d) => ({ ...d, [f.key]: v }))}

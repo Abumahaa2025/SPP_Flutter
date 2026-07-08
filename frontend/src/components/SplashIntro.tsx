@@ -7,7 +7,6 @@ import Animated, {
 } from 'react-native-reanimated';
 
 import { BrandOrb, Wordmark } from './BrandOrb';
-import { AgreementPulse } from './AgreementPulse';
 import { colors, typography } from '../theme';
 import { useI18n } from '../i18n';
 
@@ -88,9 +87,6 @@ export function SplashIntro({ visible, holdMs = 2000 }: Props) {
         <Animated.View style={logoStyle}>
           <View style={styles.logoStack}>
             <BrandOrb size={76} />
-            <View style={styles.pulseBadge}>
-              <AgreementPulse size={8} />
-            </View>
           </View>
         </Animated.View>
 
@@ -114,7 +110,6 @@ export function SplashIntro({ visible, holdMs = 2000 }: Props) {
 const styles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 4 },
   logoStack: { position: 'relative', alignItems: 'center', justifyContent: 'center' },
-  pulseBadge: { position: 'absolute', bottom: -4, right: -6 },
   orbHalo: {
     position: 'absolute',
     top: '28%',

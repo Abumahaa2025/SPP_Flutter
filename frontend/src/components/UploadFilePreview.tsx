@@ -26,6 +26,18 @@ export function UploadFilePreview({ preview, onConfirm, onCancel, onMappingChang
       <GlassCard padding={20} radiusToken="lg" edge="gold">
         <Text style={[styles.title, isRTL && styles.rtl]}>{t('journey.upload.previewTitle')}</Text>
 
+        <View style={styles.explainList}>
+          {([
+            'journey.upload.explain.contracts',
+            'journey.upload.explain.units',
+            'journey.upload.explain.tenants',
+            'journey.upload.explain.review',
+            'journey.upload.explain.approve',
+          ] as const).map((key) => (
+            <Text key={key} style={[styles.explainItem, isRTL && styles.rtl]}>· {t(key as any)}</Text>
+          ))}
+        </View>
+
         <Row label={t('journey.upload.fileName')} value={preview.fileName} isRTL={isRTL} />
         <Row label={t('journey.upload.rows')} value={String(preview.rowCount)} isRTL={isRTL} />
         <Row label={t('journey.upload.columns')} value={String(preview.columnCount)} isRTL={isRTL} />
@@ -102,6 +114,8 @@ function Row({ label, value, isRTL }: { label: string; value: string; isRTL: boo
 
 const styles = StyleSheet.create({
   title: { color: colors.text, fontSize: 18, fontWeight: typography.weight.semibold, marginBottom: spacing.md },
+  explainList: { marginBottom: spacing.md, gap: 4 },
+  explainItem: { color: colors.textDim, fontSize: 13, lineHeight: 20 },
   rtl: { writingDirection: 'rtl', textAlign: 'right' },
   row: { flexDirection: 'row', justifyContent: 'space-between', gap: 12, marginBottom: 8 },
   rowRtl: { flexDirection: 'row-reverse' },

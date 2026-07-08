@@ -10,6 +10,9 @@ import { GlassCard } from '@/src/components/GlassCard';
 import { AliveEmpty } from '@/src/components/AliveEmpty';
 import { SetupProgressBar } from '@/src/components/SetupProgressBar';
 import { GuidedSetup } from '@/src/components/GuidedSetup';
+import { LocalContractCard } from '@/src/components/LocalSetupCards';
+import { usePropertyOS } from '@/src/hooks/usePropertyOS';
+import { useNotificationPrefs } from '@/src/hooks/usePreferences';
 import { api, type ContractT, type PropertyT, type TenantT } from '@/src/api/client';
 import { colors, spacing, typography, radius } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
@@ -47,6 +50,8 @@ const expiryLabel = (dateStr: string, status: string, t: (k: any) => string) => 
 export default function Contracts() {
   const { t } = useI18n();
   const router = useRouter();
+  const { countEnabled } = useNotificationPrefs();
+  const { state: osState } = usePropertyOS(countEnabled);
   const [contracts, setContracts] = useState<ContractT[]>([]);
   const [tenants, setTenants] = useState<TenantT[]>([]);
   const [props, setProps] = useState<PropertyT[]>([]);
@@ -74,8 +79,22 @@ export default function Contracts() {
     <ScreenScaffold testID="contracts-screen">
       <StoryScreenHeader question={t('page.q.contracts')} hint={t('contracts.sub')} showBack testID="contracts-header" />
       <SetupProgressBar compact testID="contracts-setup-progress" />
-      <GuidedSetup flowId="tenant" defaultOpen={sorted.length === 0} testID="contracts-guided" />
-      {sorted.length === 0 ? (
+      <GuidedSetup flowId="tenant" defaultOpen={sorted.length === 0 && osState.contracts.length === 0} testID="contracts-guided" />
+
+      {osState.contracts.length > 0 ? (
+        <View style={{ marginBottom: spacing.md }}>
+          <Text style={styles.localBadge}>{t('result.localData' as any)}</Text>
+          {osState.contracts.map((c) => {
+            const tenant = osState.tenants.find((x) => x.id === c.tenantId);
+            const unit = osState.units.find((u) => u.id === c.unitId);
+            return (
+              <LocalContractCard key={c.id} contract={c} tenant={tenant} unit={unit} />
+            );
+          })}
+        </View>
+      ) : null}
+
+      {sorted.length === 0 && osState.contracts.length === 0 ? (
         <AliveEmpty title={t('alive.contracts.title')} body={t('alive.contracts.body')} />
       ) : sorted.map((c, i) => {
         const days = daysUntil(c.end);
@@ -133,6 +152,10 @@ export default function Contracts() {
 }
 
 const styles = StyleSheet.create({
+  localBadge: {
+    color: colors.gold, fontSize: 10, letterSpacing: 1.2, textTransform: 'uppercase',
+    marginBottom: spacing.sm, fontWeight: typography.weight.semibold,
+  },
   topRow: { flexDirection: 'row', alignItems: 'center' },
   pill: {
     flexDirection: 'row', alignItems: 'center', gap: 6,

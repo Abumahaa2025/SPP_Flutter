@@ -61,7 +61,14 @@ if (bad) {
 console.log('\n📦 SPP Android Beta APK build');
 console.log(`   Backend: ${backendUrl}`);
 console.log(`   Beta mode: ${betaMode}`);
-console.log(`   Build stamp: beta-1.0.0-2026-07-05\n`);
+
+let appVersion = 'unknown';
+try {
+  const appJson = JSON.parse(readFileSync(path.join(root, 'app.json'), 'utf8'));
+  appVersion = appJson.expo?.version ?? appVersion;
+} catch { /* ignore */ }
+console.log(`   App version: ${appVersion}`);
+console.log('   EAS quota exhausted? Use GitHub Actions: Beta APK — GitHub (no EAS quota)\n');
 
 const args = ['eas-cli', 'build', '-p', 'android', '--profile', 'preview'];
 if (process.argv.includes('--non-interactive')) args.push('--non-interactive');

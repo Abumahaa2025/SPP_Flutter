@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Pressable, TextInput, Platform, Linking, Switch } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Platform, Linking, Switch } from 'react-native';
+import { KeyboardAwareTextInput } from '@/src/components/KeyboardAwareTextInput';
 import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
@@ -10,18 +11,20 @@ import { ScreenScaffold } from '@/src/components/ScreenScaffold';
 import { StoryScreenHeader } from '@/src/components/StoryScreenHeader';
 import { GlassCard } from '@/src/components/GlassCard';
 import { PortalShareCard } from '@/src/components/PortalShareCard';
+import { AgentPortalShareCard } from '@/src/components/AgentPortalShareCard';
+import { TechPortalShareCard } from '@/src/components/TechPortalShareCard';
+import { PhaseSaveResult } from '@/src/components/PhaseSaveResult';
 import { OperationHint } from '@/src/components/OperationHint';
 import { usePropertyOS, buildTechnicianPortal } from '@/src/hooks/usePropertyOS';
 import { usePortalAccess } from '@/src/hooks/usePortalAccess';
 import { useTechnicians } from '@/src/hooks/useTechnicians';
-import { inAppTechRouteFor } from '@/src/utils/technician-store';
 import { inAppTechRoute } from '@/src/utils/operational-flow-engine';
 import { inAppAgentRoute } from '@/src/utils/portal-access-store';
 import { useNotificationPrefs } from '@/src/hooks/usePreferences';
 import { colors, spacing, typography, radius } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
 import { formatDate } from '@/src/utils/locale';
-import type { AgentPermissions } from '@/src/types/portal-access';
+import type { AgentPermissions, PropertyAgentRecord } from '@/src/types/portal-access';
 
 const DEFAULT_PERMS: AgentPermissions = {
   contracts: true, maintenance: true, tenants: true, wallet: false, settings: false,
@@ -40,6 +43,7 @@ export default function PortalsManagementScreen() {
   const [agentPhone, setAgentPhone] = useState('');
   const [agentEmail, setAgentEmail] = useState('');
   const [perms, setPerms] = useState<AgentPermissions>(DEFAULT_PERMS);
+  const [lastCreatedAgent, setLastCreatedAgent] = useState<PropertyAgentRecord | null>(null);
 
   const techUrl = state.technicianPortalToken
     ? buildTechnicianPortal(state.technicianPortalToken)
@@ -57,11 +61,13 @@ export default function PortalsManagementScreen() {
 
   const createAgent = async () => {
     if (!agentName.trim()) return;
-    await addAgent({ name: agentName.trim(), phone: agentPhone, email: agentEmail, permissions: perms });
+    const agent = await addAgent({ name: agentName.trim(), phone: agentPhone, email: agentEmail, permissions: perms });
+    setLastCreatedAgent(agent);
     setShowAgentForm(false);
     setAgentName('');
     setAgentPhone('');
     setAgentEmail('');
+    setPerms(DEFAULT_PERMS);
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
 
@@ -129,20 +135,31 @@ export default function PortalsManagementScreen() {
       </GlassCard>
 
       {technicians.map((tech) => (
-        <GlassCard key={tech.id} padding={14} radiusToken="md" style={styles.gap}>
-          <Text style={styles.agentName}>{tech.name}</Text>
-          <Text style={styles.link} selectable numberOfLines={2}>{tech.portalUrl}</Text>
-          <Text style={styles.meta}>
-            {t(`opsv2.maint.type.${tech.specialty}` as any)} · {tech.phone}
-          </Text>
-          <Pressable
-            style={styles.actionBtn}
-            onPress={() => router.push(inAppTechRouteFor(tech) as any)}
-          >
-            <Text style={styles.actionText}>{t('op.tech.title')}</Text>
-          </Pressable>
-        </GlassCard>
+        <Animated.View key={tech.id} entering={FadeInDown.duration(400)}>
+          <TechPortalShareCard tech={tech} />
+        </Animated.View>
       ))}
+
+      {lastCreatedAgent ? (
+        <Animated.View entering={FadeInDown.duration(400)} style={styles.gap}>
+          <PhaseSaveResult
+            rows={[
+              { label: t('opsv2.portals.agentName' as any), value: lastCreatedAgent.name },
+              { label: t('opsv2.portals.agentPhone' as any), value: lastCreatedAgent.phone || '—' },
+              { label: t('pos.portal.link'), value: lastCreatedAgent.portalUrl },
+            ]}
+            nextHint={t('opsv2.portals.sub' as any)}
+            actions={[
+              { label: t('result.sendLink' as any), onPress: () => shareWhatsApp(lastCreatedAgent.phone, `${t('opsv2.agent.title' as any)}: ${lastCreatedAgent.portalUrl}`), primary: true },
+              { label: t('result.viewManage' as any), onPress: () => setLastCreatedAgent(null) },
+              { label: t('result.addAnother' as any), onPress: () => { setLastCreatedAgent(null); setShowAgentForm(true); } },
+              { label: t('result.goHome' as any), onPress: () => router.replace('/') },
+            ]}
+          >
+            <AgentPortalShareCard agent={lastCreatedAgent} />
+          </PhaseSaveResult>
+        </Animated.View>
+      ) : null}
 
       <View style={[styles.agentHeader, isRTL && styles.rowRtl]}>
         <Text style={[styles.section, isRTL && styles.rtl]}>{t('opsv2.portals.addAgent' as any)}</Text>
@@ -153,14 +170,14 @@ export default function PortalsManagementScreen() {
 
       {showAgentForm ? (
         <GlassCard padding={16} radiusToken="md" edge="gold">
-          <TextInput
+          <KeyboardAwareTextInput
             value={agentName}
             onChangeText={setAgentName}
             placeholder={t('opsv2.portals.agentName' as any)}
             placeholderTextColor={colors.textSubtle}
             style={[styles.input, isRTL && styles.rtl]}
           />
-          <TextInput
+          <KeyboardAwareTextInput
             value={agentPhone}
             onChangeText={setAgentPhone}
             placeholder={t('opsv2.portals.agentPhone' as any)}
@@ -168,7 +185,7 @@ export default function PortalsManagementScreen() {
             keyboardType="phone-pad"
             style={[styles.input, isRTL && styles.rtl]}
           />
-          <TextInput
+          <KeyboardAwareTextInput
             value={agentEmail}
             onChangeText={setAgentEmail}
             placeholder={t('opsv2.portals.agentEmail' as any)}

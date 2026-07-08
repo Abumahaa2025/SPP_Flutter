@@ -2,14 +2,17 @@ import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
-import { AgreementPulse } from '@/src/components/AgreementPulse';
-import { Wordmark } from '@/src/components/BrandOrb';
+import { BrandOrb, Wordmark } from '@/src/components/BrandOrb';
 import { colors, spacing, typography, radius } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
 
-const FEATURE_KEYS = ['auth.hero.f1', 'auth.hero.f2', 'auth.hero.f3'] as const;
+const FEATURE_KEYS = [
+  'onboarding.benefit.1',
+  'onboarding.benefit.2',
+  'onboarding.benefit.3',
+] as const;
 
-/** World-class welcome — fixed Agreement pulse + SPP wordmark + العقار الذكي. */
+/** Beta login welcome — SPP brand only, owner-facing copy. */
 export function PremiumWelcomeHero() {
   const { t, isRTL } = useI18n();
 
@@ -23,18 +26,18 @@ export function PremiumWelcomeHero() {
       />
 
       <View style={styles.brandStack}>
-        <AgreementPulse size={10} />
+        <BrandOrb size={56} compact />
         <View style={styles.wordmarkWrap}>
           <Wordmark size="lg" showBilingualTagline />
         </View>
       </View>
 
       <Text style={[styles.headline, isRTL && styles.rtl]}>
-        {t('auth.hero.title' as never)}
+        {t('onboarding.step1.title' as never)}
       </Text>
 
       <Text style={[styles.subline, isRTL && styles.rtl]}>
-        {t('auth.hero.sub' as never)}
+        {t('onboarding.step1.body' as never)}
       </Text>
 
       <View style={styles.chipsRow}>

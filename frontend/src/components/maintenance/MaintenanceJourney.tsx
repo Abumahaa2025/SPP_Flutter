@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Pressable, ScrollView, Linking, Platform } from 'react-native';
 import { KeyboardAwareTextInput } from '@/src/components/KeyboardAwareTextInput';
 import type { TechnicianRecord, TechnicianSpecialty } from '@/src/types/technician';
+import { TechPortalShareCard } from '@/src/components/TechPortalShareCard';
 import * as DocumentPicker from 'expo-document-picker';
 import * as Haptics from 'expo-haptics';
 import { Feather } from '@expo/vector-icons';
@@ -24,6 +25,7 @@ const STEPS = [
 type StepId = typeof STEPS[number];
 
 const CATEGORIES: MaintenanceCategory[] = ['plumbing', 'electrical', 'ac', 'general', 'other'];
+const SPECIALTIES: TechnicianSpecialty[] = ['plumbing', 'electrical', 'ac', 'general', 'other'];
 const PRIORITIES: MaintenancePriority[] = ['low', 'medium', 'high', 'urgent'];
 
 type Props = {
@@ -60,6 +62,7 @@ export function MaintenanceJourney({
   const [newTechName, setNewTechName] = useState('');
   const [newTechPhone, setNewTechPhone] = useState('');
   const [newTechSpecialty, setNewTechSpecialty] = useState<TechnicianSpecialty>('general');
+  const [createdTech, setCreatedTech] = useState<TechnicianRecord | null>(null);
   const [busy, setBusy] = useState(false);
 
   const selectedTech = technicianList.find((t) => t.id === technicianId);
@@ -112,6 +115,34 @@ export function MaintenanceJourney({
   };
 
   const stepLabel = (s: StepId) => t(`opsv2.maint.step.${s}` as any);
+
+  const shareWhatsApp = (phone: string, message: string) => {
+    const digits = phone.replace(/\D/g, '');
+    if (!digits) return;
+    const url = Platform.select({
+      ios: `whatsapp://send?phone=${digits}&text=${encodeURIComponent(message)}`,
+      default: `https://wa.me/${digits}?text=${encodeURIComponent(message)}`,
+    });
+    Linking.openURL(url!).catch(() => {});
+  };
+
+  const handleCreateTechLink = async () => {
+    if (!newTechName.trim() || !onCreateTechnician) return;
+    setBusy(true);
+    try {
+      const tech = await onCreateTechnician({
+        name: newTechName.trim(),
+        phone: newTechPhone,
+        specialty: newTechSpecialty,
+      });
+      setTechnicianId(tech.id);
+      setCreatedTech(tech);
+      setShowAddTech(false);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   return (
     <View testID="maintenance-journey">
@@ -242,7 +273,10 @@ export function MaintenanceJourney({
                 <Text style={[styles.mediaBtnText, { color: colors.gold }]}>{t('maint.addTech' as any)}</Text>
               </Pressable>
               {showAddTech && onCreateTechnician ? (
-                <View style={{ marginTop: 8 }}>
+                <View style={styles.addTechBox}>
+                  <Text style={[styles.addTechTitle, isRTL && styles.rtl]}>{t('maint.addTech' as any)}</Text>
+
+                  <Text style={[styles.fieldLabel, isRTL && styles.rtl]}>{t('maint.techName' as any)}</Text>
                   <KeyboardAwareTextInput
                     value={newTechName}
                     onChangeText={setNewTechName}
@@ -250,31 +284,43 @@ export function MaintenanceJourney({
                     placeholderTextColor={colors.textSubtle}
                     style={[styles.input, isRTL && styles.rtl]}
                   />
+
+                  <Text style={[styles.fieldLabel, isRTL && styles.rtl]}>{t('maint.techPhone' as any)}</Text>
                   <KeyboardAwareTextInput
                     value={newTechPhone}
                     onChangeText={setNewTechPhone}
                     placeholder={t('maint.techPhone' as any)}
                     placeholderTextColor={colors.textSubtle}
                     keyboardType="phone-pad"
-                    style={[styles.input, isRTL && styles.rtl, { marginTop: 8 }]}
+                    style={[styles.input, isRTL && styles.rtl]}
                   />
+
+                  <Text style={[styles.fieldLabel, isRTL && styles.rtl]}>{t('maint.techSpecialty' as any)}</Text>
+                  <View style={styles.chips}>
+                    {SPECIALTIES.map((s) => (
+                      <Pressable
+                        key={s}
+                        style={[styles.chip, newTechSpecialty === s && styles.chipActive]}
+                        onPress={() => setNewTechSpecialty(s)}
+                      >
+                        <Text style={[styles.chipText, newTechSpecialty === s && styles.chipTextActive]}>
+                          {t(`opsv2.maint.type.${s}` as any)}
+                        </Text>
+                      </Pressable>
+                    ))}
+                  </View>
+
                   <Pressable
-                    style={[styles.navPrimary, { marginTop: 8 }]}
-                    onPress={async () => {
-                      if (!newTechName.trim()) return;
-                      const tech = await onCreateTechnician({
-                        name: newTechName.trim(),
-                        phone: newTechPhone,
-                        specialty: newTechSpecialty,
-                      });
-                      setTechnicianId(tech.id);
-                      setShowAddTech(false);
-                      setNewTechName('');
-                      setNewTechPhone('');
-                    }}
+                    style={[styles.navPrimary, { marginTop: spacing.md }, (!newTechName.trim() || busy) && { opacity: 0.5 }]}
+                    onPress={handleCreateTechLink}
+                    disabled={!newTechName.trim() || busy}
                   >
-                    <Text style={styles.navPrimaryText}>{t('maint.addTech' as any)}</Text>
+                    <Text style={styles.navPrimaryText}>{t('maint.createLink' as any)}</Text>
                   </Pressable>
+
+                  {createdTech ? (
+                    <TechPortalShareCard tech={createdTech} testID="maint-created-tech" />
+                  ) : null}
                 </View>
               ) : null}
             </>
@@ -370,4 +416,16 @@ const styles = StyleSheet.create({
     backgroundColor: colors.emerald,
   },
   navPrimaryText: { color: colors.bg, fontSize: 15, fontWeight: typography.weight.semibold },
+  addTechBox: { marginTop: spacing.md, gap: 6 },
+  addTechTitle: { color: colors.gold, fontSize: 15, fontWeight: typography.weight.semibold, marginBottom: 4 },
+  fieldLabel: { color: colors.textMuted, fontSize: 12, marginTop: 8, marginBottom: 4 },
+  linkReady: { color: colors.emerald, fontSize: 12, marginTop: spacing.md, fontWeight: typography.weight.medium },
+  linkText: { color: colors.textDim, fontSize: 11, lineHeight: 18, marginTop: 4 },
+  sendBtn: {
+    flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8,
+    marginTop: spacing.sm, paddingVertical: 12, borderRadius: radius.md,
+    borderWidth: StyleSheet.hairlineWidth, borderColor: colors.emeraldEdge,
+    backgroundColor: colors.emeraldSoft,
+  },
+  sendBtnText: { color: colors.emerald, fontSize: 14, fontWeight: typography.weight.semibold },
 });

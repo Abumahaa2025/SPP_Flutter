@@ -18,18 +18,10 @@ type MoreItem = {
   tone?: 'gold' | 'emerald';
 };
 
-const PROPERTY_ITEMS: MoreItem[] = [
-  { key: 'owner', labelKey: 'op.owner.title', hintKey: 'op.owner.sub', icon: 'home', route: '/owner', tone: 'gold' },
-  { key: 'portfolio', labelKey: 'more.portfolio', hintKey: 'more.portfolio.hint', icon: 'layers', route: '/portfolio' },
-  { key: 'tenants', labelKey: 'more.tenants', hintKey: 'more.tenants.hint', icon: 'users', route: '/tenants' },
-  { key: 'contracts', labelKey: 'more.contracts', hintKey: 'more.contracts.hint', icon: 'file-text', route: '/contracts', tone: 'gold' },
-  { key: 'maintenance', labelKey: 'more.maintenance', hintKey: 'more.maintenance.hint', icon: 'tool', route: '/maintenance', tone: 'emerald' },
-];
-
 const RARE_ITEMS: MoreItem[] = [
   { key: 'settings', labelKey: 'more.settings', hintKey: 'more.settings.hint', icon: 'settings', route: '/settings' },
   { key: 'propertyOs', labelKey: 'more.propertyOs', hintKey: 'more.propertyOs.hint', icon: 'compass', route: '/setup/property-os', tone: 'gold' },
-  { key: 'services', labelKey: 'op.owner.services', hintKey: 'op.owner.services.hint', icon: 'zap', route: '/operational/services', tone: 'gold' },
+  { key: 'upload', labelKey: 'nav.upload', hintKey: 'upload.sub', icon: 'upload-cloud', route: '/upload', tone: 'gold' },
   { key: 'sheets', labelKey: 'more.sheets', hintKey: 'more.sheets.hint', icon: 'database', route: '/setup/sheets', tone: 'emerald' },
   { key: 'greenApi', labelKey: 'more.greenApi', hintKey: 'more.greenApi.hint', icon: 'message-circle', route: '/setup/greenApi', tone: 'emerald' },
   { key: 'homeAssistant', labelKey: 'more.homeAssistant', hintKey: 'more.homeAssistant.hint', icon: 'home', route: '/setup/homeAssistant', tone: 'emerald' },
@@ -63,15 +55,15 @@ function Section({ title, items, delayBase }: { title: string; items: MoreItem[]
               <GlassCard padding={16} radiusToken="md" style={styles.rowCard}>
                 <View style={[styles.row, isRTL && styles.rowRtl]}>
                   <View style={[styles.iconWrap, { borderColor: `${accent}44` }]}>
-                    <Feather name={item.icon} size={17} color={accent} />
+                    <Feather name={item.icon} size={18} color={accent} />
                   </View>
                   <View style={styles.rowText}>
                     <Text style={[styles.rowLabel, isRTL && styles.rtl]}>{t(item.labelKey as Parameters<typeof t>[0])}</Text>
-                    <Text style={[styles.rowHint, isRTL && styles.rtl]} numberOfLines={2}>
+                    <Text style={[styles.rowHint, isRTL && styles.rtl]}>
                       {t(item.hintKey as Parameters<typeof t>[0])}
                     </Text>
                   </View>
-                  <Feather name={isRTL ? 'chevron-left' : 'chevron-right'} size={16} color={colors.textSubtle} />
+                  <Feather name={isRTL ? 'chevron-left' : 'chevron-right'} size={16} color={colors.textSubtle} style={styles.chevron} />
                 </View>
               </GlassCard>
             </Pressable>
@@ -82,15 +74,14 @@ function Section({ title, items, delayBase }: { title: string; items: MoreItem[]
   );
 }
 
-/** More screen — rare functions and secondary property links. */
+/** More screen — settings, integrations, and account. */
 export function MoreMenu() {
   const { t } = useI18n();
 
   return (
     <View testID="more-menu">
-      <Section title={t('more.section.property')} items={PROPERTY_ITEMS} delayBase={60} />
-      <Section title={t('more.section.rare')} items={RARE_ITEMS} delayBase={200} />
-      <Section title={t('more.section.account')} items={ACCOUNT_ITEMS} delayBase={420} />
+      <Section title={t('more.section.rare')} items={RARE_ITEMS} delayBase={60} />
+      <Section title={t('more.section.account')} items={ACCOUNT_ITEMS} delayBase={280} />
     </View>
   );
 }
@@ -102,17 +93,24 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase', fontWeight: typography.weight.semibold,
     marginBottom: spacing.xs, paddingHorizontal: 2,
   },
-  rowCard: { marginBottom: 0 },
-  row: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  rowCard: { marginBottom: 0, minHeight: 72 },
+  row: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 56 },
   rowRtl: { flexDirection: 'row-reverse' },
   iconWrap: {
-    width: 38, height: 38, borderRadius: radius.md,
+    width: 42, height: 42, borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
     backgroundColor: 'rgba(255,255,255,0.03)',
-    alignItems: 'center', justifyContent: 'center',
+    alignItems: 'center', justifyContent: 'center', flexShrink: 0,
   },
-  rowText: { flex: 1, gap: 3 },
-  rowLabel: { color: colors.text, fontSize: typography.body, fontWeight: typography.weight.semibold },
-  rowHint: { color: colors.textMuted, fontSize: typography.small, lineHeight: 19 },
+  rowText: { flex: 1, gap: 4, minWidth: 0 },
+  rowLabel: {
+    color: colors.text, fontSize: typography.body,
+    fontWeight: typography.weight.semibold, lineHeight: 22, flexShrink: 1,
+  },
+  rowHint: {
+    color: colors.textMuted, fontSize: typography.small,
+    lineHeight: 20, flexShrink: 1,
+  },
+  chevron: { flexShrink: 0 },
   rtl: { writingDirection: 'rtl', textAlign: 'right' },
 });

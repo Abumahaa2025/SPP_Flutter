@@ -7,6 +7,8 @@ import { polishEn, polishAr } from './polish-keys';
 import { operationalEn, operationalAr } from './operational-keys';
 import { journeyEn, journeyAr } from './journey-keys';
 import { opsV2En, opsV2Ar } from './ops-v2-keys';
+import { phaseAEn, phaseAAr } from './phase-a-keys';
+import { opsFixEn, opsFixAr } from './ops-fix-keys';
 
 type Lang = 'en' | 'ar';
 
@@ -21,9 +23,6 @@ const dict = {
     ...opsV2En,
     'app.name': 'SPP',
     'app.tagline': 'AI Operating System for Real Estate',
-
-    'splash.tagline': 'Smart Property Platform',
-    'splash.footer': 'Preparing your workspace…',
 
     'home.status.eyebrow': 'System pulse',
     'home.status.live': 'Live · monitoring',
@@ -120,7 +119,6 @@ const dict = {
     'story.actions.sub': 'Tap any item to open details and act.',
 
     'page.q.home': 'What should I focus on today?',
-    'page.q.upload': 'What can SPP understand for me?',
     'page.q.health': 'Is my property healthy?',
     'page.q.maintenance': 'What needs attention?',
     'page.q.portfolio': 'How is my investment performing?',
@@ -851,42 +849,6 @@ const dict = {
     'settings.manager.model': 'Reasoning engine',
 
     // Onboarding — 6-step setup
-    'onboarding.stepOf': 'Step {n} of {total}',
-    'onboarding.continue': 'Continue',
-    'onboarding.cta': 'Enter SPP',
-    'onboarding.skip': 'Skip for now',
-    'onboarding.step1.title': 'Welcome to Smart Property',
-    'onboarding.step1.body': 'Kowil workflow inside SPP — Agreement identity, smart import, one clear place to act.',
-    'onboarding.step2.title': 'Owner information',
-    'onboarding.step2.body': 'Tell SPP who you are so briefings and recommendations speak directly to you.',
-    'onboarding.step3.title': 'Buildings',
-    'onboarding.step3.body': 'Add your buildings — SPP maps each property and tracks health automatically.',
-    'onboarding.step4.title': 'Units',
-    'onboarding.step4.body': 'Every unit gets its own status — occupancy, rent, contracts, and maintenance.',
-    'onboarding.step5.title': 'Import data',
-    'onboarding.step5.body': 'Upload contracts, rent rolls, or receipts — SPP reads each file and builds your portfolio.',
-    'onboarding.step6.title': 'System ready',
-    'onboarding.step6.body': 'Your command center is live. SPP will guide you until everything is configured.',
-    'onboarding.ownerLabel': 'Your name',
-    'onboarding.ownerPlaceholder': 'e.g. Ahmed Al Mansouri',
-    'onboarding.buildingsHint': 'Open your portfolio to add buildings — or import files and SPP will detect them.',
-    'onboarding.unitsHint': 'Units appear under each building once data is connected.',
-    'onboarding.importHint': 'Upload PDF, Excel, or images — SPP explains each file before saving.',
-    'onboarding.openPortfolio': 'Open portfolio',
-    'onboarding.openUnits': 'View units',
-    'onboarding.openUpload': 'Upload files',
-    'onboarding.readyLead': 'System ready — your smart property employee is watching.',
-    'onboarding.openLearn': 'Open Learning Center',
-    'onboarding.startEmpty': 'Start empty (recommended)',
-    'onboarding.startEmptyHint': 'Clean portfolio — add your buildings, units, and files step by step.',
-    'onboarding.loadDemo': 'Load sample portfolio',
-    'onboarding.loadDemoHint': 'Explore SPP with demo properties — remove anytime in Settings.',
-    'onboarding.guide.step0': 'Kowil-style tip: Agreement pulse + wordmark — your smart property OS starts here.',
-    'onboarding.guide.step1': 'Tip: Your name appears in every briefing — like Kowil greeting you by name.',
-    'onboarding.guide.step2': 'Tip: Buildings group units — same structure as Smart Real Estate portfolio.',
-    'onboarding.guide.step3': 'Tip: Each unit tracks rent, contracts, and maintenance in one row.',
-    'onboarding.guide.step4': 'Tip: Smart Import reads Excel/PDF — upload a full year, file by file.',
-    'onboarding.guide.step5': 'Tip: Learning Center has short guides — open anytime from Settings.',
 
     'kowil.welcome.eyebrow': 'Smart Real Estate · SPP',
     'kowil.welcome.title': 'Welcome to Smart Property',
@@ -932,11 +894,6 @@ const dict = {
     'beta.persona.tenant.kowil': 'Kowil: tenant portal · contracts · maintenance requests',
     'beta.persona.technician.kowil': 'Kowil: field workflow · open tickets · days-open labels',
 
-    'auth.hero.title': 'Manage property with intelligence',
-    'auth.hero.sub': 'Smart Property OS — daily brief, smart import, collection & maintenance in one place.',
-    'auth.hero.f1': 'Smart import',
-    'auth.hero.f2': 'Live brief',
-    'auth.hero.f3': 'Secure beta',
     'auth.cta.create': 'Create account',
     'auth.cta.signin': 'Sign in',
     'auth.signup.title': 'Create your account',
@@ -1672,7 +1629,6 @@ const dict = {
     'upload.pageWhy': 'Manual entry is slow and misses renewals and receipts.',
     'upload.pageBenefit': 'See type, summary, fields, why it matters, and the next step per file.',
     'upload.pageBackground': 'Same smart-import engine as the Source web experience.',
-    'upload.sub': 'Upload receipts, contracts, or invoices — SPP explains what it found.',
     'upload.explain': 'Each file is classified, summarized, and matched to your portfolio before anything is saved.',
     'upload.why': 'Manual entry is slow and easy to miss renewals or receipts.',
     'upload.benefit': 'See type, summary, detected fields, and a clear next step per file.',
@@ -1715,6 +1671,8 @@ const dict = {
     'beta.persona.tenant.hint': 'Tenant view · contracts · portal',
     'beta.persona.technician': 'Technician',
     'beta.persona.technician.hint': 'Maintenance requests · field workflow',
+    ...phaseAEn,
+    ...opsFixEn,
   },
   ar: {
     ...workspaceAr,
@@ -1726,9 +1684,6 @@ const dict = {
     ...opsV2Ar,
     'app.name': 'SPP',
     'app.tagline': 'نظام تشغيل بالذكاء الاصطناعي للعقارات',
-
-    'splash.tagline': 'العقار الذكي',
-    'splash.footer': 'جارٍ تجهيز مساحة عملك…',
 
     'home.status.eyebrow': 'نبض النظام',
     'home.status.live': 'مباشر · يراقب',
@@ -1823,7 +1778,6 @@ const dict = {
     'story.actions.sub': 'اضغط على أي عنصر لفتح التفاصيل والتنفيذ.',
 
     'page.q.home': 'على ماذا أركّز اليوم؟',
-    'page.q.upload': 'ماذا يمكن لـ SPP أن يفهم لي؟',
     'page.q.health': 'هل عقاري بصحة جيدة؟',
     'page.q.maintenance': 'ما الذي يحتاج انتباهًا؟',
     'page.q.portfolio': 'كيف أداء استثماري؟',
@@ -2540,42 +2494,6 @@ const dict = {
     'settings.lang.arHint': 'من اليمين إلى اليسار',
     'settings.manager.model': 'محرك الاستدلال',
 
-    'onboarding.stepOf': 'الخطوة {n} من {total}',
-    'onboarding.continue': 'متابعة',
-    'onboarding.cta': 'دخول SPP',
-    'onboarding.skip': 'تخطي الآن',
-    'onboarding.step1.title': 'مرحبًا بك في العقار الذكي',
-    'onboarding.step1.body': 'أسلوب كويل داخل SPP — هوية Agreement، استيراد ذكي، مكان واحد واضح للتنفيذ.',
-    'onboarding.step2.title': 'معلومات المالك',
-    'onboarding.step2.body': 'أخبر SPP من أنت ليتحدث إليك مباشرة في الموجز والتوصيات.',
-    'onboarding.step3.title': 'المباني',
-    'onboarding.step3.body': 'أضف مبانيَك — SPP يرسم كل عقار ويتتبع صحته تلقائيًا.',
-    'onboarding.step4.title': 'الوحدات',
-    'onboarding.step4.body': 'لكل وحدة حالتها — إشغال، إيجار، عقود، وصيانة.',
-    'onboarding.step5.title': 'استيراد البيانات',
-    'onboarding.step5.body': 'ارفع عقودًا أو كشوف إيجار أو سندات — SPP يقرأ كل ملف ويبني محفظتك.',
-    'onboarding.step6.title': 'النظام جاهز',
-    'onboarding.step6.body': 'مركز القيادة يعمل. SPP يرشدك حتى يكتمل كل الإعداد.',
-    'onboarding.ownerLabel': 'اسمك',
-    'onboarding.ownerPlaceholder': 'مثال: أحمد المنصوري',
-    'onboarding.buildingsHint': 'افتح المحفظة لإضافة المباني — أو ارفع ملفات وSPP يكتشفها.',
-    'onboarding.unitsHint': 'تظهر الوحدات تحت كل مبنى عند ربط البيانات.',
-    'onboarding.importHint': 'ارفع PDF أو Excel أو صور — SPP يشرح كل ملف قبل الحفظ.',
-    'onboarding.openPortfolio': 'فتح المحفظة',
-    'onboarding.openUnits': 'عرض الوحدات',
-    'onboarding.openUpload': 'رفع الملفات',
-    'onboarding.readyLead': 'النظام جاهز — موظفك العقاري الذكي يراقب.',
-    'onboarding.openLearn': 'فتح مركز التعلّم',
-    'onboarding.startEmpty': 'ابدأ فارغًا (موصى به)',
-    'onboarding.startEmptyHint': 'محفظة نظيفة — أضف مبانيَك ووحداتك وملفاتك خطوة بخطوة.',
-    'onboarding.loadDemo': 'تحميل محفظة تجريبية',
-    'onboarding.loadDemoHint': 'استكشف SPP بعقارات تجريبية — يمكن إزالتها من الإعدادات.',
-    'onboarding.guide.step0': 'نصيحة كويل: نبض Agreement + الشعار — نظام العقار الذكي يبدأ من هنا.',
-    'onboarding.guide.step1': 'نصيحة: اسمك يظهر في كل موجز — كويل يرحّب بك بالاسم.',
-    'onboarding.guide.step2': 'نصيحة: المباني تجمع الوحدات — نفس هيكل العقار الذكي.',
-    'onboarding.guide.step3': 'نصيحة: كل وحدة تتتبع الإيجار والعقود والصيانة في صف واحد.',
-    'onboarding.guide.step4': 'نصيحة: الاستيراد الذكي يقرأ Excel/PDF — ارفع سنة كاملة ملفًا بملف.',
-    'onboarding.guide.step5': 'نصيحة: مركز التعلّم فيه أدلة قصيرة — افتحه من الإعدادات.',
 
     'kowil.welcome.eyebrow': 'العقار الذكي · SPP',
     'kowil.welcome.title': 'مرحبًا بك في العقار الذكي',
@@ -2621,11 +2539,6 @@ const dict = {
     'beta.persona.tenant.kowil': 'كويل: بوابة مستأجر · عقود · بلاغات صيانة',
     'beta.persona.technician.kowil': 'كويل: سير ميداني · بلاغات مفتوحة · أيام التأخير',
 
-    'auth.hero.title': 'أدِر عقارك بذكاء',
-    'auth.hero.sub': 'نظام العقار الذكي — موجز يومي، استيراد ذكي، تحصيل وصيانة في مكان واحد.',
-    'auth.hero.f1': 'استيراد ذكي',
-    'auth.hero.f2': 'موجز حي',
-    'auth.hero.f3': 'بيتا آمن',
     'auth.cta.create': 'إنشاء حساب',
     'auth.cta.signin': 'تسجيل الدخول',
     'auth.signup.title': 'إنشاء حسابك',
@@ -3353,7 +3266,6 @@ const dict = {
     'upload.pageWhy': 'الإدخال اليدوي بطيء ويُفوّت التجديدات والسندات.',
     'upload.pageBenefit': 'شاهد النوع والملخص والحقول ولماذا يهم والخطوة التالية لكل ملف.',
     'upload.pageBackground': 'نفس محرك الاستيراد الذكي في تجربة الويب.',
-    'upload.sub': 'ارفع سندات أو عقودًا أو فواتير — يشرح SPP ما فهمه.',
     'upload.explain': 'يُصنّف كل ملف ويُلخّصه ويُطابقه بمحفظتك قبل أي حفظ.',
     'upload.why': 'الإدخال اليدوي بطيء ويُفوّت التجديدات والسندات.',
     'upload.benefit': 'شاهد النوع والملخص والحقول المكتشفة والخطوة التالية لكل ملف.',
@@ -3394,6 +3306,8 @@ const dict = {
     'beta.persona.tenant.hint': 'عرض المستأجر · العقود · البوابة',
     'beta.persona.technician': 'فني',
     'beta.persona.technician.hint': 'بلاغات الصيانة · سير العمل الميداني',
+    ...phaseAAr,
+    ...opsFixAr,
   },
 } as const;
 

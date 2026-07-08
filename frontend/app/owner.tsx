@@ -30,10 +30,10 @@ const LINKS: HubLink[] = [
   { key: 'contracts', icon: 'file-text', labelKey: 'op.owner.contracts', hintKey: 'op.owner.contracts.hint', route: '/contracts', tone: 'gold' },
   { key: 'payments', icon: 'dollar-sign', labelKey: 'op.owner.payments', hintKey: 'op.owner.payments.hint', route: '/operational/payments', tone: 'emerald' },
   { key: 'maintenance', icon: 'tool', labelKey: 'op.owner.maintenance', hintKey: 'op.owner.maintenance.hint', route: '/maintenance', tone: 'emerald' },
-  { key: 'portfolio', icon: 'layers', labelKey: 'op.owner.portfolio', hintKey: 'op.owner.portfolio.hint', route: '/portfolio' },
   { key: 'reports', icon: 'bar-chart-2', labelKey: 'op.owner.reports', hintKey: 'op.owner.reports.hint', route: '/reports' },
-  { key: 'services', icon: 'zap', labelKey: 'op.owner.services', hintKey: 'op.owner.services.hint', route: '/operational/services', tone: 'gold' },
+  { key: 'portfolio', icon: 'layers', labelKey: 'op.owner.portfolio', hintKey: 'op.owner.portfolio.hint', route: '/portfolio', tone: 'gold' },
   { key: 'portals', icon: 'link', labelKey: 'opsv2.portals.title', hintKey: 'opsv2.portals.sub', route: '/operational/portals', tone: 'emerald' },
+  { key: 'services', icon: 'zap', labelKey: 'op.owner.services', hintKey: 'op.owner.services.hint', route: '/operational/services', tone: 'gold' },
 ];
 
 function fmtEvent(t: (k: any) => string, key: string, params?: Record<string, string>) {
@@ -88,7 +88,7 @@ export default function Owner() {
                   <Feather name={link.icon} size={16} color={link.tone === 'emerald' ? colors.emerald : colors.gold} />
                   <View style={styles.tileText}>
                     <Text style={[styles.tileLabel, isRTL && styles.rtl]}>{t(link.labelKey as any)}</Text>
-                    <Text style={[styles.tileHint, isRTL && styles.rtl]} numberOfLines={2}>{t(link.hintKey as any)}</Text>
+                    <Text style={[styles.tileHint, isRTL && styles.rtl]}>{t(link.hintKey as any)}</Text>
                   </View>
                 </View>
               </GlassCard>
@@ -142,8 +142,8 @@ const styles = StyleSheet.create({
   tileWrap: { width: '48%' },
   tileRow: { flexDirection: 'row', gap: 10, alignItems: 'flex-start' },
   tileText: { flex: 1, gap: 3 },
-  tileLabel: { color: colors.text, fontSize: 13, fontWeight: typography.weight.semibold },
-  tileHint: { color: colors.textMuted, fontSize: 11, lineHeight: 16 },
+  tileLabel: { color: colors.text, fontSize: 13, fontWeight: typography.weight.semibold, lineHeight: 18 },
+  tileHint: { color: colors.textMuted, fontSize: 11, lineHeight: 16, flexShrink: 1 },
   techLink: { marginTop: spacing.md, paddingVertical: 8 },
   techLinkText: { color: colors.emerald, fontSize: typography.small },
   events: { marginTop: spacing.xl },

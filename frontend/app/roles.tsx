@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import {
-  View, Text, StyleSheet, Pressable, Alert, TextInput, Switch,
+  View, Text, StyleSheet, Pressable, Alert, Switch,
 } from 'react-native';
+import { KeyboardAwareTextInput } from '@/src/components/KeyboardAwareTextInput';
 import { Feather } from '@expo/vector-icons';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
@@ -119,7 +120,7 @@ export default function RolesScreen() {
 
           {showAdd ? (
             <View style={styles.addForm}>
-              <TextInput
+              <KeyboardAwareTextInput
                 testID="roles-add-name"
                 value={draftName}
                 onChangeText={setDraftName}
@@ -127,7 +128,7 @@ export default function RolesScreen() {
                 placeholderTextColor={colors.textSubtle}
                 style={[styles.input, dir === 'rtl' && styles.inputRtl]}
               />
-              <TextInput
+              <KeyboardAwareTextInput
                 testID="roles-add-email"
                 value={draftEmail}
                 onChangeText={setDraftEmail}

@@ -19,6 +19,7 @@ import { colors, spacing, typography, radius } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
 import { CHAT_INPUT_BOTTOM } from '@/src/constants/chrome';
 import { useWorkspacePadding } from '@/src/hooks/use-workspace-padding';
+import { useKeyboardInset } from '@/src/hooks/useKeyboardInset';
 import { usePropertyOS } from '@/src/hooks/usePropertyOS';
 import { useOperational } from '@/src/hooks/useOperational';
 import { useNotificationPrefs } from '@/src/hooks/usePreferences';
@@ -32,6 +33,7 @@ const SESSION_ID = 'owner_1';
 export default function Brain() {
   const { t, lang } = useI18n();
   const insets = useSafeAreaInsets();
+  const keyboardInset = useKeyboardInset();
   const wsPad = useWorkspacePadding();
   const params = useLocalSearchParams<{ q?: string }>();
   const { countEnabled } = useNotificationPrefs();
@@ -134,6 +136,7 @@ export default function Brain() {
     ? dailyOpsSuggestions(osState, lang)
     : [t('brain.q1'), t('brain.q2'), t('brain.q3'), t('brain.q4')];
   const isEmpty = messages.length === 0;
+  const inputBottom = insets.bottom + CHAT_INPUT_BOTTOM + Math.max(0, keyboardInset - insets.bottom);
 
   return (
     <View style={styles.root} testID="brain-screen">
@@ -147,7 +150,7 @@ export default function Brain() {
           ref={scrollRef}
           contentContainerStyle={{
             paddingTop: insets.top + wsPad.paddingTop + spacing.md,
-            paddingBottom: insets.bottom + CHAT_INPUT_BOTTOM + 64,
+            paddingBottom: inputBottom + 64,
             paddingHorizontal: spacing.lg,
             paddingRight: wsPad.paddingRight + spacing.lg,
           }}
@@ -250,7 +253,7 @@ export default function Brain() {
         </ScrollView>
 
         <View
-          style={[styles.inputWrap, { bottom: insets.bottom + CHAT_INPUT_BOTTOM }]}
+          style={[styles.inputWrap, { bottom: inputBottom }]}
           pointerEvents="box-none"
         >
           <View style={styles.inputBar}>

@@ -15,6 +15,7 @@ import { useRouter, usePathname } from 'expo-router';
 import { colors, radius, spacing, typography } from '../theme';
 
 import { useI18n } from '../i18n';
+import { resolveActiveTab } from '@/src/utils/nav-active';
 
 
 
@@ -35,17 +36,11 @@ type Tab = {
 
 
 export const SPP_TABS: Tab[] = [
-
   { key: 'home', path: '/', icon: 'home', tKey: 'nav.os.home' },
-
-  { key: 'notifications', path: '/notifications', icon: 'bell', tKey: 'nav.os.notifications' },
-
+  { key: 'operations', path: '/owner', icon: 'layers', tKey: 'nav.os.operations' },
   { key: 'assistant', path: '/brain', icon: 'mic', tKey: 'nav.os.assistant', center: true },
-
-  { key: 'upload', path: '/upload', icon: 'upload-cloud', tKey: 'nav.os.upload' },
-
+  { key: 'notifications', path: '/notifications', icon: 'bell', tKey: 'nav.os.notifications' },
   { key: 'more', path: '/hub', icon: 'more-horizontal', tKey: 'nav.os.more' },
-
 ];
 
 
@@ -58,11 +53,7 @@ export function GlassTabBar() {
 
   const { t } = useI18n();
 
-  const active =
-
-    SPP_TABS.find((tab) => (tab.path === '/' ? pathname === '/' : pathname.startsWith(tab.path)))?.key
-
-    ?? 'home';
+  const active = resolveActiveTab(pathname);
 
 
 
@@ -122,10 +113,13 @@ export function GlassTabBar() {
 
                   </View>
 
-                  <Text style={[styles.label, isActive && styles.labelActive, isCenter && styles.labelCenter]} numberOfLines={1}>
-
+                  <Text
+                    style={[styles.label, isActive && styles.labelActive, isCenter && styles.labelCenter]}
+                    numberOfLines={2}
+                    adjustsFontSizeToFit
+                    minimumFontScale={0.8}
+                  >
                     {t(tab.tKey as 'nav.os.home')}
-
                   </Text>
 
                   {isActive && !isCenter
@@ -178,7 +172,7 @@ const styles = StyleSheet.create({
 
   inner: { flexDirection: 'row', paddingHorizontal: 4, paddingTop: 10, paddingBottom: 10, alignItems: 'flex-end' },
 
-  item: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 4, minWidth: 0 },
+  item: { flex: 1, alignItems: 'center', justifyContent: 'flex-end', gap: 3, minWidth: 0, minHeight: 52 },
 
   itemCenter: { marginTop: -12 },
 
@@ -207,11 +201,8 @@ const styles = StyleSheet.create({
   },
 
   label: {
-
-    color: colors.textMuted, fontSize: 9, letterSpacing: 0.2,
-
-    fontWeight: typography.weight.medium, textAlign: 'center',
-
+    color: colors.textMuted, fontSize: 8.5, letterSpacing: 0.1,
+    fontWeight: typography.weight.medium, textAlign: 'center', lineHeight: 11,
   },
 
   labelCenter: { color: colors.gold, fontSize: 9, fontWeight: typography.weight.semibold },
