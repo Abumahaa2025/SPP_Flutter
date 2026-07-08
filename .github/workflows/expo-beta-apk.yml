@@ -1,0 +1,74 @@
+# Expo Beta APK — built on GitHub (no EAS quota). Checks out the Expo frontend branch.
+name: Expo Beta APK
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch with frontend/ Expo app'
+        required: false
+        default: 'conflict_030726_0550'
+      note:
+        description: 'Build note (optional)'
+        required: false
+        default: 'Beta 10'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.branch }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Prebuild Android
+        working-directory: frontend
+        run: npx expo prebuild --platform android --no-install
+        env:
+          EXPO_PUBLIC_BETA_MODE: 'true'
+          EXPO_PUBLIC_BACKEND_URL: https://spp-beta-api.onrender.com
+
+      - name: Assemble debug APK
+        working-directory: frontend/android
+        run: chmod +x gradlew && ./gradlew assembleDebug --no-daemon
+
+      - name: Package APK
+        working-directory: frontend
+        run: |
+          VERSION=$(node -p "require('./app.json').expo.version")
+          mkdir -p dist
+          cp android/app/build/outputs/apk/debug/app-debug.apk "dist/spp-beta-${VERSION}.apk"
+          ls -la dist/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: spp-beta-apk
+          path: frontend/dist/*.apk
+          retention-days: 90
+
+      - name: Summary
+        working-directory: frontend
+        run: |
+          VERSION=$(node -p "require('./app.json').expo.version")
+          echo "## Expo Beta APK" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Branch: \`${{ github.event.inputs.branch }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Version: \`${VERSION}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Note: ${{ github.event.inputs.note }}" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Download: **Actions → this run → Artifacts → spp-beta-apk**" >> "$GITHUB_STEP_SUMMARY"
