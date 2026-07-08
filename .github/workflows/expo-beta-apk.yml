@@ -1,11 +1,11 @@
-# Beta APK built on GitHub — does NOT use EAS monthly quota.
-name: Expo Beta APK (branch)
+# Expo Beta APK — built on GitHub (no EAS quota). Checks out the Expo frontend branch.
+name: Expo Beta APK
 
 on:
   workflow_dispatch:
     inputs:
       branch:
-        description: 'Git branch'
+        description: 'Branch with frontend/ Expo app'
         required: false
         default: 'conflict_030726_0550'
       note:
@@ -63,11 +63,11 @@ jobs:
           path: frontend/dist/*.apk
           retention-days: 90
 
-      - name: Build summary
+      - name: Summary
         working-directory: frontend
         run: |
           VERSION=$(node -p "require('./app.json').expo.version")
-          echo "## Beta APK (GitHub CI)" >> "$GITHUB_STEP_SUMMARY"
+          echo "## Expo Beta APK" >> "$GITHUB_STEP_SUMMARY"
           echo "- Branch: \`${{ github.event.inputs.branch }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- Version: \`${VERSION}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- Note: ${{ github.event.inputs.note }}" >> "$GITHUB_STEP_SUMMARY"
