@@ -11,17 +11,21 @@ import { useI18n } from '@/src/i18n';
 type Props = {
   title: string;
   body: string;
+  nextHint?: string;
   actionLabel?: string;
   onAction?: () => void;
   testID?: string;
 };
 
 /** Empty state that still feels alive — orb + optional CTA. */
-export function AliveEmpty({ title, body, actionLabel, onAction, testID }: Props) {
+export function AliveEmpty({ title, body, nextHint, actionLabel, onAction, testID }: Props) {
   const { isRTL } = useI18n();
   return (
     <Animated.View entering={FadeInDown.duration(500)} testID={testID}>
       <EmptyState orb title={title} body={body} />
+      {nextHint ? (
+        <Text style={[styles.hint, isRTL && styles.rtl]}>{nextHint}</Text>
+      ) : null}
       {actionLabel && onAction ? (
         <Pressable
           onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); onAction(); }}
@@ -36,6 +40,12 @@ export function AliveEmpty({ title, body, actionLabel, onAction, testID }: Props
 }
 
 const styles = StyleSheet.create({
+  hint: {
+    color: colors.gold, fontSize: 12, lineHeight: 18, textAlign: 'center',
+    marginTop: spacing.sm, paddingHorizontal: spacing.md,
+    fontWeight: typography.weight.medium,
+  },
+  rtl: { writingDirection: 'rtl' },
   btn: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -55,5 +65,4 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: typography.weight.semibold,
   },
-  rtl: { writingDirection: 'rtl' },
 });

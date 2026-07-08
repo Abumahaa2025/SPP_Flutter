@@ -18,6 +18,8 @@ import { JourneyLaunchComplete } from '@/src/components/journey/JourneyLaunchCom
 import { JourneyValueTip } from '@/src/components/journey/JourneyValueTip';
 import { PhaseSaveResult } from '@/src/components/PhaseSaveResult';
 import { PortalShareCard } from '@/src/components/PortalShareCard';
+import { PhaseJourneyGuide } from '@/src/components/journey/PhaseJourneyGuide';
+import { WizardPrerequisite } from '@/src/components/journey/WizardPrerequisite';
 import {
   ALERTS_SUCCESS, PHASE_EMOJI, PHASE_INTRO, PHASE_SUCCESS, visiblePhases,
 } from '@/src/components/journey/journey-phases';
@@ -78,6 +80,7 @@ export function PropertySetupWizard() {
   const {
     state, phases, saveProperty, addUnit, addTenant, addContract,
     enableAlerts, ensureTechnicianPortal, nextPhase, markSetupComplete,
+    overallPercent,
   } = usePropertyOS(countEnabled);
 
   const skipWelcome = Boolean(params.phase) || Boolean(state.property);
@@ -322,6 +325,9 @@ export function PropertySetupWizard() {
 
   const techLink = ensureTechnicianPortal();
   const tenantPortal = lastTenant ?? state.tenants[state.tenants.length - 1];
+  const blockedForm = (phase === 'tenants' && state.units.length === 0)
+    || (phase === 'contracts' && state.tenants.length === 0);
+  const showFormActions = phase !== 'smartEmployee' && phaseView === 'form' && !blockedForm;
 
   if (showWelcome) {
     return (
@@ -433,6 +439,26 @@ export function PropertySetupWizard() {
             <View style={{ marginTop: spacing.md }}>
               <JourneyValueTip />
             </View>
+          </ScreenScaffold>
+        );
+      }
+
+      if (successPhase === 'alerts') {
+        return (
+          <ScreenScaffold testID="property-os-success-alerts">
+            <PhaseSaveResult
+              rows={[
+                { label: t('pos.phase.alerts' as 'pos.phase.property'), value: t('result.status.active' as any) },
+                { label: t('pos.property.name'), value: state.property?.name ?? propName.trim() },
+                { label: t('pos.progress.title'), value: `${overallPercent}%` },
+              ]}
+              nextHint={nextHint}
+              actions={[
+                { label: t('result.continue' as any), onPress: onSuccessContinue, primary: true },
+                { label: t('result.viewManage' as any), onPress: viewOwner },
+                { label: t('result.goHome' as any), onPress: goHome },
+              ]}
+            />
           </ScreenScaffold>
         );
       }
@@ -556,6 +582,10 @@ export function PropertySetupWizard() {
         </Animated.View>
       ) : null}
 
+      {phaseView === 'form' && phase !== 'smartEmployee' ? (
+        <PhaseJourneyGuide phase={phase} />
+      ) : null}
+
       <View style={{ paddingBottom: spacing['2xl'] }}>
         {phase === 'property' && phaseView === 'form' ? (
           <PhaseCard>
@@ -666,6 +696,15 @@ export function PropertySetupWizard() {
         ) : null}
 
         {phase === 'tenants' && phaseView === 'form' ? (
+          state.units.length === 0 ? (
+            <WizardPrerequisite
+              titleKey="journey.block.noUnits.title"
+              bodyKey="journey.block.noUnits.body"
+              actionKey="journey.block.noUnits.action"
+              onAction={() => goPhase('units')}
+              testID="wizard-block-no-units"
+            />
+          ) : (
           <PhaseCard>
             <WizardPhaseIntro text={t('pos.intro.tenants')} />
             <WizardTextField
@@ -692,9 +731,19 @@ export function PropertySetupWizard() {
             />
             <WizardTextField label={t('pos.tenant.moveIn')} value={moveIn} onChangeText={setMoveIn} placeholder="YYYY-MM-DD" />
           </PhaseCard>
+          )
         ) : null}
 
         {phase === 'contracts' && phaseView === 'form' ? (
+          state.tenants.length === 0 ? (
+            <WizardPrerequisite
+              titleKey="journey.block.noTenants.title"
+              bodyKey="journey.block.noTenants.body"
+              actionKey="journey.block.noTenants.action"
+              onAction={() => goPhase('tenants')}
+              testID="wizard-block-no-tenants"
+            />
+          ) : (
           <PhaseCard>
             <WizardPhaseIntro text={t('pos.intro.contracts')} />
             <WizardTextField
@@ -728,6 +777,7 @@ export function PropertySetupWizard() {
             <WizardTextField label={t('pos.contract.deposit')} value={contractDeposit} onChangeText={setContractDeposit} keyboard="numeric" />
             <WizardTextField label={t('pos.contract.terms')} value={contractTerms} onChangeText={setContractTerms} />
           </PhaseCard>
+          )
         ) : null}
 
         {phase === 'alerts' && phaseView === 'form' ? (
@@ -740,6 +790,7 @@ export function PropertySetupWizard() {
 
         {phase === 'smartEmployee' ? (
           <Animated.View entering={FadeInDown.duration(600)} style={{ marginTop: spacing.lg }}>
+            <PhaseJourneyGuide phase="smartEmployee" />
             {tenantPortal ? (
               <PortalPreview
                 title={t('pos.portal.tenant.lead')}
@@ -760,7 +811,7 @@ export function PropertySetupWizard() {
           </Animated.View>
         ) : null}
 
-        {phase !== 'smartEmployee' && phaseView === 'form' ? (
+        {showFormActions ? (
           <Animated.View entering={FadeInDown.duration(500).delay(80)} style={styles.actions}>
             {phaseIndex > 0 ? (
               <Pressable style={styles.secondaryBtn} onPress={() => goPhase(PHASES[phaseIndex - 1])} disabled={advancing}>
@@ -779,7 +830,7 @@ export function PropertySetupWizard() {
           </Animated.View>
         ) : null}
 
-        {phase !== 'smartEmployee' && phaseView === 'form' ? (
+        {showFormActions ? (
           <>
             <Pressable style={styles.importLink} onPress={() => router.push('/upload')}>
               <Feather name="upload" size={14} color={colors.gold} />

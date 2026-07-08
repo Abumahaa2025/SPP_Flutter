@@ -95,7 +95,13 @@ export default function Contracts() {
       ) : null}
 
       {sorted.length === 0 && osState.contracts.length === 0 ? (
-        <AliveEmpty title={t('alive.contracts.title')} body={t('alive.contracts.body')} />
+        <AliveEmpty
+          title={t('alive.contracts.title')}
+          body={t('alive.contracts.body')}
+          nextHint={t('pos.progress.nextLine' as any).replace('{next}', t('pos.phase.contracts' as any))}
+          actionLabel={t('pos.progress.continue')}
+          onAction={() => router.push('/setup/property-os?phase=contracts' as any)}
+        />
       ) : sorted.map((c, i) => {
         const days = daysUntil(c.end);
         const meta = statusMeta(c.status, days, t);

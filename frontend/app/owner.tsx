@@ -9,6 +9,7 @@ import { ScreenScaffold } from '@/src/components/ScreenScaffold';
 import { StoryScreenHeader } from '@/src/components/StoryScreenHeader';
 import { GlassCard } from '@/src/components/GlassCard';
 import { usePropertyOS } from '@/src/hooks/usePropertyOS';
+import { JourneyGuide } from '@/src/components/JourneyGuide';
 import { useOperational } from '@/src/hooks/useOperational';
 import { useNotificationPrefs } from '@/src/hooks/usePreferences';
 import { colors, spacing, typography } from '@/src/theme';
@@ -46,7 +47,7 @@ export default function Owner() {
   const { t, isRTL } = useI18n();
   const router = useRouter();
   const { countEnabled } = useNotificationPrefs();
-  const { state } = usePropertyOS(countEnabled);
+  const { state, nextPhase, isFullyReady } = usePropertyOS(countEnabled);
   const { recentEvents } = useOperational();
 
   const payments = state.payments?.length ?? 0;
@@ -58,6 +59,16 @@ export default function Owner() {
         hint={t('op.owner.sub')}
         showBack
         testID="owner-header"
+      />
+
+      <JourneyGuide
+        where={t('journey.owner.guide.where' as any)}
+        now={t('journey.owner.guide.now' as any)}
+        benefit={t('journey.owner.guide.benefit' as any)}
+        next={!isFullyReady && nextPhase
+          ? t('pos.progress.nextLine' as any).replace('{next}', t(`pos.phase.${nextPhase === 'alerts' ? 'operations' : nextPhase}` as any))
+          : t('journey.launch.ask' as any)}
+        testID="owner-journey-guide"
       />
 
       {state.property ? (

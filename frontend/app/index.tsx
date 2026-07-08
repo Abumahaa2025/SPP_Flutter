@@ -16,6 +16,8 @@ import { BrandOrb, Wordmark } from '@/src/components/BrandOrb';
 import { AliveEmpty } from '@/src/components/AliveEmpty';
 import { HomeCommandCenter } from '@/src/components/HomeCommandCenter';
 import { SetupProgressBar } from '@/src/components/SetupProgressBar';
+import { usePropertyOS, phaseRoute } from '@/src/hooks/usePropertyOS';
+import { useNotificationPrefs } from '@/src/hooks/usePreferences';
 import { useWorkspacePadding } from '@/src/hooks/use-workspace-padding';
 import { api, type Briefing, type NotifT } from '@/src/api/client';
 import { clearExecutiveCache, fetchExecutiveCached } from '@/src/api/executive-cache';
@@ -50,6 +52,8 @@ export default function Home() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const wsPad = useWorkspacePadding();
+  const { countEnabled } = useNotificationPrefs();
+  const { state: osState, nextPhase } = usePropertyOS(countEnabled);
 
   const scrollY = useSharedValue(0);
   const onScroll = useAnimatedScrollHandler((e) => {
@@ -147,8 +151,17 @@ export default function Home() {
               <AliveEmpty
                 title={t('alive.home.title')}
                 body={t('alive.home.body')}
-                actionLabel={t('alive.home.action')}
-                onAction={() => router.push('/upload')}
+                nextHint={!osState.property
+                  ? t('journey.home.nextSetup' as any)
+                  : t('journey.home.nextUpload' as any)}
+                actionLabel={!osState.property
+                  ? t('pos.progress.continue')
+                  : t('alive.home.action')}
+                onAction={() => router.push(
+                  (!osState.property
+                    ? (nextPhase ? phaseRoute(nextPhase) : '/setup/property-os')
+                    : '/upload') as any,
+                )}
                 testID="home-alive-empty"
               />
             </>

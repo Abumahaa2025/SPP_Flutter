@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 
@@ -7,11 +6,11 @@ import { ScreenScaffold } from '@/src/components/ScreenScaffold';
 import { StoryScreenHeader } from '@/src/components/StoryScreenHeader';
 import { MaintenanceJourney } from '@/src/components/maintenance/MaintenanceJourney';
 import { PhaseSaveResult } from '@/src/components/PhaseSaveResult';
+import { AliveEmpty } from '@/src/components/AliveEmpty';
 import { usePropertyOS } from '@/src/hooks/usePropertyOS';
 import { useOperational } from '@/src/hooks/useOperational';
 import { useTechnicians } from '@/src/hooks/useTechnicians';
 import { useNotificationPrefs } from '@/src/hooks/usePreferences';
-import { colors, spacing, typography } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
 
 export default function MaintenanceCreateScreen() {
@@ -34,7 +33,13 @@ export default function MaintenanceCreateScreen() {
     return (
       <ScreenScaffold testID="maintenance-create">
         <StoryScreenHeader question={t('opsv2.maint.new' as any)} showBack />
-        <Text style={styles.dim}>{t('alive.maintenance.body')}</Text>
+        <AliveEmpty
+          title={t('journey.block.noUnitMaint.title' as any)}
+          body={t('journey.block.noUnitMaint.body' as any)}
+          nextHint={t('pos.progress.nextLine' as any).replace('{next}', t('pos.phase.units' as any))}
+          actionLabel={t('journey.block.noUnitMaint.action' as any)}
+          onAction={() => router.push('/setup/property-os?phase=units' as any)}
+        />
       </ScreenScaffold>
     );
   }
@@ -90,7 +95,3 @@ export default function MaintenanceCreateScreen() {
     </ScreenScaffold>
   );
 }
-
-const styles = StyleSheet.create({
-  dim: { color: colors.textDim, marginTop: spacing.lg },
-});

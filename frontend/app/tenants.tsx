@@ -51,7 +51,13 @@ export default function Tenants() {
       ) : null}
 
       {tenants.length === 0 && !osState.tenants.length ? (
-        <AliveEmpty title={t('alive.tenants.title')} body={t('alive.tenants.body')} />
+        <AliveEmpty
+          title={t('alive.tenants.title')}
+          body={t('alive.tenants.body')}
+          nextHint={t('pos.progress.nextLine' as any).replace('{next}', t('pos.phase.tenants' as any))}
+          actionLabel={t('pos.progress.continue')}
+          onAction={() => router.push('/setup/property-os?phase=tenants' as any)}
+        />
       ) : tenants.map((tn, i) => {
         const prop = propMap.get(tn.property_id);
         const rel = tn.reliability;

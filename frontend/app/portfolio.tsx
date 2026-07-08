@@ -69,6 +69,7 @@ export default function Portfolio() {
         <AliveEmpty
           title={t('alive.portfolio.title')}
           body={t('alive.portfolio.body')}
+          nextHint={t('pos.progress.nextLine' as any).replace('{next}', t('pos.phase.property' as any))}
           actionLabel={t('pos.portfolio.cta')}
           onAction={() => router.push('/setup/property-os' as any)}
           testID="portfolio-empty"
