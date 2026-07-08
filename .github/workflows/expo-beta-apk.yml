@@ -1,4 +1,6 @@
-# Expo Beta APK — built on GitHub (no EAS quota). Checks out the Expo frontend branch.
+# Expo Beta APK — GitHub Actions (no EAS cloud quota).
+# Prefers eas build --local (same keystore as EAS preview) when EXPO_TOKEN is set.
+# Fallback: Gradle release APK signed with debug keystore (uninstall old EAS beta first).
 name: Expo Beta APK
 
 on:
@@ -12,10 +14,20 @@ on:
         description: 'Build note (optional)'
         required: false
         default: 'Beta 10'
+      release_tag:
+        description: 'GitHub Release tag to update'
+        required: false
+        default: 'v1.0.0-beta.10'
+      upload_release:
+        description: 'Upload APK to GitHub Release'
+        required: false
+        default: 'true'
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
         with:
@@ -38,24 +50,102 @@ jobs:
         working-directory: frontend
         run: npm ci
 
-      - name: Prebuild Android
+      - name: Detect EXPO_TOKEN
+        id: expo
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          if [ -n "$EXPO_TOKEN" ]; then
+            echo "has_token=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_token=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup EAS (for local signed build)
+        if: steps.expo.outputs.has_token == 'true'
+        uses: expo/expo-github-action@v8
+        with:
+          eas-version: latest
+          token: ${{ secrets.EXPO_TOKEN }}
+          packager: npm
+
+      - name: EAS local build (EAS-signed release APK)
+        if: steps.expo.outputs.has_token == 'true'
+        working-directory: frontend
+        env:
+          EXPO_PUBLIC_BETA_MODE: 'true'
+          EXPO_PUBLIC_BACKEND_URL: https://spp-beta-api.onrender.com
+        run: |
+          VERSION=$(node -p "require('./app.json').expo.version")
+          mkdir -p dist
+          eas build \
+            --platform android \
+            --profile preview \
+            --local \
+            --non-interactive \
+            --output "dist/spp-beta-${VERSION}.apk"
+
+      - name: Prebuild Android (Gradle fallback)
+        if: steps.expo.outputs.has_token == 'false'
         working-directory: frontend
         run: npx expo prebuild --platform android --no-install
         env:
           EXPO_PUBLIC_BETA_MODE: 'true'
           EXPO_PUBLIC_BACKEND_URL: https://spp-beta-api.onrender.com
 
-      - name: Assemble debug APK
+      - name: Configure release signing (Gradle fallback)
+        if: steps.expo.outputs.has_token == 'false'
         working-directory: frontend/android
-        run: chmod +x gradlew && ./gradlew assembleDebug --no-daemon
+        run: |
+          python3 <<'PY'
+          from pathlib import Path
+          p = Path('app/build.gradle')
+          text = p.read_text()
+          needle = 'signingConfig signingConfigs.debug'
+          if needle not in text:
+              marker = 'buildTypes {'
+              if marker not in text:
+                  raise SystemExit('buildTypes block not found in app/build.gradle')
+              text = text.replace(
+                  'release {',
+                  'release {\n            signingConfig signingConfigs.debug',
+                  1,
+              )
+              p.write_text(text)
+              print('Patched release signingConfig to debug keystore')
+          else:
+              print('Release signing already configured')
+          PY
 
-      - name: Package APK
+      - name: Assemble release APK (Gradle fallback)
+        if: steps.expo.outputs.has_token == 'false'
+        working-directory: frontend/android
+        run: chmod +x gradlew && ./gradlew assembleRelease --no-daemon
+
+      - name: Package APK (Gradle fallback)
+        if: steps.expo.outputs.has_token == 'false'
         working-directory: frontend
         run: |
           VERSION=$(node -p "require('./app.json').expo.version")
           mkdir -p dist
-          cp android/app/build/outputs/apk/debug/app-debug.apk "dist/spp-beta-${VERSION}.apk"
+          cp android/app/build/outputs/apk/release/app-release.apk "dist/spp-beta-${VERSION}.apk"
           ls -la dist/
+
+      - name: Add short APK filename
+        working-directory: frontend
+        run: |
+          APK=$(ls dist/spp-beta-*.apk | head -n1)
+          cp "$APK" dist/spp-beta.apk
+          ls -la dist/
+
+      - name: Verify APK signature
+        working-directory: frontend
+        run: |
+          APK=$(ls dist/spp-beta-*.apk | head -n1)
+          echo "Verifying $APK"
+          BUILD_TOOLS=$(ls -d "$ANDROID_HOME/build-tools"/* | sort -V | tail -n1)
+          "$BUILD_TOOLS/apksigner" verify --verbose "$APK"
+          "$BUILD_TOOLS/aapt" dump badging "$APK" | head -n5
 
       - uses: actions/upload-artifact@v4
         with:
@@ -63,12 +153,37 @@ jobs:
           path: frontend/dist/*.apk
           retention-days: 90
 
+      - name: Publish GitHub Release
+        if: ${{ github.event.inputs.upload_release == 'true' }}
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.release_tag }}
+          name: Beta 10
+          body: |
+            SPP Beta 10 — installable Android APK.
+
+            **Install (Android / Chrome):**
+            1. Open the direct link below on your phone
+            2. If you had an older EAS beta installed, uninstall it first (Settings → Apps → SPP)
+            3. Allow install from Chrome when prompted
+            4. Open the downloaded APK and install
+
+            Built from `${{ github.event.inputs.branch }}` via GitHub Actions.
+          files: |
+            frontend/dist/spp-beta.apk
+            frontend/dist/spp-beta-*.apk
+          prerelease: true
+          make_latest: true
+          overwrite_files: true
+
       - name: Summary
         working-directory: frontend
         run: |
           VERSION=$(node -p "require('./app.json').expo.version")
+          TAG="${{ github.event.inputs.release_tag }}"
           echo "## Expo Beta APK" >> "$GITHUB_STEP_SUMMARY"
           echo "- Branch: \`${{ github.event.inputs.branch }}\`" >> "$GITHUB_STEP_SUMMARY"
           echo "- Version: \`${VERSION}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Note: ${{ github.event.inputs.note }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Download: **Actions → this run → Artifacts → spp-beta-apk**" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Release tag: \`${TAG}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Direct APK: https://github.com/${{ github.repository }}/releases/download/${TAG}/spp-beta.apk" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Versioned APK: https://github.com/${{ github.repository }}/releases/download/${TAG}/spp-beta-${VERSION}.apk" >> "$GITHUB_STEP_SUMMARY"
