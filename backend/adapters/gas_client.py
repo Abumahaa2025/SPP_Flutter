@@ -118,3 +118,35 @@ class GasClient:
         if force_refresh:
             _CACHE.clear()
         return self.get_dashboard_lite()
+
+    def post_action(self, action: str, params: Optional[Dict[str, Any]] = None) -> Any:
+        """POST write/read action to GAS unified API (Smart Import, PDF, commit)."""
+        if not self.configured:
+            raise GasClientError("GOOGLE_APPS_SCRIPT_URL is not configured")
+
+        body: Dict[str, Any] = {"action": action, "params": params or {}}
+        if self.api_key:
+            body["apiKey"] = self.api_key
+
+        try:
+            resp = requests.post(
+                self.base_url,
+                json=body,
+                timeout=max(self.timeout, 90),
+                headers={"Content-Type": "application/json"},
+            )
+            resp.raise_for_status()
+            if resp.text.lstrip().startswith("<"):
+                raise GasClientError(
+                    "GAS returned HTML instead of JSON - check Web App deploy access (Anyone)"
+                )
+            envelope = resp.json()
+        except requests.RequestException as exc:
+            raise GasClientError(f"GAS POST failed: {exc}") from exc
+        except ValueError as exc:
+            raise GasClientError("GAS returned invalid JSON") from exc
+
+        if envelope.get("status") != "success":
+            raise GasClientError(envelope.get("message") or f"GAS error for {action}")
+
+        return envelope.get("data")

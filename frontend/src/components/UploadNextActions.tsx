@@ -11,7 +11,13 @@ import type { NextAction } from '@/src/api/portfolio-analysis';
 import { colors, spacing, typography } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
 
-type Props = { actions: NextAction[]; message: string; delay?: number };
+type Props = {
+  actions: NextAction[];
+  message: string;
+  delay?: number;
+  /** Optional handler — keeps UI unchanged; wires engine actions without new pages */
+  onAction?: (key: string) => void;
+};
 
 const ACTION_LABELS: Record<string, { en: string; ar: string }> = {
   update_portfolio: { en: 'Update portfolio', ar: 'تحديث المحفظة' },
@@ -25,7 +31,7 @@ const ACTION_LABELS: Record<string, { en: string; ar: string }> = {
 };
 
 /** Phase 5 — what should I do now? */
-export function UploadNextActions({ actions, message, delay = 360 }: Props) {
+export function UploadNextActions({ actions, message, delay = 360, onAction }: Props) {
   const { lang, isRTL } = useI18n();
   const router = useRouter();
 
@@ -41,6 +47,10 @@ export function UploadNextActions({ actions, message, delay = 360 }: Props) {
               style={styles.tile}
               onPress={() => {
                 Haptics.selectionAsync();
+                if (onAction) {
+                  onAction(a.key);
+                  return;
+                }
                 router.push(a.route as never);
               }}
             >

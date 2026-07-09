@@ -1,6 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import {
-  View, Text, StyleSheet, Pressable, Platform, ActivityIndicator,
+  View, Text, StyleSheet, Pressable, Platform, ActivityIndicator, Linking,
 } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
@@ -23,7 +23,9 @@ import { JourneyGuide } from '@/src/components/JourneyGuide';
 import {
   fetchPortfolioAnalysis,
   applyPortfolioAnalysis,
+  createPortfolioPdf,
   type PortfolioAnalysis,
+  type UploadFileMeta,
 } from '@/src/api/portfolio-analysis';
 import { UploadFilePreview } from '@/src/components/UploadFilePreview';
 import { UploadExecutiveReport } from '@/src/components/UploadExecutiveReport';
@@ -54,7 +56,7 @@ export default function UploadScreen() {
   const [importFailed, setImportFailed] = useState(false);
   const [previewReady, setPreviewReady] = useState(false);
   const [pickError, setPickError] = useState<string | null>(null);
-  const [picking, setPicking] = useState(false);
+  const [lastFileMeta, setLastFileMeta] = useState<UploadFileMeta[]>([]);
 
   const pickFiles = useCallback(async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -126,10 +128,6 @@ export default function UploadScreen() {
 
   const runAnalysis = async () => {
     if (!files.length || busy) return;
-    if (preview && !preview.parseable) {
-      setImportFailed(true);
-      return;
-    }
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
     setBusy(true);
     setImportFailed(false);
@@ -147,6 +145,7 @@ export default function UploadScreen() {
 
       let analyzed: UploadResult[] = [];
       let fileMeta = await buildUploadFileMeta(files);
+      const hasContent = fileMeta.some((f) => (f.textSnippet?.length ?? 0) > 10);
 
       if (preview && preview.parseable) {
         const parsed: ParsedFileData = {
@@ -158,28 +157,27 @@ export default function UploadScreen() {
           mappedFields: preview.columns.map((c) => preview.mapping[c] ?? 'skip'),
         };
         analyzed = buildResultsFromParsedData(parsed, lang);
-        fileMeta = [parsedToFileMeta(parsed, files[0])];
+        const restMeta = fileMeta.slice(1);
+        fileMeta = [parsedToFileMeta(parsed, files[0]), ...restMeta];
+      }
+
+      if (!hasContent) {
+        setImportFailed(true);
+        setStep(1);
+        return;
       }
 
       let portfolio: PortfolioAnalysis | null = null;
       let source: 'render' | 'fallback' | null = null;
 
-      if (preview?.parseable) {
-        try {
-          portfolio = await fetchPortfolioAnalysis(fileMeta);
-          source = 'render';
-          setAnalysisError(null);
-        } catch (err) {
-          const msg = err instanceof Error ? err.message : 'analysis failed';
-          setAnalysisError(msg);
-          source = 'fallback';
-        }
-      }
-
-      if (!analyzed.length && !preview?.parseable) {
-        setImportFailed(true);
-        setStep(1);
-        return;
+      try {
+        portfolio = await fetchPortfolioAnalysis(fileMeta);
+        source = 'render';
+        setAnalysisError(null);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'analysis failed';
+        setAnalysisError(msg);
+        source = 'fallback';
       }
 
       if (!analyzed.length) {
@@ -188,6 +186,7 @@ export default function UploadScreen() {
 
       setAnalysisSource(source);
       setResults(analyzed);
+      setLastFileMeta(fileMeta);
       if (portfolio) {
         setPortfolioAnalysis(portfolio);
         await storage.setItem('spp.lastPortfolioAnalysis', JSON.stringify(portfolio));
@@ -224,7 +223,7 @@ export default function UploadScreen() {
     if (!portfolioAnalysis) return;
     if (key === 'update') {
       try {
-        await applyPortfolioAnalysis(portfolioAnalysis.analysis_id);
+        await applyPortfolioAnalysis(portfolioAnalysis.analysis_id, lastFileMeta);
       } catch { /* beta — local flow continues */ }
       router.push('/portfolio');
     } else if (key === 'cancel') {
@@ -235,6 +234,18 @@ export default function UploadScreen() {
       return;
     }
     setPromptDone(true);
+  };
+
+  const onNextAction = async (key: string) => {
+    if (key === 'create_pdf' && portfolioAnalysis) {
+      try {
+        const { url } = await createPortfolioPdf(portfolioAnalysis.analysis_id);
+        if (url) await Linking.openURL(url);
+      } catch { /* PDF requires GAS — silent fallback */ }
+      return;
+    }
+    const action = portfolioAnalysis?.next_actions.find((a) => a.key === key);
+    if (action) router.push(action.route as never);
   };
 
   return (
@@ -406,6 +417,7 @@ export default function UploadScreen() {
                   <UploadNextActions
                     actions={portfolioAnalysis.next_actions}
                     message={portfolioAnalysis.what_now_message}
+                    onAction={onNextAction}
                   />
                 </>
               )}

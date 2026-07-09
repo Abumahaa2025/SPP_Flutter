@@ -59,7 +59,13 @@ export type PortfolioAnalysis = {
   _source?: 'render' | 'fallback';
 };
 
-export type UploadFileMeta = { name: string; mimeType?: string; size?: number; textSnippet?: string };
+export type UploadFileMeta = {
+  name: string;
+  mimeType?: string;
+  size?: number;
+  textSnippet?: string;
+  parsedFromExcel?: boolean;
+};
 
 const ANALYSIS_TIMEOUT_MS = 90_000;
 
@@ -87,14 +93,29 @@ export async function fetchPortfolioAnalysis(files: UploadFileMeta[]): Promise<P
   }
 }
 
-export async function applyPortfolioAnalysis(analysisId: string): Promise<{ ok: boolean }> {
+export async function applyPortfolioAnalysis(
+  analysisId: string,
+  files?: UploadFileMeta[],
+): Promise<{ ok: boolean; gas?: boolean; commit?: unknown }> {
   const res = await fetch(apiUrl('/upload/apply-analysis'), {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ analysis_id: analysisId, ...(files?.length ? { files } : {}) }),
+  });
+  if (!res.ok) throw new Error(`apply-analysis ${res.status}`);
+  return (await res.json()) as { ok: boolean; gas?: boolean; commit?: unknown };
+}
+
+export async function createPortfolioPdf(
+  analysisId?: string,
+): Promise<{ ok: boolean; url?: string }> {
+  const res = await fetch(apiUrl('/upload/create-pdf'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ analysis_id: analysisId }),
   });
-  if (!res.ok) throw new Error(`apply-analysis ${res.status}`);
-  return (await res.json()) as { ok: boolean };
+  if (!res.ok) throw new Error(`create-pdf ${res.status}`);
+  return (await res.json()) as { ok: boolean; url?: string };
 }
 
 /** Client fallback when API unreachable — uses existing portfolio endpoints. */

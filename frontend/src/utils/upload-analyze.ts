@@ -1,7 +1,12 @@
+import * as XLSX from 'xlsx';
+
 import type { UploadResult } from '@/src/components/UploadResultCard';
 import type { ColumnField, ColumnMapping } from './upload-parse';
 
 export type { ColumnField, ColumnMapping } from './upload-parse';
+
+const SNIPPET_MAX = 120_000;
+const EXCEL_MAX_BYTES = 8_000_000;
 
 export type PickedFile = { name: string; mimeType?: string; size?: number; uri?: string };
 
@@ -104,14 +109,35 @@ function buildResult(file: PickedFile, lang: Lang, index: number): UploadResult 
   };
 }
 
-/** Read CSV/TSV/text snippet for server-side parsing (no UI change). */
+/** Convert Excel to CSV text — same approach as legacy Smart Property web (SheetJS). */
+async function readExcelAsCsvSnippet(file: PickedFile): Promise<string | undefined> {
+  if (!file.uri) return undefined;
+  if (file.size && file.size > EXCEL_MAX_BYTES) return undefined;
+  try {
+    const res = await fetch(file.uri);
+    const ab = await res.arrayBuffer();
+    const wb = XLSX.read(new Uint8Array(ab), { type: 'array', cellDates: true });
+    const sheetName = wb.SheetNames[0];
+    if (!sheetName) return undefined;
+    const sheet = wb.Sheets[sheetName];
+    const csv = XLSX.utils.sheet_to_csv(sheet, { FS: ',', RS: '\n' });
+    return csv.slice(0, SNIPPET_MAX);
+  } catch {
+    return undefined;
+  }
+}
+
+/** Read CSV/TSV/text/Excel snippet for server-side parsing (no UI change). */
 export async function readPropertyFileSnippet(file: PickedFile): Promise<string | undefined> {
   const lower = file.name.toLowerCase();
+  if (/\.(xlsx|xls)$/.test(lower)) {
+    return readExcelAsCsvSnippet(file);
+  }
   if (!/\.(csv|txt|tsv)$/.test(lower) || !file.uri) return undefined;
   try {
     const res = await fetch(file.uri);
     const text = await res.text();
-    return text.slice(0, 120_000);
+    return text.slice(0, SNIPPET_MAX);
   } catch {
     return undefined;
   }
@@ -207,12 +233,15 @@ export function previewWithMapping(preview: FilePreview, mapping: ColumnMapping)
 export async function buildUploadFileMeta(files: PickedFile[]) {
   return Promise.all(
     files.map(async (f) => {
+      const lower = f.name.toLowerCase();
+      const isExcel = /\.(xlsx|xls)$/.test(lower);
       const textSnippet = await readPropertyFileSnippet(f);
       return {
         name: f.name,
         mimeType: f.mimeType,
         size: f.size,
         ...(textSnippet ? { textSnippet } : {}),
+        ...(textSnippet && isExcel ? { parsedFromExcel: true } : {}),
       };
     }),
   );

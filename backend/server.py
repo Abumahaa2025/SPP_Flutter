@@ -43,6 +43,12 @@ from adapters.mappers.reports import map_reports_from_app_data
 from adapters.mappers.tenants import map_tenants_from_app_data
 from beta_seed import beta_dataset, verify_beta_login, BETA_ACCOUNTS
 from adapters.upload_analysis import analyze_upload_portfolio
+from adapters.gas_import_bridge import (
+    analyze_upload_with_gas_fallback,
+    apply_gas_import,
+    create_gas_owner_pdf,
+    gas_import_available,
+)
 
 # In-memory portfolio for beta builds when Mongo is unavailable
 _memory_db: Dict[str, List[dict]] = {}
@@ -1003,6 +1009,11 @@ class UploadPortfolioRequest(BaseModel):
 
 class UploadApplyRequest(BaseModel):
     analysis_id: str
+    files: Optional[List[UploadFileMeta]] = None
+
+
+class UploadPdfRequest(BaseModel):
+    analysis_id: Optional[str] = None
 
 
 _last_applied_analysis: Optional[str] = None
@@ -1010,25 +1021,60 @@ _last_applied_analysis: Optional[str] = None
 
 @api_router.post("/upload/portfolio-analysis")
 async def upload_portfolio_analysis(req: UploadPortfolioRequest):
-    """Analyze uploaded file manifest against live portfolio — executive report & decisions."""
+    """Analyze uploaded files — GAS Smart Property engines when configured."""
     if not req.files:
         raise HTTPException(400, "No files provided")
     lang = "ar" if req.lang.startswith("ar") else "en"
     ctx = await _portfolio_live_context()
-    payload = analyze_upload_portfolio(
+    payload = await asyncio.to_thread(
+        analyze_upload_with_gas_fallback,
         [f.model_dump() for f in req.files],
         ctx,
-        lang=lang,  # type: ignore[arg-type]
+        lang,  # type: ignore[arg-type]
     )
     return payload
 
 
 @api_router.post("/upload/apply-analysis")
 async def upload_apply_analysis(req: UploadApplyRequest):
-    """Mark analysis as applied — beta stores reference only; no destructive writes."""
+    """Commit import to portfolio — GAS commitSmartPropertyImportBatch when configured."""
     global _last_applied_analysis
+    files_dump = [f.model_dump() for f in req.files] if req.files else None
+
+    if gas_import_available():
+        try:
+            result = await asyncio.to_thread(
+                apply_gas_import,
+                req.analysis_id,
+                files_dump,
+            )
+            _last_applied_analysis = req.analysis_id
+            return {
+                "ok": True,
+                "analysis_id": req.analysis_id,
+                "applied_at": _iso(datetime.now(timezone.utc)),
+                "gas": True,
+                "commit": result.get("result"),
+            }
+        except Exception as exc:
+            logger.warning("GAS apply failed: %s", exc)
+            if not beta_mode_enabled():
+                raise HTTPException(502, str(exc)) from exc
+
     _last_applied_analysis = req.analysis_id
     return {"ok": True, "analysis_id": req.analysis_id, "applied_at": _iso(datetime.now(timezone.utc))}
+
+
+@api_router.post("/upload/create-pdf")
+async def upload_create_pdf(req: UploadPdfRequest):
+    """Create owner PDF via GAS createOwnerReportPdf_."""
+    if not gas_import_available():
+        raise HTTPException(503, "PDF requires GAS Smart Property backend")
+    try:
+        result = await asyncio.to_thread(create_gas_owner_pdf)
+        return result
+    except Exception as exc:
+        raise HTTPException(502, str(exc)) from exc
 
 
 @api_router.get("/upload/last-applied")
