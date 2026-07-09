@@ -1058,14 +1058,13 @@ async def upload_apply_analysis(req: UploadApplyRequest):
             }
         except Exception as exc:
             logger.warning("GAS apply failed: %s", exc)
-            if not beta_mode_enabled():
-                raise HTTPException(502, str(exc)) from exc
+            raise HTTPException(
+                502,
+                {"ok": False, "error": str(exc), "analysis_id": req.analysis_id, "gas": True},
+            ) from exc
 
     _last_applied_analysis = req.analysis_id
     return {"ok": True, "analysis_id": req.analysis_id, "applied_at": _iso(datetime.now(timezone.utc))}
-
-
-@api_router.post("/upload/create-pdf")
 async def upload_create_pdf(req: UploadPdfRequest):
     """Create owner PDF via GAS createOwnerReportPdf_."""
     if not gas_import_available():

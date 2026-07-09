@@ -371,12 +371,16 @@ def apply_gas_import(
     if not result or result.get("ok") is False:
         raise GasClientError(result.get("error") or "فشل اعتماد المحفظة")
 
+    commit_result = result.get("result") or {}
     return {
         "ok": True,
         "analysis_id": analysis_id,
         "batch_id": batch_id,
-        "result": result.get("result") or {},
+        "result": commit_result,
         "report": result.get("report"),
+        "units_created": commit_result.get("unitsCreated"),
+        "units_updated": commit_result.get("unitsUpdated"),
+        "payments_added": commit_result.get("paymentsAdded"),
     }
 
 
