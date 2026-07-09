@@ -1065,6 +1065,9 @@ async def upload_apply_analysis(req: UploadApplyRequest):
 
     _last_applied_analysis = req.analysis_id
     return {"ok": True, "analysis_id": req.analysis_id, "applied_at": _iso(datetime.now(timezone.utc))}
+
+
+@api_router.post("/upload/create-pdf")
 async def upload_create_pdf(req: UploadPdfRequest):
     """Create owner PDF via GAS createOwnerReportPdf_."""
     if not gas_import_available():
