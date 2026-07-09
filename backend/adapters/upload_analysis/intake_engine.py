@@ -15,7 +15,6 @@ from .intake_lifecycle import (
     maintenance_frequency,
 )
 from .intake_parser import parse_expense_text, parse_rent_roll_text
-from .intake_synthetic import synthesize_from_files
 
 
 def _is_rent_file(f: dict, cls) -> bool:
@@ -71,24 +70,23 @@ def analyze_statements_deep(files: List[dict], ctx: dict) -> dict:
                 parsed_rolls.append(parsed)
             else:
                 parse_errors.append({"file_name": cls.name, "error": parsed.get("error") or "فشل التحليل"})
-        elif (_is_rent_file(f, cls) or (f.get("name") or "").lower().endswith((".xlsx", ".xls", ".csv"))) and not snippet:
+        elif (_is_rent_file(f, cls) or (f.get("name") or "").lower().endswith((".xlsx", ".xls", ".csv"))) and len(snippet) <= 10:
             files_without_content.append(
                 {
                     "file_name": cls.name,
-                    "reason": "لم يُرسل محتوى الملف — يُستخدم تحليل الاسم + المحفظة",
+                    "reason": "لم أقرأ محتوى الملف — أعد الرفع أو جرّب ملفاً أصغر",
                 }
             )
-
-    used_synthetic = False
-    if not parsed_rolls:
-        synth = synthesize_from_files(files, ctx)
-        parsed_rolls = synth["parsed_rolls"]
-        if not expense_rolls:
-            expense_rolls = synth["expense_rolls"]
-        used_synthetic = True
-        for c in synth.get("classifications") or []:
-            if isinstance(c, object) and hasattr(c, "name"):
-                pass  # already in file_classifications
+        elif len(snippet) > 10 and not _is_expense_file(cls):
+            try_parsed = parse_rent_roll_text(snippet, f)
+            if try_parsed.get("ok") and try_parsed.get("row_count", 0) > 0:
+                if not try_parsed.get("month"):
+                    try_parsed["month"] = cls.month
+                if not try_parsed.get("year"):
+                    try_parsed["year"] = cls.year
+                parsed_rolls.append(try_parsed)
+            elif try_parsed.get("error"):
+                parse_errors.append({"file_name": cls.name, "error": try_parsed.get("error")})
 
     # Dedupe by month — keep latest file per month
     by_month: Dict[int, dict] = {}
@@ -121,5 +119,5 @@ def analyze_statements_deep(files: List[dict], ctx: dict) -> dict:
         "late_tenants": find_late_tenants(parsed_rolls),
         "maintenance_freq": maintenance_frequency(expense_rolls),
         "costliest_units": costliest_units(expense_rolls, parsed_rolls),
-        "used_synthetic": used_synthetic,
+        "used_synthetic": False,
     }

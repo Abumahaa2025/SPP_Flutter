@@ -20,6 +20,6 @@ services:
       - key: SPP_DEMO_MODE
         value: "false"
       - key: GOOGLE_APPS_SCRIPT_URL
-        value: ""
+        value: "https://script.google.com/macros/s/AKfycbx6Z_2_lNVJfbI2oVpkIKjRwAySQiZ5-WbhGpnw-WpNucH-6YZ0DHdlGP0XhH4XdVcb6A/exec"
       - key: SPP_DATA_SOURCE
-        value: mongo
+        value: hybrid
