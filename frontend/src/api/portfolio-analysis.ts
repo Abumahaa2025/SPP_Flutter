@@ -102,7 +102,10 @@ export async function applyPortfolioAnalysis(
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ analysis_id: analysisId, ...(files?.length ? { files } : {}) }),
   });
-  if (!res.ok) throw new Error(`apply-analysis ${res.status}`);
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    throw new Error(`apply-analysis ${res.status}: ${text}`);
+  }
   return (await res.json()) as { ok: boolean; gas?: boolean; commit?: unknown };
 }
 

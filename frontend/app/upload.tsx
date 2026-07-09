@@ -223,9 +223,14 @@ export default function UploadScreen() {
     if (!portfolioAnalysis) return;
     if (key === 'update') {
       try {
-        await applyPortfolioAnalysis(portfolioAnalysis.analysis_id, lastFileMeta);
-      } catch { /* beta — local flow continues */ }
-      router.push('/portfolio');
+        const applied = await applyPortfolioAnalysis(portfolioAnalysis.analysis_id, lastFileMeta);
+        if (!applied.ok) throw new Error('apply failed');
+        router.push('/portfolio');
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : 'apply failed';
+        setAnalysisError(msg);
+      }
+      return;
     } else if (key === 'cancel') {
       setPortfolioAnalysis(null);
       setResults([]);
