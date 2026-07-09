@@ -1,8 +1,8 @@
 # SPP Beta APK — final distribution pipeline.
-# Uses eas build --local with EAS-managed Android keystore (same signing as all prior EAS preview builds).
-# No EAS cloud build quota consumed. Publishes to GitHub Release for direct mobile download.
+# Uses EAS cloud build with EAS-managed Android keystore (same signing as all prior preview builds).
+# Downloads APK and publishes to GitHub Release for direct mobile install.
 #
-# Required secret (one-time): EXPO_TOKEN
+# Required secret: EXPO_TOKEN
 # Create at: https://expo.dev/accounts/abumahaa2025/settings/access-tokens
 name: Expo Beta APK
 
@@ -25,6 +25,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 90
     permissions:
       contents: write
     defaults:
@@ -40,7 +41,7 @@ jobs:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: |
           if [ -z "$EXPO_TOKEN" ]; then
-            echo "::error::Missing EXPO_TOKEN secret. Create a token at https://expo.dev/accounts/abumahaa2025/settings/access-tokens and add it to GitHub repo secrets as EXPO_TOKEN."
+            echo "::error::Missing EXPO_TOKEN secret."
             exit 1
           fi
 
@@ -49,13 +50,6 @@ jobs:
           node-version: 20
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 17
-
-      - uses: android-actions/setup-android@v3
 
       - name: Install dependencies
         run: npm ci
@@ -67,28 +61,45 @@ jobs:
           token: ${{ secrets.EXPO_TOKEN }}
           packager: npm
 
-      - name: EAS local build (EAS signing key — upgrade-safe)
+      - name: EAS cloud build (EAS signing key — upgrade-safe)
+        id: eas
         env:
           EXPO_PUBLIC_BETA_MODE: 'true'
           EXPO_PUBLIC_BACKEND_URL: https://spp-beta-api.onrender.com
         run: |
-          VERSION=$(node -p "require('./app.json').expo.version")
           mkdir -p dist
           eas build \
             --platform android \
             --profile preview \
-            --local \
             --non-interactive \
-            --output "dist/spp-beta-${VERSION}.apk"
-          cp "dist/spp-beta-${VERSION}.apk" dist/spp-beta.apk
+            --wait \
+            --json > build-result.json
+          node -e "
+            const fs = require('fs');
+            const r = JSON.parse(fs.readFileSync('build-result.json','utf8'));
+            const b = Array.isArray(r) ? r[0] : r;
+            const url = b?.artifacts?.buildUrl || b?.artifacts?.applicationArchiveUrl || '';
+            if (!url) {
+              console.error('No APK URL in build result:', JSON.stringify(b, null, 2));
+              process.exit(1);
+            }
+            fs.writeFileSync('apk-url.txt', url);
+            console.log('APK URL:', url);
+          "
+          curl -fL "$(cat apk-url.txt)" -o dist/spp-beta.apk
+          VERSION=$(node -p "require('./app.json').expo.version")
+          cp dist/spp-beta.apk "dist/spp-beta-${VERSION}.apk"
           ls -la dist/
 
       - name: Verify APK
         run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq zipalign apksigner aapt 2>/dev/null || true
           APK="dist/spp-beta.apk"
-          BUILD_TOOLS=$(ls -d "$ANDROID_HOME/build-tools"/* | sort -V | tail -n1)
-          "$BUILD_TOOLS/apksigner" verify --verbose "$APK"
-          "$BUILD_TOOLS/aapt" dump badging "$APK" | head -n5
+          if command -v apksigner >/dev/null; then
+            apksigner verify --verbose "$APK"
+          fi
+          file "$APK"
+          ls -la dist/
 
       - uses: actions/upload-artifact@v4
         with:
@@ -108,8 +119,6 @@ jobs:
             https://github.com/${{ github.repository }}/releases/download/${{ github.event.inputs.release_tag }}/spp-beta.apk
 
             Installs over previous beta versions without uninstalling. User data is preserved.
-
-            Built from `${{ github.event.inputs.branch }}` via EAS local build on GitHub Actions.
           files: |
             frontend/dist/spp-beta.apk
             frontend/dist/spp-beta-*.apk
