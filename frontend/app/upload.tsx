@@ -52,6 +52,7 @@ export default function UploadScreen() {
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [step, setStep] = useState(1);
   const [busy, setBusy] = useState(false);
+  const [picking, setPicking] = useState(false);
   const [preview, setPreview] = useState<FilePreview | null>(null);
   const [importFailed, setImportFailed] = useState(false);
   const [previewReady, setPreviewReady] = useState(false);
