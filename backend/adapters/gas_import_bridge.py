@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Literal, Optional
 from .gas_client import GasClientError
 from .live_data import get_gas_client
 from .upload_analysis.intake_classifier import month_label
-from .upload_analysis.late_report_format import build_late_section_items
+from .upload_analysis.late_report_format import build_late_section_items, build_late_payments_view_model
 from .upload_analysis.portfolio_engine import analyze_upload_portfolio
 
 logger = logging.getLogger(__name__)
@@ -221,6 +221,13 @@ def map_gas_report_to_portfolio(
         )
 
     late_by_month = pb.get("lateByMonth") or {}
+    late_payments = build_late_payments_view_model(
+        late_by_month=late_by_month,
+        late_tenants_detailed=late_tenants_detailed,
+        total_unpaid=total_unpaid,
+        late_tenant_count=late_tenant_count,
+        lang=lang,
+    )
     late_items = build_late_section_items(
         late_by_month=late_by_month,
         late_tenants_detailed=late_tenants_detailed,
@@ -261,7 +268,6 @@ def map_gas_report_to_portfolio(
             _sec("departed", labels["moved_out"], departed_items),
             _sec("moved_in", labels["moved_in"], moved_in_items or [_item("—", "—")]),
             _sec("late_tenants", labels["late_tenants"], late_items),
-            _sec("late", labels["late"], [it for it in late_items if not str(it.get("label", "")).startswith("──")][:12]),
             _sec(
                 "revenue",
                 labels["revenue"],
@@ -389,6 +395,7 @@ def map_gas_report_to_portfolio(
             "analysis_confidence_pct": confidence,
         },
         "executive_report": executive_report,
+        "late_payments": late_payments,
         "month_comparison": month_cmp,
         "expense_by_type": [],
         "smart_decisions": smart_decisions[:8],

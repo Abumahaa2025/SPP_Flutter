@@ -9,7 +9,7 @@ from typing import Any, Dict, List, Literal
 from .intake_classifier import month_label
 from .intake_engine import analyze_statements_deep
 from .intake_lifecycle import build_month_comparison
-from .late_report_format import build_late_section_items
+from .late_report_format import build_late_section_items, build_late_payments_view_model
 
 Lang = Literal["ar", "en"]
 
@@ -209,6 +209,13 @@ def analyze_upload_portfolio(
             )
         )
 
+    late_payments = build_late_payments_view_model(
+        late_by_month=late_by_month,
+        late_tenants_detailed=late_list,
+        total_unpaid=total_unpaid,
+        late_tenant_count=late_tenant_count,
+        lang=lang,
+    )
     late_items = build_late_section_items(
         late_by_month=late_by_month,
         late_tenants_detailed=late_list,
@@ -275,7 +282,6 @@ def analyze_upload_portfolio(
             _sec("departed", labels["moved_out"], departed_items),
             _sec("moved_in", labels["moved_in"], moved_in_items),
             _sec("late_tenants", "المتأخرات — شهرًا بشهر" if lang == "ar" else "Late payments — by month", late_items),
-            _sec("late", labels["late"], [it for it in late_items if not str(it.get("label", "")).startswith("──")][:12]),
             _sec(
                 "revenue",
                 labels["revenue"],
@@ -409,6 +415,7 @@ def analyze_upload_portfolio(
         ],
         "metrics": metrics,
         "executive_report": executive_report,
+        "late_payments": late_payments,
         "month_comparison": [
             {"month": m["month"], "revenue": m["revenue"], "expenses": m["expenses"]}
             for m in month_cmp
