@@ -118,15 +118,22 @@ def analyze_upload_portfolio(
     departed = lc.get("departed") or []
     newcomers = lc.get("newcomers") or []
     late_list = deep.get("late_tenants") or []
+    unique_stats = deep.get("unique_unit_stats") or {}
+    quality_log = deep.get("quality_log") or []
     maint_freq = deep.get("maintenance_freq") or []
     costliest = deep.get("costliest_units") or []
 
-    total_units = sum(int(p.get("units") or 0) for p in properties)
+    unique_units = int(unique_stats.get("unique_units") or 0)
+    shop_count = int(unique_stats.get("shop_count") or 0)
+    apartment_count = int(unique_stats.get("apartment_count") or 0)
+    total_units = unique_units or sum(int(p.get("units") or 0) for p in properties)
     occupied = len(active) if active else sum(
         round(int(p.get("units") or 0) * float(p.get("occupancy") or 0)) for p in properties
     )
     vacant = max(0, total_units - occupied)
     occupancy_pct = round((occupied / total_units * 100) if total_units else 0, 1)
+    total_unpaid = sum(float(lt.get("total_unpaid") or lt.get("rent") or 0) for lt in late_list)
+    late_tenant_count = len(late_list)
 
     # --- Sections with named detail ---
     file_items = []
@@ -198,16 +205,33 @@ def analyze_upload_portfolio(
         )
 
     late_items = []
-    for lt in late_list[:15]:
-        ml = month_label(lt.get("month") or 0, lang)
+    for lt in late_list[:20]:
+        months_n = lt.get("late_month_count") or 1
+        amount = float(lt.get("total_unpaid") or lt.get("rent") or 0)
         late_items.append(
             _item(
                 f"{lt.get('tenant')} — {lt.get('unit')}",
-                f"{ml} · {float(lt.get('rent') or 0):,.0f} ر.س · {lt.get('phone') or 'بدون جوال'}",
+                f"{months_n} أشهر · {amount:,.0f} ر.س · عقد {lt.get('contract') or '—'} · {lt.get('phone') or 'بدون جوال'}"
+                + (f" · {lt.get('month_labels')}" if lt.get("month_labels") else ""),
             )
         )
     if not late_items:
         late_items.append(_item("—", "لا متأخرات في الأشهر المحلّلة" if lang == "ar" else "No late rows in parsed months"))
+
+    units_summary_items = [
+        _item("الوحدات السكنية" if lang == "ar" else "Residential units", str(apartment_count or max(0, total_units - shop_count))),
+        _item("المحلات" if lang == "ar" else "Commercial units", str(shop_count)),
+        _item("إجمالي الوحدات" if lang == "ar" else "Total units", str(total_units)),
+        _item("المشغول" if lang == "ar" else "Occupied", str(occupied)),
+        _item("الشاغر" if lang == "ar" else "Vacant", str(vacant)),
+        _item("نسبة الإشغال" if lang == "ar" else "Occupancy", f"{occupancy_pct}%"),
+        _item("المتأخرون" if lang == "ar" else "Late tenants", str(late_tenant_count)),
+        _item("إجمالي المتأخرات" if lang == "ar" else "Total overdue", f"{total_unpaid:,.0f} ر.س"),
+    ]
+
+    quality_items = [_item("—", "لا ملاحظات" if lang == "ar" else "No warnings")]
+    if quality_log:
+        quality_items = [_item(f"#{i + 1}", str(w)) for i, w in enumerate(quality_log[:12])]
 
     expense_items = [
         _item("إجمالي المصروفات" if lang == "ar" else "Total expenses", f"{total_expenses:,.0f}"),
@@ -247,10 +271,12 @@ def analyze_upload_portfolio(
         "year": year,
         "sections": [
             _sec("files", labels["files"], file_items),
+            _sec("units_summary", "ملخص الوحدات" if lang == "ar" else "Units summary", units_summary_items),
             _sec("months", labels["months"], month_items),
             _sec("departed", labels["moved_out"], departed_items),
             _sec("moved_in", labels["moved_in"], moved_in_items),
-            _sec("late", labels["late"], late_items),
+            _sec("late_tenants", "المستأجرون المتأخرون" if lang == "ar" else "Late tenants", late_items),
+            _sec("late", labels["late"], late_items[:8]),
             _sec(
                 "revenue",
                 labels["revenue"],
@@ -263,6 +289,7 @@ def analyze_upload_portfolio(
             ),
             _sec("expenses", labels["expenses"], expense_items),
             _sec("contracts", labels["contracts"], contract_items or [_item("—", "لا عقود حرجة" if lang == "ar" else "No critical contracts")]),
+            _sec("quality", "سجل المراجعة" if lang == "ar" else "Review log", quality_items),
             _sec(
                 "portfolio",
                 labels["portfolio"],
@@ -278,15 +305,16 @@ def analyze_upload_portfolio(
 
     smart_decisions: List[dict] = []
     for lt in late_list[:4]:
-        ml = month_label(lt.get("month") or 0, lang)
+        months_n = lt.get("late_month_count") or 1
+        amount = float(lt.get("total_unpaid") or lt.get("rent") or 0)
         smart_decisions.append(
             {
-                "id": f"late_{lt.get('unit')}_{lt.get('month')}",
+                "id": f"late_{lt.get('unit')}_{lt.get('tenant')}",
                 "priority": "critical",
                 "title": (
-                    f"{lt.get('tenant')} — وحدة {lt.get('unit')} — تأخر {float(lt.get('rent') or 0):,.0f} ر.س ({ml})"
+                    f"{lt.get('tenant')} — وحدة {lt.get('unit')} — {months_n} أشهر · {amount:,.0f} ر.س"
                     if lang == "ar"
-                    else f"{lt.get('tenant')} — unit {lt.get('unit')} — overdue {float(lt.get('rent') or 0):,.0f} ({ml})"
+                    else f"{lt.get('tenant')} — unit {lt.get('unit')} — {months_n} mo · {amount:,.0f}"
                 ),
                 "action": "إرسال تذكير تحصيل + مراجعة العقد" if lang == "ar" else "Send collection reminder + review contract",
             }
@@ -345,18 +373,20 @@ def analyze_upload_portfolio(
     metrics = {
         "properties": len(properties),
         "units": total_units,
-        "tenants": len(tenants),
+        "tenants": len(active) if active else len(tenants),
         "occupancy_pct": occupancy_pct,
         "occupied_units": occupied,
         "vacant_units": vacant,
+        "residential_units": apartment_count or max(0, total_units - shop_count),
+        "commercial_units": shop_count,
         "total_revenue_annual": round(expected),
         "collected": round(collected),
         "remaining": round(remaining),
         "total_expenses": round(total_expenses),
         "contracts_expired": len(expired),
         "contracts_expiring_soon": len(expiring),
-        "late_tenants": len(late_list),
-        "late_value": round(sum(float(x.get("rent") or 0) for x in late_list)),
+        "late_tenants": late_tenant_count,
+        "late_value": round(total_unpaid),
         "maintenance_open": sum(c for _, c, _ in maint_freq),
         "maintenance_done": max(0, month_count - 1),
         "net_profit": round(net_profit),

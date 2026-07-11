@@ -91,6 +91,21 @@ def _infer_late(row: dict) -> bool:
     return not row.get("is_paid") and float(row.get("rent") or 0) > 0
 
 
+def parse_unit_cell(raw: str, type_cell: str = "", tenant_hint: str = "") -> dict:
+    """Normalize unit key — mirrors GAS parseUnitCell_ (shop vs apartment)."""
+    raw = (raw or "").strip()
+    type_cell = (type_cell or "").strip()
+    tenant_hint = (tenant_hint or "").strip()
+    unit_type = "شقة"
+    combined = f"{raw} {type_cell} {tenant_hint}".lower()
+    if re.search(r"(?:محل|دكان|shop|store|تجاري)", combined):
+        unit_type = "محل"
+    m = re.search(r"(\d+)", _norm_ar_nums(raw))
+    unit_no = m.group(1) if m else raw
+    unit_key = f"محل-{unit_no}" if unit_type == "محل" else str(unit_no)
+    return {"unit": unit_key, "unit_no": unit_no, "unit_type": unit_type, "unit_raw": raw}
+
+
 def parse_rent_roll_text(text: str, file_meta: dict) -> dict:
     text = _norm_ar_nums(text or "")
     if len(text) < 8:
@@ -122,15 +137,20 @@ def parse_rent_roll_text(text: str, file_meta: dict) -> dict:
         cells = next(reader, [])
         if not cells:
             continue
-        unit = _cell(cells, col_map.get("unit", -1))
+        unit_raw = _cell(cells, col_map.get("unit", -1))
         tenant = _cell(cells, col_map.get("tenant", -1))
-        if not unit and not tenant:
+        if not unit_raw and not tenant:
             continue
         if re.match(r"^(?:المجموع|total|إجمالي|sum)$", tenant, re.I):
             continue
+        unit_info = parse_unit_cell(unit_raw, "", tenant)
+        unit = unit_info["unit"]
         rent = _money(_cell(cells, col_map.get("rent", -1)))
         row = {
-            "unit": unit or tenant,
+            "unit": unit,
+            "unit_no": unit_info["unit_no"],
+            "unit_type": unit_info["unit_type"],
+            "unit_raw": unit_info["unit_raw"],
             "tenant": tenant or unit,
             "phone": _cell(cells, col_map.get("phone", -1)),
             "contract": _cell(cells, col_map.get("contract", -1)),

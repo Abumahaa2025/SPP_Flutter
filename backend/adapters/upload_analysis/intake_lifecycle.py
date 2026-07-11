@@ -244,28 +244,174 @@ def extract_month_from_expense(er: dict, row: dict) -> int:
     return extract_month(er.get("file_name") or "")
 
 
-def find_late_tenants(parsed_rolls: List[dict]) -> List[dict]:
-    late: List[dict] = []
-    seen: set = set()
+def build_unique_unit_stats(monthly_index: dict) -> dict:
+    """Count each physical unit once across all months (not per monthly file)."""
+    units: set = set()
+    shops: set = set()
+    apartments: set = set()
+    for k in monthly_index.get("keys") or []:
+        snap = (monthly_index.get("by_key") or {}).get(k) or {}
+        for u, row in (snap.get("units") or {}).items():
+            units.add(u)
+            unit_type = row.get("unit_type") or row.get("unitType") or "شقة"
+            if unit_type == "محل" or str(u).startswith("محل"):
+                shops.add(u)
+            else:
+                apartments.add(u)
+    return {
+        "unique_units": len(units),
+        "shop_count": len(shops),
+        "apartment_count": len(apartments),
+    }
+
+
+def _tenant_ledger_key(row: dict, unit: str) -> str:
+    contract = (row.get("contract") or "").strip()
+    if contract and len(contract) > 2 and contract not in ("بدون", "لا", "-", "none"):
+        return f"c|{contract}"
+    phone = (row.get("phone") or "").strip()
+    if len(phone) >= 8:
+        return f"p|{phone}"
+    tenant = row.get("tenant") or unit
+    return f"u|{unit}|{_tenant_key(tenant)}"
+
+
+def _payment_month_status(row: dict) -> str:
+    rent = float(row.get("rent") or 0)
+    paid = float(row.get("paid") or 0)
+    if row.get("is_paid") or (paid >= rent and rent > 0):
+        return "paid"
+    if 0 < paid < rent:
+        return "partial"
+    if row.get("is_late"):
+        return "unpaid"
+    if not rent:
+        return "not_due"
+    return "pending"
+
+
+def build_tenant_payment_ledger(parsed_rolls: List[dict]) -> dict:
+    """Monthly payment record per tenant/unit — aggregates late months across files."""
+    from .intake_classifier import month_label
+
+    ledger: Dict[str, dict] = {}
+    merge_count = 0
+    month_seen: set = set()
+
     for pr in parsed_rolls:
         for r in pr.get("rows") or []:
-            if not r.get("is_late"):
+            unit = r.get("unit") or ""
+            if not unit:
                 continue
-            k = f"{r.get('unit')}|{r.get('tenant')}|{pr.get('month')}"
-            if k in seen:
+            tk = _tenant_ledger_key(r, unit)
+            if tk not in ledger:
+                ledger[tk] = {
+                    "unit": unit,
+                    "unit_type": r.get("unit_type") or "شقة",
+                    "tenant": r.get("tenant") or unit,
+                    "phone": r.get("phone") or "",
+                    "contract": r.get("contract") or "",
+                    "rent": r.get("rent") or 0,
+                    "months": [],
+                    "total_due": 0.0,
+                    "total_paid": 0.0,
+                    "total_unpaid": 0.0,
+                    "late_month_count": 0,
+                }
+            ent = ledger[tk]
+            if r.get("phone") and not ent["phone"]:
+                ent["phone"] = r["phone"]
+            if r.get("contract") and not ent["contract"]:
+                ent["contract"] = r["contract"]
+            if r.get("rent"):
+                ent["rent"] = r["rent"]
+
+            rent = float(r.get("rent") or 0)
+            paid = float(r.get("paid") or 0)
+            if r.get("is_paid") and not paid:
+                paid = rent
+            status = _payment_month_status(r)
+            remaining = 0.0 if status == "paid" else max(0.0, rent - paid)
+            month_key = f"{pr.get('year')}-{pr.get('month')}|{unit}|{tk}"
+            if month_key in month_seen:
+                merge_count += 1
                 continue
-            seen.add(k)
-            late.append(
+            month_seen.add(month_key)
+
+            ent["months"].append(
                 {
-                    "unit": r.get("unit"),
-                    "tenant": r.get("tenant"),
-                    "rent": r.get("rent"),
                     "month": pr.get("month"),
                     "year": pr.get("year"),
-                    "phone": r.get("phone", ""),
+                    "due": rent,
+                    "paid": paid,
+                    "remaining": remaining,
+                    "status": status,
                 }
             )
-    return late
+            ent["total_due"] += rent
+            ent["total_paid"] += paid
+            if status != "paid":
+                ent["total_unpaid"] += remaining or rent
+                ent["late_month_count"] += 1
+
+    for ent in ledger.values():
+        ent["months"].sort(key=lambda m: month_sort_key(m.get("year", 0), m.get("month", 0)))
+
+    late_tenants: List[dict] = []
+    for ent in ledger.values():
+        unpaid = [m for m in ent["months"] if m["status"] in ("unpaid", "partial", "pending")]
+        if not unpaid:
+            continue
+        month_labels = " · ".join(
+            f"{month_label(int(m.get('month') or 0), 'ar')} ({m.get('remaining') or m.get('due')} ر.س)"
+            for m in unpaid
+        )
+        late_tenants.append(
+            {
+                **ent,
+                "late_month_count": len(unpaid),
+                "month_labels": month_labels,
+                "oldest_month": unpaid[0],
+            }
+        )
+
+    late_tenants.sort(
+        key=lambda x: (
+            -float(x.get("total_unpaid") or 0),
+            -int(x.get("late_month_count") or 0),
+            month_sort_key(
+                (x.get("oldest_month") or {}).get("year", 0),
+                (x.get("oldest_month") or {}).get("month", 0),
+            ),
+        )
+    )
+    return {
+        "ledger": ledger,
+        "late_tenants": late_tenants,
+        "merge_count": merge_count,
+        "tenant_count": len(ledger),
+    }
+
+
+def find_late_tenants(parsed_rolls: List[dict]) -> List[dict]:
+    """Aggregate late tenants across all months (not last month only)."""
+    ledger = build_tenant_payment_ledger(parsed_rolls)
+    out: List[dict] = []
+    for lt in ledger["late_tenants"]:
+        out.append(
+            {
+                "unit": lt.get("unit"),
+                "tenant": lt.get("tenant"),
+                "rent": lt.get("rent"),
+                "phone": lt.get("phone", ""),
+                "contract": lt.get("contract", ""),
+                "late_month_count": lt.get("late_month_count"),
+                "total_unpaid": lt.get("total_unpaid"),
+                "month_labels": lt.get("month_labels"),
+                "months": lt.get("months"),
+            }
+        )
+    return out
 
 
 def maintenance_frequency(expense_rolls: List[dict]) -> List[Tuple[str, int, float]]:
