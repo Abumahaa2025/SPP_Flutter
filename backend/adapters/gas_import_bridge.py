@@ -55,6 +55,9 @@ def _labels(lang: Lang) -> Dict[str, str]:
             "moved_out": "من غادر",
             "moved_in": "من دخل / جدد",
             "late": "المتأخرات — بالاسم والوحدة",
+            "late_tenants": "المستأجرون المتأخرون",
+            "units_summary": "ملخص الوحدات",
+            "quality": "سجل المراجعة والأخطاء",
             "revenue": "الإيرادات والتحصيل",
             "expenses": "المصروفات والصيانة",
             "contracts": "العقود المنتهية والقريبة",
@@ -73,6 +76,9 @@ def _labels(lang: Lang) -> Dict[str, str]:
         "moved_out": "Departed tenants",
         "moved_in": "New / renewed tenants",
         "late": "Late payments — by name & unit",
+        "late_tenants": "Late tenants",
+        "units_summary": "Units summary",
+        "quality": "Review log & warnings",
         "revenue": "Revenue & collection",
         "expenses": "Expenses & maintenance",
         "contracts": "Expired & expiring contracts",
@@ -108,6 +114,22 @@ def map_gas_report_to_portfolio(
     active = lc.get("active") or []
     newcomers = lc.get("newcomers") or []
     late_rows = (pb.get("late") or []) + (pb.get("pending") or [])
+    late_tenants_detailed = pb.get("lateTenants") or []
+    quality_log = report.get("qualityLog") or []
+
+    unique_units = int(
+        dr.get("uniqueUnits")
+        or stats.get("uniqueUnits")
+        or stats.get("units")
+        or len(active)
+    )
+    apartment_count = int(dr.get("apartmentCount") or stats.get("apartmentCount") or 0)
+    shop_count = int(dr.get("shopCount") or stats.get("shopCount") or 0)
+    total_unpaid = float(pb.get("totalUnpaidAllMonths") or sum(float(x.get("totalUnpaid") or x.get("rent") or 0) for x in late_tenants_detailed) or sum(float(x.get("rent") or 0) for x in late_rows))
+    late_tenant_count = int(pb.get("lateTenantCount") or len(late_tenants_detailed) or len(late_rows))
+    occupied = len(active)
+    vacant = max(0, unique_units - occupied)
+    occupancy_pct = round(occupied / unique_units * 100, 1) if unique_units else 0
 
     expected = float(ann.get("totalExpected") or 0)
     collected = float(ann.get("totalCollected") or 0)
@@ -169,17 +191,43 @@ def map_gas_report_to_portfolio(
         )
 
     late_items = []
-    for lt in late_rows[:15]:
+    for lt in late_tenants_detailed[:20]:
+        months_txt = lt.get("monthLabels") or ""
         late_items.append(
             _item(
                 f"{lt.get('tenant')} — {lt.get('unit')}",
-                f"{float(lt.get('rent') or 0):,.0f} ر.س · {lt.get('phone') or 'بدون جوال'}",
+                f"{lt.get('lateMonthCount', 0)} أشهر · {float(lt.get('totalUnpaid') or 0):,.0f} ر.س · "
+                f"عقد {lt.get('contract') or '—'} · {lt.get('phone') or 'بدون جوال'}"
+                + (f" · {months_txt}" if months_txt and lang == "ar" else ""),
             )
         )
+    if not late_items:
+        for lt in late_rows[:15]:
+            late_items.append(
+                _item(
+                    f"{lt.get('tenant')} — {lt.get('unit')}",
+                    f"{float(lt.get('rent') or 0):,.0f} ر.س · {lt.get('phone') or 'بدون جوال'}",
+                )
+            )
     if not late_items:
         late_items.append(
             _item("—", "لا متأخرات في الأشهر المحلّلة" if lang == "ar" else "No late rows in parsed months")
         )
+
+    units_summary_items = [
+        _item("الوحدات السكنية" if lang == "ar" else "Residential units", str(apartment_count or max(0, unique_units - shop_count))),
+        _item("المحلات" if lang == "ar" else "Commercial units", str(shop_count)),
+        _item("إجمالي الوحدات" if lang == "ar" else "Total units", str(unique_units)),
+        _item("المشغول" if lang == "ar" else "Occupied", str(occupied)),
+        _item("الشاغر" if lang == "ar" else "Vacant", str(vacant)),
+        _item("نسبة الإشغال" if lang == "ar" else "Occupancy", f"{occupancy_pct}%"),
+        _item("المتأخرون" if lang == "ar" else "Late tenants", str(late_tenant_count)),
+        _item("إجمالي المتأخرات" if lang == "ar" else "Total overdue", f"{total_unpaid:,.0f} ر.س"),
+    ]
+
+    quality_items = [_item("—", "لا ملاحظات" if lang == "ar" else "No warnings")]
+    if quality_log:
+        quality_items = [_item(f"#{i + 1}", str(w)) for i, w in enumerate(quality_log[:12])]
 
     expense_items = [_item("إجمالي المصروفات" if lang == "ar" else "Total expenses", f"{total_expenses:,.0f}")]
     for r in (dr.get("maintenanceLog") or [])[:6]:
@@ -192,10 +240,12 @@ def map_gas_report_to_portfolio(
         "year": year,
         "sections": [
             _sec("files", labels["files"], file_items),
+            _sec("units_summary", labels["units_summary"], units_summary_items),
             _sec("months", labels["months"], month_items or [_item("—", "—")]),
             _sec("departed", labels["moved_out"], departed_items),
             _sec("moved_in", labels["moved_in"], moved_in_items or [_item("—", "—")]),
-            _sec("late", labels["late"], late_items),
+            _sec("late_tenants", labels["late_tenants"], late_items),
+            _sec("late", labels["late"], late_items[:8]),
             _sec(
                 "revenue",
                 labels["revenue"],
@@ -208,6 +258,7 @@ def map_gas_report_to_portfolio(
             ),
             _sec("expenses", labels["expenses"], expense_items),
             _sec("contracts", labels["contracts"], [_item("—", "—")]),
+            _sec("quality", labels["quality"], quality_items),
             _sec(
                 "portfolio",
                 labels["portfolio"],
@@ -217,7 +268,7 @@ def map_gas_report_to_portfolio(
                     _item("المصروفات" if lang == "ar" else "Expenses", f"{total_expenses:,.0f}"),
                     _item(
                         "مؤجرة / شاغرة" if lang == "ar" else "Occupied / vacant",
-                        f"{len(active)} / {max(0, int(stats.get('units', 0)) - len(active))}",
+                        f"{occupied} / {vacant}",
                     ),
                 ],
             ),
@@ -225,15 +276,17 @@ def map_gas_report_to_portfolio(
     }
 
     smart_decisions: List[dict] = []
-    for lt in late_rows[:4]:
+    for lt in (late_tenants_detailed or late_rows)[:4]:
+        months_n = lt.get("lateMonthCount") or 1
+        amount = float(lt.get("totalUnpaid") or lt.get("rent") or 0)
         smart_decisions.append(
             {
                 "id": f"late_{lt.get('unit')}_{lt.get('tenant')}",
                 "priority": "critical",
                 "title": (
-                    f"{lt.get('tenant')} — وحدة {lt.get('unit')} — تأخر {float(lt.get('rent') or 0):,.0f} ر.س"
+                    f"{lt.get('tenant')} — وحدة {lt.get('unit')} — {months_n} أشهر · {amount:,.0f} ر.س"
                     if lang == "ar"
-                    else f"{lt.get('tenant')} — unit {lt.get('unit')} — overdue {float(lt.get('rent') or 0):,.0f}"
+                    else f"{lt.get('tenant')} — unit {lt.get('unit')} — {months_n} mo · {amount:,.0f}"
                 ),
                 "action": "إرسال تذكير تحصيل + مراجعة العقد" if lang == "ar" else "Send collection reminder",
             }
@@ -293,19 +346,21 @@ def map_gas_report_to_portfolio(
         ],
         "metrics": {
             "properties": int(stats.get("properties") or 1),
-            "units": int(stats.get("units") or len(active)),
+            "units": unique_units,
             "tenants": len(active),
-            "occupancy_pct": 0,
-            "occupied_units": len(active),
-            "vacant_units": max(0, int(stats.get("units") or 0) - len(active)),
+            "occupancy_pct": occupancy_pct,
+            "occupied_units": occupied,
+            "vacant_units": vacant,
+            "residential_units": apartment_count or max(0, unique_units - shop_count),
+            "commercial_units": shop_count,
             "total_revenue_annual": round(expected),
             "collected": round(collected),
             "remaining": round(remaining),
             "total_expenses": round(total_expenses),
             "contracts_expired": 0,
             "contracts_expiring_soon": 0,
-            "late_tenants": len(late_rows),
-            "late_value": round(sum(float(x.get("rent") or 0) for x in late_rows)),
+            "late_tenants": late_tenant_count,
+            "late_value": round(total_unpaid),
             "maintenance_open": len(dr.get("maintenanceLog") or []),
             "maintenance_done": max(0, month_count - 1),
             "net_profit": round(net_profit),
@@ -336,6 +391,7 @@ def map_gas_report_to_portfolio(
             "synthetic_fallback": False,
             "parse_errors": report.get("parseErrors") or [],
             "files_without_content": report.get("filesWithoutContent") or [],
+            "quality_log": quality_log,
             "gas_mode": gas_payload.get("mode"),
             "employee_brief": report.get("employeeBrief"),
         },

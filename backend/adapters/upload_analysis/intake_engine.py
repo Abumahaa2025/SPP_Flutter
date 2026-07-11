@@ -10,6 +10,8 @@ from .intake_lifecycle import (
     build_annual_stats,
     build_lifecycle,
     build_monthly_index,
+    build_tenant_payment_ledger,
+    build_unique_unit_stats,
     costliest_units,
     find_late_tenants,
     maintenance_frequency,
@@ -102,6 +104,15 @@ def analyze_statements_deep(files: List[dict], ctx: dict) -> dict:
     monthly_index = build_monthly_index(parsed_rolls)
     lifecycle = build_lifecycle(monthly_index)
     annual = build_annual_stats(parsed_rolls, lifecycle)
+    unique_stats = build_unique_unit_stats(monthly_index)
+    payment_ledger = build_tenant_payment_ledger(parsed_rolls)
+    quality_log: List[str] = []
+    if payment_ledger.get("merge_count"):
+        quality_log.append(f"تم دمج {payment_ledger['merge_count']} سجلًا مكررًا للمستأجر/الشهر.")
+    for pe in parse_errors:
+        quality_log.append(f"خطأ في {pe.get('file_name')}: {pe.get('error')}")
+    for fw in files_without_content:
+        quality_log.append(f"لم يُقرأ: {fw.get('file_name')}")
     if expense_rolls:
         exp_sum = sum(float(e.get("total") or 0) for e in expense_rolls)
         annual["expense_from_rolls"] = round(exp_sum)
@@ -117,6 +128,9 @@ def analyze_statements_deep(files: List[dict], ctx: dict) -> dict:
         "lifecycle": lifecycle,
         "annual": annual,
         "late_tenants": find_late_tenants(parsed_rolls),
+        "payment_ledger": payment_ledger,
+        "unique_unit_stats": unique_stats,
+        "quality_log": quality_log,
         "maintenance_freq": maintenance_frequency(expense_rolls),
         "costliest_units": costliest_units(expense_rolls, parsed_rolls),
         "used_synthetic": False,
