@@ -396,6 +396,60 @@ def build_tenant_payment_ledger(parsed_rolls: List[dict]) -> dict:
     }
 
 
+def build_late_payments_by_month(payment_ledger: dict) -> dict:
+    """Group unpaid/partial/pending amounts by calendar month — universal import rule."""
+    from .intake_classifier import month_label as _ml
+
+    ledger = payment_ledger.get("ledger") or {}
+    month_map: dict = {}
+    tenant_keys: set = set()
+
+    for ent in ledger.values():
+        for m in ent.get("months") or []:
+            status = m.get("status") or ""
+            if status in ("paid", "not_due"):
+                continue
+            year = int(m.get("year") or 0)
+            month = int(m.get("month") or 0)
+            key = f"{year}-{month}"
+            if key not in month_map:
+                month_map[key] = {
+                    "year": year,
+                    "month": month,
+                    "month_label": f"{_ml(month, 'ar')} {year}".strip(),
+                    "items": [],
+                    "month_total": 0.0,
+                    "late_count": 0,
+                }
+            amt = float(m.get("remaining") or m.get("due") or 0)
+            month_map[key]["items"].append(
+                {
+                    "tenant": ent.get("tenant") or "—",
+                    "unit": ent.get("unit") or "—",
+                    "contract": ent.get("contract") or "",
+                    "phone": ent.get("phone") or "",
+                    "amount": amt,
+                    "status": status,
+                    "rent": float(m.get("due") or 0),
+                    "paid": float(m.get("paid") or 0),
+                }
+            )
+            month_map[key]["month_total"] += amt
+            month_map[key]["late_count"] += 1
+            tenant_keys.add(f"{ent.get('tenant')}|{ent.get('unit')}")
+
+    months = sorted(month_map.values(), key=lambda x: month_sort_key(x.get("year", 0), x.get("month", 0)))
+    for mb in months:
+        mb["items"].sort(key=lambda it: (-float(it.get("amount") or 0), str(it.get("unit") or "")))
+
+    grand_total = sum(float(m.get("month_total") or 0) for m in months)
+    return {
+        "months": months,
+        "grand_total": grand_total,
+        "late_tenant_count": len(tenant_keys),
+    }
+
+
 def find_late_tenants(parsed_rolls: List[dict]) -> List[dict]:
     """Aggregate late tenants across all months (not last month only)."""
     ledger = build_tenant_payment_ledger(parsed_rolls)

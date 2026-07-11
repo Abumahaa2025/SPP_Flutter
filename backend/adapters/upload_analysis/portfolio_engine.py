@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Literal
 from .intake_classifier import month_label
 from .intake_engine import analyze_statements_deep
 from .intake_lifecycle import build_month_comparison
+from .late_report_format import build_late_section_items
 
 Lang = Literal["ar", "en"]
 
@@ -21,7 +22,7 @@ def _labels(lang: Lang) -> Dict[str, str]:
             "months": "ربط الأشهر والمقارنة",
             "moved_out": "من غادر",
             "moved_in": "من دخل / جدد",
-            "late": "المتأخرات — بالاسم والوحدة",
+            "late": "المتأخرات — شهرًا بشهر",
             "revenue": "الإيرادات والتحصيل",
             "expenses": "المصروفات والصيانة",
             "contracts": "العقود المنتهية والقريبة",
@@ -39,7 +40,7 @@ def _labels(lang: Lang) -> Dict[str, str]:
         "months": "Month linking & comparison",
         "moved_out": "Departed tenants",
         "moved_in": "New / renewed tenants",
-        "late": "Late payments — by name & unit",
+        "late": "Late payments — by month",
         "revenue": "Revenue & collection",
         "expenses": "Expenses & maintenance",
         "contracts": "Expired & expiring contracts",
@@ -132,8 +133,12 @@ def analyze_upload_portfolio(
     )
     vacant = max(0, total_units - occupied)
     occupancy_pct = round((occupied / total_units * 100) if total_units else 0, 1)
-    total_unpaid = sum(float(lt.get("total_unpaid") or lt.get("rent") or 0) for lt in late_list)
-    late_tenant_count = len(late_list)
+    late_by_month = deep.get("late_by_month") or {}
+    total_unpaid = float(
+        late_by_month.get("grand_total")
+        or sum(float(lt.get("total_unpaid") or lt.get("rent") or 0) for lt in late_list)
+    )
+    late_tenant_count = int(late_by_month.get("late_tenant_count") or len(late_list))
 
     # --- Sections with named detail ---
     file_items = []
@@ -204,19 +209,13 @@ def analyze_upload_portfolio(
             )
         )
 
-    late_items = []
-    for lt in late_list[:20]:
-        months_n = lt.get("late_month_count") or 1
-        amount = float(lt.get("total_unpaid") or lt.get("rent") or 0)
-        late_items.append(
-            _item(
-                f"{lt.get('tenant')} — {lt.get('unit')}",
-                f"{months_n} أشهر · {amount:,.0f} ر.س · عقد {lt.get('contract') or '—'} · {lt.get('phone') or 'بدون جوال'}"
-                + (f" · {lt.get('month_labels')}" if lt.get("month_labels") else ""),
-            )
-        )
-    if not late_items:
-        late_items.append(_item("—", "لا متأخرات في الأشهر المحلّلة" if lang == "ar" else "No late rows in parsed months"))
+    late_items = build_late_section_items(
+        late_by_month=late_by_month,
+        late_tenants_detailed=late_list,
+        total_unpaid=total_unpaid,
+        late_tenant_count=late_tenant_count,
+        lang=lang,
+    )
 
     units_summary_items = [
         _item("الوحدات السكنية" if lang == "ar" else "Residential units", str(apartment_count or max(0, total_units - shop_count))),
@@ -275,8 +274,8 @@ def analyze_upload_portfolio(
             _sec("months", labels["months"], month_items),
             _sec("departed", labels["moved_out"], departed_items),
             _sec("moved_in", labels["moved_in"], moved_in_items),
-            _sec("late_tenants", "المستأجرون المتأخرون" if lang == "ar" else "Late tenants", late_items),
-            _sec("late", labels["late"], late_items[:8]),
+            _sec("late_tenants", "المتأخرات — شهرًا بشهر" if lang == "ar" else "Late payments — by month", late_items),
+            _sec("late", labels["late"], [it for it in late_items if not str(it.get("label", "")).startswith("──")][:12]),
             _sec(
                 "revenue",
                 labels["revenue"],

@@ -9,6 +9,7 @@ from .intake_classifier import classify_file
 from .intake_lifecycle import (
     build_annual_stats,
     build_lifecycle,
+    build_late_payments_by_month,
     build_monthly_index,
     build_tenant_payment_ledger,
     build_unique_unit_stats,
@@ -129,6 +130,7 @@ def analyze_statements_deep(files: List[dict], ctx: dict) -> dict:
         "lifecycle": lifecycle,
         "annual": annual,
         "late_tenants": find_late_tenants(parsed_rolls),
+        "late_by_month": build_late_payments_by_month(payment_ledger),
         "payment_ledger": payment_ledger,
         "unique_unit_stats": unique_stats,
         "quality_log": quality_log,

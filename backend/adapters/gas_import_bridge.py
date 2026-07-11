@@ -9,6 +9,7 @@ from typing import Any, Dict, List, Literal, Optional
 from .gas_client import GasClientError
 from .live_data import get_gas_client
 from .upload_analysis.intake_classifier import month_label
+from .upload_analysis.late_report_format import build_late_section_items
 from .upload_analysis.portfolio_engine import analyze_upload_portfolio
 
 logger = logging.getLogger(__name__)
@@ -54,8 +55,8 @@ def _labels(lang: Lang) -> Dict[str, str]:
             "months": "ربط الأشهر والمقارنة",
             "moved_out": "من غادر",
             "moved_in": "من دخل / جدد",
-            "late": "المتأخرات — بالاسم والوحدة",
-            "late_tenants": "المستأجرون المتأخرون",
+            "late": "المتأخرات — شهرًا بشهر",
+            "late_tenants": "المتأخرات — شهرًا بشهر",
             "units_summary": "ملخص الوحدات",
             "quality": "سجل المراجعة والأخطاء",
             "revenue": "الإيرادات والتحصيل",
@@ -75,8 +76,8 @@ def _labels(lang: Lang) -> Dict[str, str]:
         "months": "Month linking & comparison",
         "moved_out": "Departed tenants",
         "moved_in": "New / renewed tenants",
-        "late": "Late payments — by name & unit",
-        "late_tenants": "Late tenants",
+        "late": "Late payments — by month",
+        "late_tenants": "Late payments — by month",
         "units_summary": "Units summary",
         "quality": "Review log & warnings",
         "revenue": "Revenue & collection",
@@ -219,29 +220,14 @@ def map_gas_report_to_portfolio(
             )
         )
 
-    late_items = []
-    for lt in late_tenants_detailed[:20]:
-        months_txt = lt.get("monthLabels") or ""
-        late_items.append(
-            _item(
-                f"{lt.get('tenant')} — {lt.get('unit')}",
-                f"{lt.get('lateMonthCount', 0)} أشهر · {float(lt.get('totalUnpaid') or 0):,.0f} ر.س · "
-                f"عقد {lt.get('contract') or '—'} · {lt.get('phone') or 'بدون جوال'}"
-                + (f" · {months_txt}" if months_txt and lang == "ar" else ""),
-            )
-        )
-    if not late_items:
-        for lt in late_rows[:15]:
-            late_items.append(
-                _item(
-                    f"{lt.get('tenant')} — {lt.get('unit')}",
-                    f"{float(lt.get('rent') or 0):,.0f} ر.س · {lt.get('phone') or 'بدون جوال'}",
-                )
-            )
-    if not late_items:
-        late_items.append(
-            _item("—", "لا متأخرات في الأشهر المحلّلة" if lang == "ar" else "No late rows in parsed months")
-        )
+    late_by_month = pb.get("lateByMonth") or {}
+    late_items = build_late_section_items(
+        late_by_month=late_by_month,
+        late_tenants_detailed=late_tenants_detailed,
+        total_unpaid=total_unpaid,
+        late_tenant_count=late_tenant_count,
+        lang=lang,
+    )
 
     units_summary_items = [
         _item("الوحدات السكنية" if lang == "ar" else "Residential units", str(apartment_count or max(0, unique_units - shop_count))),
@@ -275,7 +261,7 @@ def map_gas_report_to_portfolio(
             _sec("departed", labels["moved_out"], departed_items),
             _sec("moved_in", labels["moved_in"], moved_in_items or [_item("—", "—")]),
             _sec("late_tenants", labels["late_tenants"], late_items),
-            _sec("late", labels["late"], late_items[:8]),
+            _sec("late", labels["late"], [it for it in late_items if not str(it.get("label", "")).startswith("──")][:12]),
             _sec(
                 "revenue",
                 labels["revenue"],
