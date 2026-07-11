@@ -24,6 +24,59 @@ export type PortfolioMetrics = {
   files_analyzed: number;
 };
 
+export type LatePaymentTenantEntry = {
+  tenant: string;
+  unit: string;
+  contract: string;
+  phone: string;
+  due: number;
+  paid: number;
+  remaining: number;
+  status: string;
+  status_label: string;
+};
+
+export type LatePaymentMonth = {
+  key: string;
+  label: string;
+  year: number;
+  month: number;
+  tenant_count: number;
+  month_total: number;
+  tenants: LatePaymentTenantEntry[];
+};
+
+export type LatePaymentTenantTotal = {
+  tenant: string;
+  unit: string;
+  contract: string;
+  phone: string;
+  late_month_count: number;
+  total_unpaid: number;
+  months: { label: string; amount: number; year?: number; month?: number }[];
+};
+
+export type LatePaymentsReport = {
+  summary: {
+    total_unpaid: number;
+    late_tenant_count: number;
+    top_tenant?: {
+      tenant: string;
+      unit: string;
+      total_unpaid: number;
+      late_month_count?: number;
+    } | null;
+    oldest_tenant?: {
+      tenant: string;
+      unit: string;
+      month_label: string;
+      total_unpaid?: number;
+    } | null;
+  };
+  months: LatePaymentMonth[];
+  tenant_totals: LatePaymentTenantTotal[];
+};
+
 export type ReportSection = {
   key: string;
   title: string;
@@ -51,6 +104,7 @@ export type PortfolioAnalysis = {
   prompt_options: { key: string; label: string }[];
   metrics: PortfolioMetrics;
   executive_report: { title: string; year: number; sections: ReportSection[] };
+  late_payments?: LatePaymentsReport | null;
   month_comparison: { month: string; revenue: number; expenses: number }[];
   expense_by_type: { type: string; amount: number }[];
   smart_decisions: SmartDecision[];

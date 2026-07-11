@@ -3,6 +3,7 @@ import { View, Text, StyleSheet } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
 import { GlassCard } from '@/src/components/GlassCard';
+import { LatePaymentsSection } from '@/src/components/LatePaymentsSection';
 import { AppIcon } from '@/src/components/ui/AppIcon';
 import type { PortfolioAnalysis } from '@/src/api/portfolio-analysis';
 import { colors, spacing, typography, radius } from '@/src/theme';
@@ -13,7 +14,7 @@ type Props = { analysis: PortfolioAnalysis; delay?: number };
 /** Phase 2 — executive report from portfolio analysis. */
 export function UploadExecutiveReport({ analysis, delay = 0 }: Props) {
   const { t, isRTL } = useI18n();
-  const { executive_report: report, metrics, month_comparison } = analysis;
+  const { executive_report: report, metrics, month_comparison, late_payments } = analysis;
 
   return (
     <Animated.View entering={FadeInDown.duration(600).delay(delay)} style={styles.wrap}>
@@ -39,19 +40,32 @@ export function UploadExecutiveReport({ analysis, delay = 0 }: Props) {
         </View>
       </GlassCard>
 
-      {report.sections.map((sec, i) => (
-        <Animated.View key={sec.key} entering={FadeInDown.duration(500).delay(delay + 80 + i * 50)}>
-          <GlassCard padding={18} radiusToken="md" style={styles.sectionCard}>
-            <Text style={[styles.sectionTitle, isRTL && styles.rtl]}>{sec.title}</Text>
-            {sec.items.map((item) => (
-              <View key={item.label} style={[styles.row, isRTL && styles.rowRtl]}>
-                <Text style={[styles.rowLabel, isRTL && styles.rtl]}>{item.label}</Text>
-                <Text style={styles.rowValue}>{item.value}</Text>
-              </View>
-            ))}
-          </GlassCard>
-        </Animated.View>
-      ))}
+      {report.sections.map((sec, i) => {
+        if (late_payments && (sec.key === 'late_tenants' || sec.key === 'late')) {
+          if (sec.key !== 'late_tenants') return null;
+          return (
+            <LatePaymentsSection
+              key="late_payments"
+              data={late_payments}
+              title={sec.title}
+              delay={delay + 80 + i * 50}
+            />
+          );
+        }
+        return (
+          <Animated.View key={sec.key} entering={FadeInDown.duration(500).delay(delay + 80 + i * 50)}>
+            <GlassCard padding={18} radiusToken="md" style={styles.sectionCard}>
+              <Text style={[styles.sectionTitle, isRTL && styles.rtl]}>{sec.title}</Text>
+              {sec.items.map((item) => (
+                <View key={`${sec.key}-${item.label}`} style={[styles.row, isRTL && styles.rowRtl]}>
+                  <Text style={[styles.rowLabel, isRTL && styles.rtl]}>{item.label}</Text>
+                  <Text style={styles.rowValue}>{item.value}</Text>
+                </View>
+              ))}
+            </GlassCard>
+          </Animated.View>
+        );
+      })}
 
       {month_comparison.length > 0 ? (
         <GlassCard padding={18} radiusToken="md" edge="emerald">

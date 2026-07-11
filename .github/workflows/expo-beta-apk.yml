@@ -15,11 +15,11 @@ on:
       note:
         description: 'Build note (optional)'
         required: false
-        default: 'Beta 11 — GAS Smart Property engines'
+        default: 'Beta 12 — Late payments cards (monthly + tenant totals)'
       release_tag:
         description: 'GitHub Release tag'
         required: false
-        default: 'v1.0.0-beta.11'
+        default: 'v1.0.0-beta.12'
 
 jobs:
   build:
@@ -113,13 +113,14 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ github.event.inputs.release_tag }}
-          name: Beta 11
+          name: Beta 12
           body: |
-            SPP Beta 11 — Smart Property GAS engines wired (upload analysis, PDF, apply).
+            SPP Beta 12 — Late payments: collapsible month cards, tenant fields, per-tenant totals.
 
             **Direct install (Android / Chrome):**
             https://github.com/${{ github.repository }}/releases/download/${{ github.event.inputs.release_tag }}/spp-beta.apk
 
+            Backend: structured `late_payments` from Render (commit f37d146+).
             Installs over previous beta versions without uninstalling. User data is preserved.
           files: |
             frontend/dist/spp-beta.apk
