@@ -1073,7 +1073,7 @@ async def upload_create_pdf(req: UploadPdfRequest):
     if not gas_import_available():
         raise HTTPException(503, "PDF requires GAS Smart Property backend")
     try:
-        result = await asyncio.to_thread(create_gas_owner_pdf)
+        result = await asyncio.to_thread(create_gas_owner_pdf, req.analysis_id)
         return result
     except Exception as exc:
         raise HTTPException(502, str(exc)) from exc

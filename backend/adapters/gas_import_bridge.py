@@ -92,6 +92,28 @@ def _labels(lang: Lang) -> Dict[str, str]:
     }
 
 
+def _compute_analysis_confidence(
+    *,
+    parse_errors: List[str],
+    files_without_content: List[str],
+    merge_count: int,
+    late_tenants: List[dict],
+    unique_units: int,
+) -> float:
+    score = 100.0
+    score -= len(parse_errors) * 8
+    score -= len(files_without_content) * 12
+    score -= min(15, merge_count * 2)
+    if unique_units <= 0:
+        score -= 25
+    missing_contract = sum(1 for lt in late_tenants if not (lt.get("contract") or "").strip())
+    missing_phone = sum(1 for lt in late_tenants if not (lt.get("phone") or "").strip())
+    if late_tenants:
+        score -= min(10, round((missing_contract / len(late_tenants)) * 8))
+        score -= min(8, round((missing_phone / len(late_tenants)) * 6))
+    return round(max(40.0, min(100.0, score)), 1)
+
+
 def map_gas_report_to_portfolio(
     gas_payload: dict,
     files: List[dict],
@@ -125,6 +147,13 @@ def map_gas_report_to_portfolio(
     )
     apartment_count = int(dr.get("apartmentCount") or stats.get("apartmentCount") or 0)
     shop_count = int(dr.get("shopCount") or stats.get("shopCount") or 0)
+    confidence = _compute_analysis_confidence(
+        parse_errors=report.get("parseErrors") or [],
+        files_without_content=report.get("filesWithoutContent") or [],
+        merge_count=int(pb.get("mergeCount") or 0),
+        late_tenants=late_tenants_detailed,
+        unique_units=unique_units,
+    )
     total_unpaid = float(pb.get("totalUnpaidAllMonths") or sum(float(x.get("totalUnpaid") or x.get("rent") or 0) for x in late_tenants_detailed) or sum(float(x.get("rent") or 0) for x in late_rows))
     late_tenant_count = int(pb.get("lateTenantCount") or len(late_tenants_detailed) or len(late_rows))
     occupied = len(active)
@@ -223,6 +252,7 @@ def map_gas_report_to_portfolio(
         _item("نسبة الإشغال" if lang == "ar" else "Occupancy", f"{occupancy_pct}%"),
         _item("المتأخرون" if lang == "ar" else "Late tenants", str(late_tenant_count)),
         _item("إجمالي المتأخرات" if lang == "ar" else "Total overdue", f"{total_unpaid:,.0f} ر.س"),
+        _item("ثقة التحليل" if lang == "ar" else "Analysis confidence", f"{confidence}%"),
     ]
 
     quality_items = [_item("—", "لا ملاحظات" if lang == "ar" else "No warnings")]
@@ -370,6 +400,7 @@ def map_gas_report_to_portfolio(
             "departed_count": len(departed),
             "newcomers_count": len(newcomers),
             "collection_rate_pct": round(collected / expected * 100) if expected else 0,
+            "analysis_confidence_pct": confidence,
         },
         "executive_report": executive_report,
         "month_comparison": month_cmp,
@@ -440,9 +471,13 @@ def apply_gas_import(
     }
 
 
-def create_gas_owner_pdf() -> Dict[str, Any]:
+def create_gas_owner_pdf(analysis_id: Optional[str] = None) -> Dict[str, Any]:
     gas = get_gas_client()
-    data = gas.post_action("createOwnerReportPdf", {})
+    params: Dict[str, Any] = {}
+    if analysis_id:
+        session = _import_sessions.get(analysis_id) or {}
+        params["batchId"] = session.get("batch_id") or analysis_id
+    data = gas.post_action("createOwnerReportPdf", params)
     url = (data or {}).get("url") if isinstance(data, dict) else None
     if not url:
         raise GasClientError("لم يُرجع GAS رابط PDF")
