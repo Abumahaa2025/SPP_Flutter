@@ -10,6 +10,10 @@ from .intake_classifier import month_label
 from .intake_engine import analyze_statements_deep
 from .intake_lifecycle import build_month_comparison
 from .late_report_format import build_late_section_items, build_late_payments_view_model
+from adapters.koil.import_snapshot import snapshot_from_deep
+from adapters.koil.property_knowledge_engine import build_property_knowledge
+from adapters.koil.koil_reasoning_engine import run_koil_reasoning
+from adapters.koil.koil_report_bridge import apply_koil_to_executive_report, reasoning_to_smart_decisions
 
 Lang = Literal["ar", "en"]
 
@@ -224,6 +228,10 @@ def analyze_upload_portfolio(
         lang=lang,
     )
 
+    import_snapshot = snapshot_from_deep(deep)
+    property_knowledge = build_property_knowledge(import_snapshot, lang)
+    koil_reasoning = run_koil_reasoning(property_knowledge, lang)
+
     units_summary_items = [
         _item("الوحدات السكنية" if lang == "ar" else "Residential units", str(apartment_count or max(0, total_units - shop_count))),
         _item("المحلات" if lang == "ar" else "Commercial units", str(shop_count)),
@@ -307,24 +315,10 @@ def analyze_upload_portfolio(
             ),
         ],
     }
+    executive_report = apply_koil_to_executive_report(executive_report, koil_reasoning, lang, insert_after_keys=("files",))
 
-    smart_decisions: List[dict] = []
-    for lt in late_list[:4]:
-        months_n = lt.get("late_month_count") or 1
-        amount = float(lt.get("total_unpaid") or lt.get("rent") or 0)
-        smart_decisions.append(
-            {
-                "id": f"late_{lt.get('unit')}_{lt.get('tenant')}",
-                "priority": "critical",
-                "title": (
-                    f"{lt.get('tenant')} — وحدة {lt.get('unit')} — {months_n} أشهر · {amount:,.0f} ر.س"
-                    if lang == "ar"
-                    else f"{lt.get('tenant')} — unit {lt.get('unit')} — {months_n} mo · {amount:,.0f}"
-                ),
-                "action": "إرسال تذكير تحصيل + مراجعة العقد" if lang == "ar" else "Send collection reminder + review contract",
-            }
-        )
-    for c in expiring[:3]:
+    smart_decisions: List[dict] = reasoning_to_smart_decisions(koil_reasoning, lang)
+    for c in expiring[:2]:
         smart_decisions.append(
             {
                 "id": f"ct_{c.get('id')}",
@@ -332,38 +326,9 @@ def analyze_upload_portfolio(
                 "title": (
                     f"{c.get('tenant_name')} — {c.get('unit')} — عقد ينتهي خلال {c['_days_left']} يوم"
                     if lang == "ar"
-                    else f"{c.get('tenant_name')} — {c.get('unit')} — contract expires in {c['_days_left']} days"
+                    else f"{c.get('tenant_name')} — contract expires in {c['_days_left']} days"
                 ),
                 "action": "فتح العقد وإرسال عرض تجديد" if lang == "ar" else "Open contract & send renewal offer",
-            }
-        )
-    for desc, count, total in maint_freq[:2]:
-        if count >= 2:
-            smart_decisions.append(
-                {
-                    "id": f"maint_{hash(desc) % 10000}",
-                    "priority": "high",
-                    "title": (
-                        f"بند «{desc}» تكرر {count} مرات — إجمالي {total:,.0f} ر.س"
-                        if lang == "ar"
-                        else f"Item «{desc}» repeated {count}× — total {total:,.0f}"
-                    ),
-                    "action": "مراجعة سبب التكرار وجدولة صيانة وقائية" if lang == "ar" else "Review recurrence & schedule preventive maintenance",
-                }
-            )
-    if departed:
-        d0 = departed[0]
-        ml = month_label(d0.get("departed_month") or 0, lang)
-        smart_decisions.append(
-            {
-                "id": "vacancy_fill",
-                "priority": "medium",
-                "title": (
-                    f"وحدة {d0.get('unit')} شاغرة منذ {ml} — {d0.get('tenant')} غادر"
-                    if lang == "ar"
-                    else f"Unit {d0.get('unit')} vacant since {ml} — {d0.get('tenant')} left"
-                ),
-                "action": "تسريع التسويق وتحديث الإشغال" if lang == "ar" else "Accelerate marketing & update occupancy",
             }
         )
     smart_decisions.append(
@@ -405,7 +370,7 @@ def analyze_upload_portfolio(
 
     return {
         "analysis_id": str(uuid.uuid4()),
-        "success_message": labels["success"].format(months=month_count),
+        "success_message": koil_reasoning.get("brief") or labels["success"].format(months=month_count),
         "prompt_message": labels["prompt"],
         "what_now_message": labels["what_now"],
         "prompt_options": [
@@ -416,6 +381,8 @@ def analyze_upload_portfolio(
         "metrics": metrics,
         "executive_report": executive_report,
         "late_payments": late_payments,
+        "property_knowledge": property_knowledge,
+        "koil_reasoning": koil_reasoning,
         "month_comparison": [
             {"month": m["month"], "revenue": m["revenue"], "expenses": m["expenses"]}
             for m in month_cmp

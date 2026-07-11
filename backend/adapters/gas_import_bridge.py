@@ -11,6 +11,13 @@ from .live_data import get_gas_client
 from .upload_analysis.intake_classifier import month_label
 from .upload_analysis.late_report_format import build_late_section_items, build_late_payments_view_model
 from .upload_analysis.portfolio_engine import analyze_upload_portfolio
+from .koil import (
+    apply_koil_to_executive_report,
+    build_property_knowledge,
+    reasoning_to_smart_decisions,
+    run_koil_reasoning,
+    snapshot_from_gas_report,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -236,6 +243,10 @@ def map_gas_report_to_portfolio(
         lang=lang,
     )
 
+    import_snapshot = snapshot_from_gas_report(report, batch_id, files)
+    property_knowledge = build_property_knowledge(import_snapshot, lang)
+    koil_reasoning = run_koil_reasoning(property_knowledge, lang)
+
     units_summary_items = [
         _item("الوحدات السكنية" if lang == "ar" else "Residential units", str(apartment_count or max(0, unique_units - shop_count))),
         _item("المحلات" if lang == "ar" else "Commercial units", str(shop_count)),
@@ -296,38 +307,9 @@ def map_gas_report_to_portfolio(
             ),
         ],
     }
+    executive_report = apply_koil_to_executive_report(executive_report, koil_reasoning, lang, insert_after_keys=("files",))
 
-    smart_decisions: List[dict] = []
-    for lt in (late_tenants_detailed or late_rows)[:4]:
-        months_n = lt.get("lateMonthCount") or 1
-        amount = float(lt.get("totalUnpaid") or lt.get("rent") or 0)
-        smart_decisions.append(
-            {
-                "id": f"late_{lt.get('unit')}_{lt.get('tenant')}",
-                "priority": "critical",
-                "title": (
-                    f"{lt.get('tenant')} — وحدة {lt.get('unit')} — {months_n} أشهر · {amount:,.0f} ر.س"
-                    if lang == "ar"
-                    else f"{lt.get('tenant')} — unit {lt.get('unit')} — {months_n} mo · {amount:,.0f}"
-                ),
-                "action": "إرسال تذكير تحصيل + مراجعة العقد" if lang == "ar" else "Send collection reminder",
-            }
-        )
-    if departed:
-        d0 = departed[0]
-        ml = month_label(int(d0.get("departedMonth") or 0), lang)
-        smart_decisions.append(
-            {
-                "id": "vacancy_fill",
-                "priority": "medium",
-                "title": (
-                    f"وحدة {d0.get('unit')} شاغرة منذ {ml}"
-                    if lang == "ar"
-                    else f"Unit {d0.get('unit')} vacant since {ml}"
-                ),
-                "action": "تسريع التسويق وتحديث الإشغال" if lang == "ar" else "Accelerate marketing",
-            }
-        )
+    smart_decisions: List[dict] = reasoning_to_smart_decisions(koil_reasoning, lang)
     smart_decisions.append(
         {
             "id": "ud_pdf",
@@ -358,7 +340,7 @@ def map_gas_report_to_portfolio(
 
     return {
         "analysis_id": analysis_id,
-        "success_message": report.get("headline") or labels["success"].format(months=month_count),
+        "success_message": koil_reasoning.get("brief") or report.get("headline") or labels["success"].format(months=month_count),
         "prompt_message": labels["prompt"],
         "what_now_message": labels["what_now"],
         "prompt_options": [
@@ -396,6 +378,8 @@ def map_gas_report_to_portfolio(
         },
         "executive_report": executive_report,
         "late_payments": late_payments,
+        "property_knowledge": property_knowledge,
+        "koil_reasoning": koil_reasoning,
         "month_comparison": month_cmp,
         "expense_by_type": [],
         "smart_decisions": smart_decisions[:8],
@@ -417,7 +401,8 @@ def map_gas_report_to_portfolio(
             "files_without_content": report.get("filesWithoutContent") or [],
             "quality_log": quality_log,
             "gas_mode": gas_payload.get("mode"),
-            "employee_brief": report.get("employeeBrief"),
+            "employee_brief": koil_reasoning.get("brief") or report.get("employeeBrief"),
+            "koil_version": koil_reasoning.get("version"),
         },
     }
 
