@@ -16,7 +16,7 @@ from .intake_lifecycle import (
     find_late_tenants,
     maintenance_frequency,
 )
-from .intake_parser import parse_expense_text, parse_rent_roll_text
+from .intake_parser import parse_expense_text, parse_rent_roll_text, align_shop_units_across_parsed_rolls
 
 
 def _is_rent_file(f: dict, cls) -> bool:
@@ -100,6 +100,7 @@ def analyze_statements_deep(files: List[dict], ctx: dict) -> dict:
             by_month[900 + len(by_month)] = pr
     parsed_rolls = list(by_month.values())
     parsed_rolls.sort(key=lambda x: (x.get("year", 0), x.get("month", 0)))
+    align_shop_units_across_parsed_rolls(parsed_rolls)
 
     monthly_index = build_monthly_index(parsed_rolls)
     lifecycle = build_lifecycle(monthly_index)

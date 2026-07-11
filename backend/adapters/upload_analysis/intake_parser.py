@@ -91,6 +91,92 @@ def _infer_late(row: dict) -> bool:
     return not row.get("is_paid") and float(row.get("rent") or 0) > 0
 
 
+def _is_generic_shop_label(text: str) -> bool:
+    return bool(re.match(r"^(?:محل|دكان|shop|store|تجاري|commercial)$", (text or "").strip(), re.I))
+
+
+def _stable_shop_unit_id(row: dict) -> str:
+    contract = (row.get("contract") or "").strip()
+    if contract and len(contract) > 2 and contract.lower() not in ("بدون", "لا", "none", "-"):
+        return f"c:{contract}"
+    phone = (row.get("phone") or "").strip()
+    if len(phone) >= 8:
+        return f"p:{phone}"
+    tenant = _tenant_key(row.get("tenant") or "")
+    if tenant and not tenant.startswith("مستأجر"):
+        return f"t:{tenant}"
+    return ""
+
+
+def _is_generic_shop_unit(row: dict) -> bool:
+    if row.get("unit_type") != "محل":
+        return False
+    unit = str(row.get("unit") or "")
+    if unit in ("محل|pending",):
+        return True
+    no = str(row.get("unit_no") or "")
+    if re.match(r"^\d+$", no):
+        return False
+    return _is_generic_shop_label(no) or _is_generic_shop_label(row.get("unit_raw") or "") or bool(
+        re.match(r"^محل-(?:محل|دكان|shop)$", unit, re.I)
+    )
+
+
+def disambiguate_shop_unit_keys(rows: List[dict]) -> None:
+    stable_to_unit: Dict[str, str] = {}
+    seq = 0
+    for row in rows:
+        if not _is_generic_shop_unit(row):
+            continue
+        stable = _stable_shop_unit_id(row)
+        if stable and stable in stable_to_unit:
+            row["unit"] = stable_to_unit[stable]
+            continue
+        seq += 1
+        if stable:
+            unit_key = f"محل|{stable}"
+            stable_to_unit[stable] = unit_key
+            row["shop_needs_review"] = False
+        else:
+            unit_key = f"محل-{seq}"
+            row["shop_needs_review"] = True
+        row["unit"] = unit_key
+        row["unit_no"] = str(seq)
+
+
+def align_shop_units_across_parsed_rolls(parsed_rolls: List[dict]) -> None:
+    stable_to_num: Dict[str, int] = {}
+    orphan_fp: Dict[str, int] = {}
+    order = 0
+    for pr in parsed_rolls:
+        for row in pr.get("rows") or []:
+            if not _is_generic_shop_unit(row):
+                continue
+            stable = _stable_shop_unit_id(row)
+            if stable and stable not in stable_to_num:
+                order += 1
+                stable_to_num[stable] = order
+    for pr in parsed_rolls:
+        for row in pr.get("rows") or []:
+            if not _is_generic_shop_unit(row):
+                continue
+            stable = _stable_shop_unit_id(row)
+            if stable and stable in stable_to_num:
+                n = stable_to_num[stable]
+                row["unit"] = f"محل-{n}"
+                row["unit_no"] = str(n)
+                row["shop_needs_review"] = False
+                continue
+            fp = f"{_tenant_key(row.get('tenant') or '')}|{row.get('rent') or 0}|{row.get('phone') or ''}"
+            if fp not in orphan_fp:
+                order += 1
+                orphan_fp[fp] = order
+            n = orphan_fp[fp]
+            row["unit"] = f"محل-{n}"
+            row["unit_no"] = str(n)
+            row["shop_needs_review"] = True
+
+
 def parse_unit_cell(raw: str, type_cell: str = "", tenant_hint: str = "") -> dict:
     """Normalize unit key — mirrors GAS parseUnitCell_ (shop vs apartment)."""
     raw = (raw or "").strip()
@@ -102,8 +188,19 @@ def parse_unit_cell(raw: str, type_cell: str = "", tenant_hint: str = "") -> dic
         unit_type = "محل"
     m = re.search(r"(\d+)", _norm_ar_nums(raw))
     unit_no = m.group(1) if m else raw
-    unit_key = f"محل-{unit_no}" if unit_type == "محل" else str(unit_no)
-    return {"unit": unit_key, "unit_no": unit_no, "unit_type": unit_type, "unit_raw": raw}
+    if unit_no and _is_generic_shop_label(str(unit_no)):
+        unit_no = ""
+    if unit_type == "محل":
+        unit_key = f"محل-{unit_no}" if unit_no else "محل|pending"
+    else:
+        unit_key = str(unit_no or raw or "")
+    return {
+        "unit": unit_key,
+        "unit_no": unit_no,
+        "unit_type": unit_type,
+        "unit_raw": raw,
+        "needs_shop_disambiguation": unit_type == "محل" and not unit_no,
+    }
 
 
 def parse_rent_roll_text(text: str, file_meta: dict) -> dict:

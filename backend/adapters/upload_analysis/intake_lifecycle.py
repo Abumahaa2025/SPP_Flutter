@@ -254,7 +254,7 @@ def build_unique_unit_stats(monthly_index: dict) -> dict:
         for u, row in (snap.get("units") or {}).items():
             units.add(u)
             unit_type = row.get("unit_type") or row.get("unitType") or "شقة"
-            if unit_type == "محل" or str(u).startswith("محل"):
+            if row.get("unit_type") == "محل" or str(u).startswith("محل"):
                 shops.add(u)
             else:
                 apartments.add(u)
