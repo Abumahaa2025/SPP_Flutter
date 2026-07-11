@@ -244,6 +244,9 @@ def extract_month_from_expense(er: dict, row: dict) -> int:
     return extract_month(er.get("file_name") or "")
 
 
+from .intake_parser import _is_commercial_unit_type, _text_mentions_commercial_keyword
+
+
 def build_unique_unit_stats(monthly_index: dict) -> dict:
     """Count each physical unit once across all months (not per monthly file)."""
     units: set = set()
@@ -254,7 +257,7 @@ def build_unique_unit_stats(monthly_index: dict) -> dict:
         for u, row in (snap.get("units") or {}).items():
             units.add(u)
             unit_type = row.get("unit_type") or row.get("unitType") or "شقة"
-            if row.get("unit_type") == "محل" or str(u).startswith("محل"):
+            if _is_commercial_unit_type(unit_type) or _text_mentions_commercial_keyword(str(u)):
                 shops.add(u)
             else:
                 apartments.add(u)
