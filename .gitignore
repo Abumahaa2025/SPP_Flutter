@@ -1,49 +1,96 @@
-# Miscellaneous
-*.class
-*.log
-*.pyc
-*.swp
-.DS_Store
-.atom/
-.build/
-.buildlog/
-.history
-.svn/
-.swiftpm/
-migrate_working_dir/
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
 
-# IntelliJ related
-*.iml
-*.ipr
-*.iws
+# IDE and editors
 .idea/
+.vscode/
 
-# The .vscode folder contains launch configuration and tasks you configure in
-# VS Code which you may wish to be included in version control, so this line
-# is commented out by default.
-#.vscode/
+# Dependencies
+node_modules/
+/node_modules
+/.pnp
+.pnp.js
+.yarn/install-state.gz
+.yarn/*
+!.yarn/patches
+!.yarn/plugins
+!.yarn/releases
+!.yarn/versions
 
-# Flutter/Dart/Pub related
-**/doc/api/
-**/ios/Flutter/.last_build_id
-.dart_tool/
-.flutter-plugins-dependencies
-.pub-cache/
-.pub/
-/build/
-/coverage/
+# Testing
+/coverage
 
-# Symbolication related
-app.*.symbols
+# Next.js
+/.next/
+/out/
+next-env.d.ts
+*.tsbuildinfo
 
-# Obfuscation related
-app.*.map.json
+# Production builds
+/build
+dist/
+dist
 
-# Android Studio will place build artifacts here
-/android/app/debug
-/android/app/profile
-/android/app/release
+# Environment files (comprehensive coverage)
 
-# Local CI downloads
-/apk_release/
-.gh_auth.log
+*token.json*
+*credentials.json*
+
+# Logs and debug files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+dump.rdb
+
+# System files
+.DS_Store
+*.pem
+
+# Python
+__pycache__/
+*pyc*
+venv/
+.venv/
+
+# Development tools
+chainlit.md
+.chainlit
+.ipynb_checkpoints/
+.ac
+
+# Deployment
+.vercel
+
+# Data and databases
+agenthub/agents/youtube/db
+
+# Archive files and large assets
+**/*.zip
+**/*.tar.gz
+**/*.tar
+**/*.tgz
+*.pack
+*.deb
+*.dylib
+
+# Build caches
+.cache/
+
+memory/test_credentials.md
+
+# Mobile development
+android-sdk/
+.env
+.env.*
+*.env
+credentials.json
+*.key
+.credentials
+
+# SPP Benchmark Library (in-project; spreadsheets gitignored — travel with project folder)
+benchmarks/library/_staging/*
+!benchmarks/library/_staging/IMPORT_HERE.txt
+benchmarks/library/sets/*/files/*
+!benchmarks/library/sets/*/files/.gitkeep
+benchmarks/golden_benchmark/config.local.json
+benchmarks/golden_benchmark/cache/*

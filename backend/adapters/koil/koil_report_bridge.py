@@ -87,7 +87,7 @@ def apply_koil_to_executive_report(
     executive_report: dict,
     reasoning: dict,
     lang: Lang = "ar",
-    insert_after_keys: tuple = ("files",),
+    insert_after_keys: tuple = ("koil_understanding_ambiguities", "koil_understanding_relationships", "koil_understanding_files", "koil_understanding_summary", "files"),
 ) -> dict:
     """Prepend Koil reasoning sections to executive report (backend-only)."""
     executive_report = dict(executive_report or {})
@@ -98,11 +98,94 @@ def apply_koil_to_executive_report(
     for key in insert_after_keys:
         for i, sec in enumerate(sections):
             if sec.get("key") == key:
-                insert_idx = i + 1
-                break
+                insert_idx = max(insert_idx, i + 1)
 
     for i, ks in enumerate(koil):
         sections.insert(insert_idx + i, ks)
+
+    executive_report["sections"] = sections
+    return executive_report
+
+
+def understanding_sections(understanding: dict, lang: Lang = "ar") -> List[dict]:
+    understanding = understanding or {}
+    if lang == "ar":
+        titles = {
+            "summary": "كويل — فهم الملفات",
+            "files": "ماذا فهمت من كل ملف؟",
+            "relationships": "العلاقات بين الأشهر",
+            "ambiguities": "ما يحتاج مراجعتك",
+        }
+        mode_label = "وضع الفهم"
+    else:
+        titles = {
+            "summary": "Koil — File understanding",
+            "files": "What I understood per file",
+            "relationships": "Cross-month relationships",
+            "ambiguities": "Needs your review",
+        }
+        mode_label = "Understanding mode"
+
+    sections: List[dict] = []
+    mode = understanding.get("mode") or "rules"
+    mode_ar = "ذكاء معزّز" if mode == "ai_enhanced" and lang == "ar" else ("AI enhanced" if mode == "ai_enhanced" else ("قواعد" if lang == "ar" else "Rules"))
+
+    summary_items = [
+        _item("كويل" if lang == "ar" else "Koil", understanding.get("portfolio_summary") or "—"),
+        _item(mode_label, mode_ar),
+        _item(
+            "ثقة الفهم" if lang == "ar" else "Understanding confidence",
+            f"{understanding.get('confidence', '—')}%",
+        ),
+    ]
+    sections.append(_sec("koil_understanding_summary", titles["summary"], summary_items))
+
+    file_items = []
+    for f in understanding.get("files") or []:
+        notes = " · ".join(f.get("notes") or []) or "—"
+        file_items.append(
+            _item(
+                f.get("name") or "—",
+                f"{f.get('understood_as') or '—'} ({f.get('confidence', '—')}%) — {notes}",
+            )
+        )
+    if not file_items:
+        file_items = [_item("—", "—")]
+    sections.append(_sec("koil_understanding_files", titles["files"], file_items[:8]))
+
+    rel_items = [
+        _item(f"#{i + 1}", r.get("text") or "—")
+        for i, r in enumerate(understanding.get("relationships") or [])
+    ] or [_item("—", "لا علاقات إضافية" if lang == "ar" else "No extra relationships")]
+    sections.append(_sec("koil_understanding_relationships", titles["relationships"], rel_items[:8]))
+
+    amb_items = [
+        _item("!" if a.get("needs_review") else "·", a.get("text") or "—")
+        for a in (understanding.get("ambiguities") or [])
+    ] or [_item("—", "لا غموض — جاهز للمراجعة" if lang == "ar" else "Clear — ready to review")]
+    sections.append(_sec("koil_understanding_ambiguities", titles["ambiguities"], amb_items[:8]))
+
+    return sections
+
+
+def apply_understanding_to_executive_report(
+    executive_report: dict,
+    understanding: dict,
+    lang: Lang = "ar",
+    insert_after_keys: tuple = ("files",),
+) -> dict:
+    executive_report = dict(executive_report or {})
+    sections = list(executive_report.get("sections") or [])
+    block = understanding_sections(understanding, lang)
+
+    insert_idx = 0
+    for key in insert_after_keys:
+        for i, sec in enumerate(sections):
+            if sec.get("key") == key:
+                insert_idx = max(insert_idx, i + 1)
+
+    for i, us in enumerate(block):
+        sections.insert(insert_idx + i, us)
 
     executive_report["sections"] = sections
     return executive_report

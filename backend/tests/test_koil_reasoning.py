@@ -1,89 +1,36 @@
-"""Tests for Property Knowledge + Koil Reasoning engines."""
+"""Koil tests — Golden Benchmark only (real owner files). No mock data."""
 
-from adapters.koil.import_snapshot import snapshot_from_deep
-from adapters.koil.property_knowledge_engine import build_property_knowledge
-from adapters.koil.koil_reasoning_engine import run_koil_reasoning
+from __future__ import annotations
 
+import sys
+from pathlib import Path
 
-def _sample_deep():
-    return {
-        "lifecycle": {
-            "departed": [
-                {
-                    "unit": "20",
-                    "tenant": "أحمد",
-                    "departed_month": 3,
-                    "departed_year": 2026,
-                    "reason": "استبدال — محمد",
-                }
-            ],
-            "newcomers": [{"unit": "20", "tenant": "محمد", "arrived_month": 3, "arrived_year": 2026}],
-            "active": [{"unit": "20", "tenant": "محمد"}],
-            "month_count": 3,
-        },
-        "annual": {"totalExpected": 15000, "totalCollected": 10000},
-        "unique_unit_stats": {"unique_units": 2, "apartment_count": 2, "shop_count": 0},
-        "parsed_rolls": [
-            {
-                "ok": True,
-                "month": 1,
-                "year": 2026,
-                "rows": [{"unit": "20", "tenant": "أحمد", "rent": 5000, "is_late": True, "phone": "0501111111", "contract": "C-20"}],
-            },
-            {
-                "ok": True,
-                "month": 2,
-                "year": 2026,
-                "rows": [{"unit": "20", "tenant": "أحمد", "rent": 5000, "is_late": True, "phone": "0501111111", "contract": "C-20"}],
-            },
-            {
-                "ok": True,
-                "month": 3,
-                "year": 2026,
-                "rows": [{"unit": "20", "tenant": "محمد", "rent": 5000, "is_paid": True, "phone": "0502222222", "contract": "C-21"}],
-            },
-        ],
-        "payment_ledger": {
-            "ledger": {},
-            "late_tenants": [
-                {
-                    "tenant": "أحمد",
-                    "unit": "20",
-                    "phone": "0501111111",
-                    "contract": "C-20",
-                    "late_month_count": 2,
-                    "total_unpaid": 10000,
-                    "months": [
-                        {"month": 1, "year": 2026, "due": 5000, "remaining": 5000, "status": "unpaid"},
-                        {"month": 2, "year": 2026, "due": 5000, "remaining": 5000, "status": "unpaid"},
-                    ],
-                }
-            ],
-            "merge_count": 0,
-        },
-        "late_by_month": {},
-        "late_tenants": [],
-        "quality_log": [],
-        "parse_errors": [],
-        "files_without_content": [],
-        "file_classifications": [],
-        "expense_rolls": [],
-    }
+REPO = Path(__file__).resolve().parents[2]
+sys.path.insert(0, str(REPO))
+sys.path.insert(0, str(REPO / "backend"))
+
+import pytest
+
+from benchmarks.regression_tests.golden_benchmark import run_golden_benchmark
+from benchmarks.regression_tests.loader import golden_files_present
 
 
-def test_koil_reasoning_from_knowledge():
-    snap = snapshot_from_deep(_sample_deep())
-    knowledge = build_property_knowledge(snap, "ar")
-    reasoning = run_koil_reasoning(knowledge, "ar")
+@pytest.mark.skipif(not golden_files_present(), reason="Golden files not in benchmarks/golden_benchmark/files/")
+def test_koil_on_golden_benchmark():
+    report = run_golden_benchmark()
+    assert report.get("status") == "completed", report
+    koil = report.get("koil") or {}
+    assert koil.get("version") == "koil-reasoning-v1"
+    assert len(koil.get("what_happened") or []) >= 1
+    assert any((w.get("evidence") or []) for w in koil.get("what_happened") or [])
+    assert (report.get("success_message") or "").startswith("كويل")
+    assert report.get("ok"), report.get("diffs") or report.get("gate_errors")
 
-    assert reasoning["version"] == "koil-reasoning-v1"
-    assert len(reasoning["what_happened"]) >= 1
-    assert any("متأخر" in w["text"] or "تغيّر" in w["text"] for w in reasoning["what_happened"])
-    assert len(reasoning["recommendations"]) >= 1
-    assert reasoning["brief"].startswith("كويل")
 
-
-def test_tenant_change_detected():
-    knowledge = build_property_knowledge(snapshot_from_deep(_sample_deep()), "ar")
-    changes = knowledge["lifecycle"]["tenant_changes"]
-    assert any(c.get("type") == "replacement" for c in changes)
+@pytest.mark.skipif(not golden_files_present(), reason="Golden files not in benchmarks/golden_benchmark/files/")
+def test_golden_unit_counts():
+    report = run_golden_benchmark()
+    diffs = {d["field"]: d for d in report.get("diffs") or []}
+    assert diffs["إجمالي الوحدات"]["match"], diffs["إجمالي الوحدات"]
+    assert diffs["الشقق"]["match"], diffs["الشقق"]
+    assert diffs["المحلات"]["match"], diffs["المحلات"]

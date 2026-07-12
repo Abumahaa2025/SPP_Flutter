@@ -13,7 +13,12 @@ from .late_report_format import build_late_section_items, build_late_payments_vi
 from adapters.koil.import_snapshot import snapshot_from_deep
 from adapters.koil.property_knowledge_engine import build_property_knowledge
 from adapters.koil.koil_reasoning_engine import run_koil_reasoning
-from adapters.koil.koil_report_bridge import apply_koil_to_executive_report, reasoning_to_smart_decisions
+from adapters.koil.understanding_engine import run_koil_understanding
+from adapters.koil.koil_report_bridge import (
+    apply_koil_to_executive_report,
+    apply_understanding_to_executive_report,
+    reasoning_to_smart_decisions,
+)
 
 Lang = Literal["ar", "en"]
 
@@ -229,6 +234,7 @@ def analyze_upload_portfolio(
     )
 
     import_snapshot = snapshot_from_deep(deep)
+    koil_understanding = run_koil_understanding(files, deep, lang)
     property_knowledge = build_property_knowledge(import_snapshot, lang)
     koil_reasoning = run_koil_reasoning(property_knowledge, lang)
 
@@ -315,7 +321,8 @@ def analyze_upload_portfolio(
             ),
         ],
     }
-    executive_report = apply_koil_to_executive_report(executive_report, koil_reasoning, lang, insert_after_keys=("files",))
+    executive_report = apply_understanding_to_executive_report(executive_report, koil_understanding, lang)
+    executive_report = apply_koil_to_executive_report(executive_report, koil_reasoning, lang)
 
     smart_decisions: List[dict] = reasoning_to_smart_decisions(koil_reasoning, lang)
     for c in expiring[:2]:
@@ -382,6 +389,7 @@ def analyze_upload_portfolio(
         "executive_report": executive_report,
         "late_payments": late_payments,
         "property_knowledge": property_knowledge,
+        "koil_understanding": koil_understanding,
         "koil_reasoning": koil_reasoning,
         "month_comparison": [
             {"month": m["month"], "revenue": m["revenue"], "expenses": m["expenses"]}
@@ -413,5 +421,21 @@ def analyze_upload_portfolio(
             "engine": "property_intake_v2",
             "synthetic_fallback": deep.get("used_synthetic", False),
             "parse_errors": deep.get("parse_errors") or [],
+            "files_without_content": deep.get("files_without_content") or [],
+            "koil_understanding_version": koil_understanding.get("version"),
+            "koil_understanding_mode": koil_understanding.get("mode"),
+            "parse_by_file": [
+                {
+                    "file_name": pr.get("file_name"),
+                    "month": pr.get("month"),
+                    "year": pr.get("year"),
+                    "row_count": pr.get("row_count"),
+                    "ok": pr.get("ok"),
+                    "column_labels": pr.get("column_labels") or {},
+                    "column_map": pr.get("column_map") or {},
+                    "column_confidence": pr.get("column_confidence"),
+                }
+                for pr in (deep.get("parsed_rolls") or [])
+            ],
         },
     }

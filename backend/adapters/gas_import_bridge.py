@@ -13,9 +13,12 @@ from .upload_analysis.late_report_format import build_late_section_items, build_
 from .upload_analysis.portfolio_engine import analyze_upload_portfolio
 from .koil import (
     apply_koil_to_executive_report,
+    apply_understanding_to_executive_report,
     build_property_knowledge,
+    deep_stub_from_gas,
     reasoning_to_smart_decisions,
     run_koil_reasoning,
+    run_koil_understanding,
     snapshot_from_gas_report,
 )
 
@@ -244,6 +247,7 @@ def map_gas_report_to_portfolio(
     )
 
     import_snapshot = snapshot_from_gas_report(report, batch_id, files)
+    koil_understanding = run_koil_understanding(files, deep_stub_from_gas(report, files), lang)
     property_knowledge = build_property_knowledge(import_snapshot, lang)
     koil_reasoning = run_koil_reasoning(property_knowledge, lang)
 
@@ -307,7 +311,8 @@ def map_gas_report_to_portfolio(
             ),
         ],
     }
-    executive_report = apply_koil_to_executive_report(executive_report, koil_reasoning, lang, insert_after_keys=("files",))
+    executive_report = apply_understanding_to_executive_report(executive_report, koil_understanding, lang)
+    executive_report = apply_koil_to_executive_report(executive_report, koil_reasoning, lang)
 
     smart_decisions: List[dict] = reasoning_to_smart_decisions(koil_reasoning, lang)
     smart_decisions.append(
@@ -379,6 +384,7 @@ def map_gas_report_to_portfolio(
         "executive_report": executive_report,
         "late_payments": late_payments,
         "property_knowledge": property_knowledge,
+        "koil_understanding": koil_understanding,
         "koil_reasoning": koil_reasoning,
         "month_comparison": month_cmp,
         "expense_by_type": [],
