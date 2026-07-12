@@ -80,7 +80,7 @@ export type LatePaymentsReport = {
 export type ReportSection = {
   key: string;
   title: string;
-  items: { label: string; value: string }[];
+  items: { label: string; value: string; evidence?: string[] }[];
 };
 
 export type SmartDecision = {
