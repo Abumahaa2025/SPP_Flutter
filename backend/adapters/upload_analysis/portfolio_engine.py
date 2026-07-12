@@ -19,6 +19,7 @@ from adapters.koil.koil_report_bridge import (
     apply_understanding_to_executive_report,
     reasoning_to_smart_decisions,
 )
+from adapters.koil.consistency_gate import apply_gate_to_reasoning, run_consistency_gate
 
 Lang = Literal["ar", "en"]
 
@@ -163,6 +164,7 @@ def analyze_upload_portfolio(
         )
 
     month_cmp = build_month_comparison(deep["parsed_rolls"], deep["expense_rolls"], lang)
+    deep["month_comparison"] = month_cmp
     month_items = []
     for i, m in enumerate(month_cmp):
         delta = m.get("delta_revenue") or 0
@@ -237,6 +239,8 @@ def analyze_upload_portfolio(
     koil_understanding = run_koil_understanding(files, deep, lang)
     property_knowledge = build_property_knowledge(import_snapshot, lang)
     koil_reasoning = run_koil_reasoning(property_knowledge, lang)
+    consistency_gate = run_consistency_gate(deep, property_knowledge, lang)
+    koil_reasoning = apply_gate_to_reasoning(koil_reasoning, consistency_gate, lang)
 
     units_summary_items = [
         _item("الوحدات السكنية" if lang == "ar" else "Residential units", str(apartment_count or max(0, total_units - shop_count))),
@@ -391,6 +395,7 @@ def analyze_upload_portfolio(
         "property_knowledge": property_knowledge,
         "koil_understanding": koil_understanding,
         "koil_reasoning": koil_reasoning,
+        "consistency_gate": consistency_gate,
         "month_comparison": [
             {"month": m["month"], "revenue": m["revenue"], "expenses": m["expenses"]}
             for m in month_cmp

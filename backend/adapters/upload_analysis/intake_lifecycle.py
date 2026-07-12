@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, List, Tuple
 
 
@@ -40,6 +41,43 @@ def _tenant_key(name: str) -> str:
     return "".join((name or "").lower().split())
 
 
+def _norm_phone_digits(phone: str) -> str:
+    from .intake_parser import normalize_saudi_phone
+
+    info = normalize_saudi_phone(phone)
+    return re.sub(r"\D", "", info.get("phone") or info.get("phone_raw") or "")
+
+
+def _norm_contract(contract: str) -> str:
+    c = re.sub(r"\s+", "", str(contract or "").strip())
+    if not c or c.lower() in ("بدون", "لا", "-", "none", "nan"):
+        return ""
+    return c
+
+
+def _same_tenant_identity(prev: dict, cur: dict) -> bool:
+    """Strong identity: property+unit already scoped; then contract / phone / name."""
+    if _tenant_key(prev.get("tenant") or "") == _tenant_key(cur.get("tenant") or ""):
+        return True
+    pc, cc = _norm_contract(prev.get("contract") or ""), _norm_contract(cur.get("contract") or "")
+    if pc and cc and pc == cc:
+        return True
+    pp, cp = _norm_phone_digits(prev.get("phone") or ""), _norm_phone_digits(cur.get("phone") or "")
+    if len(pp) >= 8 and len(cp) >= 8 and (pp == cp or pp[-9:] == cp[-9:]):
+        return True
+    return False
+
+
+def _timeline_identity_key(unit: str, row: dict) -> str:
+    contract = _norm_contract(row.get("contract") or "")
+    if contract:
+        return f"{unit}|c|{contract}"
+    phone = _norm_phone_digits(row.get("phone") or "")
+    if len(phone) >= 8:
+        return f"{unit}|p|{phone[-9:]}"
+    return f"{unit}|{_tenant_key(row.get('tenant') or unit)}"
+
+
 def build_lifecycle(monthly_index: dict) -> dict:
     keys = monthly_index.get("keys") or []
     by_key = monthly_index.get("by_key") or {}
@@ -62,7 +100,7 @@ def build_lifecycle(monthly_index: dict) -> dict:
         for i, cur in enumerate(seq):
             row = cur["row"]
             tenant = row.get("tenant") or unit
-            tid = f"{unit}|{_tenant_key(tenant)}"
+            tid = _timeline_identity_key(unit, row)
             if tid not in timeline:
                 timeline[tid] = {
                     "unit": unit,
@@ -78,8 +116,14 @@ def build_lifecycle(monthly_index: dict) -> dict:
                     "had_late": False,
                     "total_rent": 0.0,
                     "paid_rent": 0.0,
+                    "name_aliases": [],
                 }
             t = timeline[tid]
+            if tenant and tenant not in t["name_aliases"]:
+                t["name_aliases"].append(tenant)
+            # Prefer Arabic / longer display name when available
+            if tenant and (not t.get("tenant") or (any("\u0600" <= ch <= "\u06FF" for ch in tenant) and not any("\u0600" <= ch <= "\u06FF" for ch in str(t.get("tenant") or "")))):
+                t["tenant"] = tenant
             t["last_month"] = cur["month"]
             t["last_year"] = cur["year"]
             t["months_present"] += 1
@@ -98,7 +142,7 @@ def build_lifecycle(monthly_index: dict) -> dict:
             if i > 0:
                 prev = seq[i - 1]["row"]
                 prev_t = prev.get("tenant") or unit
-                if _tenant_key(prev_t) != _tenant_key(tenant):
+                if not _same_tenant_identity(prev, row):
                     dep_k = f"{unit}|{_tenant_key(prev_t)}|{cur['month']}/{cur['year']}"
                     if dep_k not in seen_dep:
                         seen_dep.add(dep_k)
@@ -138,12 +182,12 @@ def build_lifecycle(monthly_index: dict) -> dict:
         prev = by_key[keys[-2]] if len(keys) > 1 else None
         for unit, row in (last.get("units") or {}).items():
             tenant = row.get("tenant") or unit
-            tid = f"{unit}|{_tenant_key(tenant)}"
+            tid = _timeline_identity_key(unit, row)
             t2 = timeline.get(tid, {})
             active.append(
                 {
                     "unit": unit,
-                    "tenant": tenant,
+                    "tenant": t2.get("tenant") or tenant,
                     "phone": row.get("phone") or t2.get("phone", ""),
                     "contract": row.get("contract") or t2.get("contract", ""),
                     "rent": row.get("rent") or t2.get("rent", 0),
@@ -152,6 +196,7 @@ def build_lifecycle(monthly_index: dict) -> dict:
                     "stay_months": t2.get("months_present") or 1,
                     "is_late": row.get("is_late", False),
                     "is_paid": row.get("is_paid", False),
+                    "payment_status": row.get("payment_status") or "",
                     "pay_status": "مسدد" if row.get("is_paid") else ("متأخر" if row.get("is_late") else "لم يسدد"),
                 }
             )
@@ -160,7 +205,7 @@ def build_lifecycle(monthly_index: dict) -> dict:
                 prev_row = (prev.get("units") or {}).get(unit)
                 cur_t = cur_row.get("tenant") or unit
                 prev_t = (prev_row or {}).get("tenant") or ""
-                if _tenant_key(cur_t) != _tenant_key(prev_t):
+                if prev_row and not _same_tenant_identity(prev_row, cur_row):
                     new_in_last.append(
                         {
                             "unit": unit,
@@ -269,17 +314,28 @@ def build_unique_unit_stats(monthly_index: dict) -> dict:
 
 
 def _tenant_ledger_key(row: dict, unit: str) -> str:
-    contract = (row.get("contract") or "").strip()
-    if contract and len(contract) > 2 and contract not in ("بدون", "لا", "-", "none"):
+    contract = _norm_contract(row.get("contract") or "")
+    if contract and len(contract) > 2:
         return f"c|{contract}"
-    phone = (row.get("phone") or "").strip()
+    phone = _norm_phone_digits(row.get("phone") or "")
     if len(phone) >= 8:
-        return f"p|{phone}"
+        return f"p|{phone[-9:]}"
     tenant = row.get("tenant") or unit
     return f"u|{unit}|{_tenant_key(tenant)}"
 
 
 def _payment_month_status(row: dict) -> str:
+    status = row.get("payment_status")
+    if status in (
+        "paid",
+        "partial",
+        "unpaid_confirmed",
+        "not_due",
+        "vacated",
+        "unknown_requires_review",
+    ):
+        return status
+    # Legacy fallback
     rent = float(row.get("rent") or 0)
     paid = float(row.get("paid") or 0)
     if row.get("is_paid") or (paid >= rent and rent > 0):
@@ -287,10 +343,10 @@ def _payment_month_status(row: dict) -> str:
     if 0 < paid < rent:
         return "partial"
     if row.get("is_late"):
-        return "unpaid"
+        return "unpaid_confirmed"
     if not rent:
         return "not_due"
-    return "pending"
+    return "unknown_requires_review"
 
 
 def build_tenant_payment_ledger(parsed_rolls: List[dict]) -> dict:
@@ -334,7 +390,11 @@ def build_tenant_payment_ledger(parsed_rolls: List[dict]) -> dict:
             if r.get("is_paid") and not paid:
                 paid = rent
             status = _payment_month_status(r)
-            remaining = 0.0 if status == "paid" else max(0.0, rent - paid)
+            remaining = 0.0
+            if status == "partial":
+                remaining = max(0.0, rent - paid)
+            elif status == "unpaid_confirmed":
+                remaining = max(0.0, rent - paid) if paid else rent
             month_key = f"{pr.get('year')}-{pr.get('month')}|{unit}|{tk}"
             if month_key in month_seen:
                 merge_count += 1
@@ -349,12 +409,21 @@ def build_tenant_payment_ledger(parsed_rolls: List[dict]) -> dict:
                     "paid": paid,
                     "remaining": remaining,
                     "status": status,
+                    "pay_status_raw": r.get("pay_status") or "",
+                    "evidence": [
+                        f"المصدر: {pr.get('file_name') or '—'}",
+                        f"الوحدة {unit}",
+                        f"خانة حالة الدفع: {r.get('pay_status') or '—'}",
+                    ],
                 }
             )
             ent["total_due"] += rent
-            ent["total_paid"] += paid
-            if status != "paid":
-                ent["total_unpaid"] += remaining or rent
+            if status == "paid":
+                ent["total_paid"] += paid or rent
+            elif status == "partial":
+                ent["total_paid"] += paid
+            if status in ("unpaid_confirmed", "partial"):
+                ent["total_unpaid"] += remaining
                 ent["late_month_count"] += 1
 
     for ent in ledger.values():
@@ -362,7 +431,7 @@ def build_tenant_payment_ledger(parsed_rolls: List[dict]) -> dict:
 
     late_tenants: List[dict] = []
     for ent in ledger.values():
-        unpaid = [m for m in ent["months"] if m["status"] in ("unpaid", "partial", "pending")]
+        unpaid = [m for m in ent["months"] if m["status"] in ("unpaid_confirmed", "partial")]
         if not unpaid:
             continue
         month_labels = " · ".join(
@@ -407,7 +476,7 @@ def build_late_payments_by_month(payment_ledger: dict) -> dict:
     for ent in ledger.values():
         for m in ent.get("months") or []:
             status = m.get("status") or ""
-            if status in ("paid", "not_due"):
+            if status not in ("unpaid_confirmed", "partial", "unpaid"):
                 continue
             year = int(m.get("year") or 0)
             month = int(m.get("month") or 0)
