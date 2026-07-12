@@ -210,7 +210,9 @@ def build_property_knowledge(snapshot: dict, lang: Lang = "ar") -> dict:
             "merge_count": int(pb.get("mergeCount") or pb.get("merge_count") or 0),
         },
         "maintenance": {
-            "entries": (snapshot.get("maintenance_log") or [])[:20],
+            "entries": (snapshot.get("maintenance_log") or [])[:50],
             "total": sum(_f(x.get("amount")) for x in (snapshot.get("maintenance_log") or [])),
+            "count": len(snapshot.get("maintenance_log") or []),
         },
+        "files": list(snapshot.get("file_classifications") or [])[:20],
     }

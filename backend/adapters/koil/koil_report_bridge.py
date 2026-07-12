@@ -2,22 +2,53 @@
 
 from __future__ import annotations
 
+import re
 from typing import Any, Dict, List, Literal, Optional
 
 Lang = Literal["ar", "en"]
 
 
+def humanize_evidence(evidence: Optional[List[Any]], lang: Lang = "ar") -> List[str]:
+    """Turn technical tokens into property-manager language for the owner."""
+    ar = lang == "ar"
+    out: List[str] = []
+    for raw in evidence or []:
+        s = str(raw).strip()
+        if not s:
+            continue
+        # Already human Arabic source lines
+        if s.startswith("المصدر:") or s.lower().startswith("source:"):
+            out.append(s)
+            continue
+        s = re.sub(r"\bunit=([^\s,|]+)", r"الوحدة \1" if ar else r"unit \1", s, flags=re.I)
+        s = re.sub(r"\btenant=([^\s,|]+)", r"المستأجر \1" if ar else r"tenant \1", s, flags=re.I)
+        s = re.sub(
+            r"\bmonth=(\d{1,2})/(\d{4})",
+            lambda m: f"شهر {m.group(1)}/{m.group(2)}" if ar else f"month {m.group(1)}/{m.group(2)}",
+            s,
+            flags=re.I,
+        )
+        s = re.sub(r"\bconsecutive=\d+", "", s, flags=re.I)
+        s = re.sub(r"\bfrom=([^\s,|]+)", r"من \1" if ar else r"from \1", s, flags=re.I)
+        s = re.sub(r"\bto=([^\s,|]+)", r"إلى \1" if ar else r"to \1", s, flags=re.I)
+        s = re.sub(r"\bdeparted=\d+", "", s, flags=re.I)
+        s = re.sub(r"[·|]{2,}", "·", s)
+        s = re.sub(r"\s{2,}", " ", s).strip(" ·|")
+        if s:
+            out.append(s)
+    return out[:8]
+
+
 def _fmt_evidence(evidence: Optional[List[Any]], lang: Lang = "ar") -> str:
-    parts = [str(x).strip() for x in (evidence or []) if str(x).strip()]
+    parts = humanize_evidence(evidence, lang)
     if not parts:
         return ""
-    prefix = "دليل" if lang == "ar" else "Evidence"
+    prefix = "المصدر" if lang == "ar" else "Source"
     return f"{prefix}: " + " · ".join(parts[:6])
 
 
 def _item(label: str, value: str, evidence: Optional[List[Any]] = None, lang: Lang = "ar") -> dict:
-    ev_list = [str(x).strip() for x in (evidence or []) if str(x).strip()]
-    # value includes evidence so older APKs still show it in the report row
+    ev_list = humanize_evidence(evidence, lang)
     display = value
     ev_line = _fmt_evidence(ev_list, lang)
     if ev_line:
@@ -28,8 +59,172 @@ def _item(label: str, value: str, evidence: Optional[List[Any]] = None, lang: La
     return out
 
 
-def _sec(key: str, title: str, items: List[dict]) -> dict:
-    return {"key": key, "title": title, "items": items}
+def _sec(key: str, title: str, items: List[dict], summary: str = "") -> dict:
+    out: Dict[str, Any] = {"key": key, "title": title, "items": items}
+    if summary:
+        out["summary"] = summary
+    return out
+
+
+def _confidence_level(score: float, gate_status: str, lang: Lang) -> str:
+    ar = lang == "ar"
+    if gate_status == "blocked_for_review":
+        return "يحتاج مراجعتك" if ar else "Needs your review"
+    if score >= 85:
+        return "مؤكد" if ar else "Confirmed"
+    if score >= 70:
+        return "مرجح" if ar else "Likely"
+    return "يحتاج مراجعتك" if ar else "Needs your review"
+
+
+def build_executive_brief(
+    knowledge: dict,
+    reasoning: dict,
+    gate: Optional[dict] = None,
+    lang: Lang = "ar",
+) -> dict:
+    """One-screen owner brief — derived only from Property Knowledge + Koil reasoning."""
+    knowledge = knowledge or {}
+    reasoning = reasoning or {}
+    gate = gate or {}
+    ar = lang == "ar"
+
+    units = knowledge.get("units") or {}
+    late = knowledge.get("late") or {}
+    coll = knowledge.get("collection") or {}
+    maint = knowledge.get("maintenance") or {}
+    lc = knowledge.get("lifecycle") or {}
+    meta = knowledge.get("meta") or {}
+    quality = knowledge.get("quality") or {}
+    contracts = knowledge.get("contracts") or {}
+
+    total_units = int(units.get("total") or 0)
+    late_n = int(late.get("tenant_count") or 0)
+    unpaid = float(late.get("total_unpaid") or coll.get("total_unpaid") or 0)
+    collected = float(coll.get("total_collected") or 0)
+    expected = float(coll.get("total_expected") or 0)
+    rate = round(collected / expected * 100) if expected else 0
+    maint_total = float(maint.get("total") or 0)
+    maint_count = int(maint.get("count") or len(maint.get("entries") or []))
+    period = ""
+    if meta.get("period_from") and meta.get("period_to"):
+        period = f"{meta['period_from']} → {meta['period_to']}"
+
+    if gate.get("decision_status") == "blocked_for_review":
+        status = (
+            f"العقار يحتاج مراجعة قبل أي إجراء تحصيل — اكتُشفت تعارضات في البيانات ({period or 'الفترة'})."
+            if ar
+            else f"Property needs review before collection actions — data conflicts found ({period or 'period'})."
+        )
+    elif late_n == 0 and unpaid <= 0:
+        status = (
+            f"الوضع مستقر خلال {period or 'الفترة'}: لا متأخرات مؤكدة على {total_units} وحدة."
+            if ar
+            else f"Stable through {period or 'the period'}: no confirmed arrears across {total_units} units."
+        )
+    elif late_n <= 2:
+        status = (
+            f"تحصيل جيد عمومًا ({rate}%) مع {late_n} حالة متأخرات مؤكدة تحتاج متابعة."
+            if ar
+            else f"Collection mostly healthy ({rate}%) with {late_n} confirmed arrears to follow up."
+        )
+    else:
+        status = (
+            f"ضغط تحصيل: {late_n} مستأجرين بمتأخرات مؤكدة بقيمة {unpaid:,.0f} ر.س خلال {period or 'الفترة'}."
+            if ar
+            else f"Collection pressure: {late_n} tenants with confirmed arrears totaling {unpaid:,.0f} SAR."
+        )
+
+    risks = sorted(
+        reasoning.get("risks") or [],
+        key=lambda r: {"critical": 0, "high": 1, "medium": 2, "low": 3}.get(str(r.get("severity") or "medium"), 9),
+    )
+    recs = sorted(
+        reasoning.get("recommendations") or [],
+        key=lambda r: {"critical": 0, "high": 1, "medium": 2, "low": 3}.get(str(r.get("priority") or "medium"), 9),
+    )
+    top_risk = (risks[0].get("text") if risks else None) or (
+        "لا مخاطر مؤكدة الآن" if ar else "No confirmed risks now"
+    )
+    top_action = (recs[0].get("action") if recs else None) or (
+        "لا إجراء عاجل — راجع الملخص فقط" if ar else "No urgent action — review the brief only"
+    )
+
+    key_numbers = []
+    if total_units:
+        key_numbers.append(
+            {
+                "label": "الوحدات" if ar else "Units",
+                "value": str(total_units),
+            }
+        )
+    key_numbers.append(
+        {
+            "label": "التحصيل" if ar else "Collection",
+            "value": f"{rate}%" if expected else "—",
+        }
+    )
+    if unpaid > 0 or late_n:
+        key_numbers.append(
+            {
+                "label": "متأخرات مؤكدة" if ar else "Confirmed arrears",
+                "value": f"{unpaid:,.0f} ر.س" if ar else f"{unpaid:,.0f} SAR",
+            }
+        )
+    elif maint_total > 0:
+        key_numbers.append(
+            {
+                "label": "صيانة/مصروفات" if ar else "Maintenance",
+                "value": f"{maint_total:,.0f} ر.س" if ar else f"{maint_total:,.0f} SAR",
+            }
+        )
+    key_numbers = key_numbers[:3]
+
+    needs_review: List[str] = []
+    for c in (gate.get("conflicts") or [])[:4]:
+        if c.get("detail"):
+            needs_review.append(str(c["detail"]))
+    for a in (reasoning.get("what_happened") or []):
+        pass
+    # Ambiguities / quality
+    for w in (quality.get("warnings") or [])[:3]:
+        needs_review.append(str(w))
+    miss_p = len((contracts.get("missing_phone") or []))
+    miss_c = len((contracts.get("missing_contract") or []))
+    if miss_p:
+        needs_review.append(
+            f"{miss_p} مستأجر بلا جوال ظاهر" if ar else f"{miss_p} tenants missing phone"
+        )
+    if miss_c:
+        needs_review.append(
+            f"{miss_c} مستأجر بلا رقم عقد ظاهر" if ar else f"{miss_c} tenants missing contract"
+        )
+    # Unknown payment months aren't in PK directly — skip
+    if not needs_review:
+        needs_review.append("لا يوجد ما يحتاج مراجعتك الآن" if ar else "Nothing needs your review now")
+
+    conf = float(reasoning.get("confidence") or 80)
+    gate_status = str(gate.get("decision_status") or "ok")
+    level = _confidence_level(conf, gate_status, lang)
+
+    return {
+        "property_status": status,
+        "top_risk": top_risk,
+        "top_action": top_action,
+        "key_numbers": key_numbers,
+        "confidence": conf,
+        "confidence_level": level,
+        "needs_review": needs_review[:5],
+        "decision_status": gate_status,
+        "period": period,
+        "meta": {
+            "units": total_units,
+            "late_tenants": late_n,
+            "maintenance_count": maint_count,
+            "maintenance_total": maint_total,
+            "collection_rate_pct": rate,
+        },
+    }
 
 
 def _labels(lang: Lang) -> dict:

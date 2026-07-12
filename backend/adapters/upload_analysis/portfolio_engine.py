@@ -17,6 +17,7 @@ from adapters.koil.understanding_engine import run_koil_understanding
 from adapters.koil.koil_report_bridge import (
     apply_koil_to_executive_report,
     apply_understanding_to_executive_report,
+    build_executive_brief,
     reasoning_to_smart_decisions,
 )
 from adapters.koil.consistency_gate import apply_gate_to_reasoning, run_consistency_gate
@@ -241,6 +242,7 @@ def analyze_upload_portfolio(
     koil_reasoning = run_koil_reasoning(property_knowledge, lang)
     consistency_gate = run_consistency_gate(deep, property_knowledge, lang)
     koil_reasoning = apply_gate_to_reasoning(koil_reasoning, consistency_gate, lang)
+    executive_brief = build_executive_brief(property_knowledge, koil_reasoning, consistency_gate, lang)
 
     units_summary_items = [
         _item("الوحدات السكنية" if lang == "ar" else "Residential units", str(apartment_count or max(0, total_units - shop_count))),
@@ -381,7 +383,9 @@ def analyze_upload_portfolio(
 
     return {
         "analysis_id": str(uuid.uuid4()),
-        "success_message": koil_reasoning.get("brief") or labels["success"].format(months=month_count),
+        "success_message": executive_brief.get("property_status")
+        or koil_reasoning.get("brief")
+        or labels["success"].format(months=month_count),
         "prompt_message": labels["prompt"],
         "what_now_message": labels["what_now"],
         "prompt_options": [
@@ -390,6 +394,7 @@ def analyze_upload_portfolio(
             {"key": "cancel", "label": labels["opt_cancel"]},
         ],
         "metrics": metrics,
+        "executive_brief": executive_brief,
         "executive_report": executive_report,
         "late_payments": late_payments,
         "property_knowledge": property_knowledge,
