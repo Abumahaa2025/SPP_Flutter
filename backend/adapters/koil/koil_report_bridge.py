@@ -77,16 +77,35 @@ def _confidence_level(score: float, gate_status: str, lang: Lang) -> str:
     return "يحتاج مراجعتك" if ar else "Needs your review"
 
 
+def _status_tier(
+    late_n: int,
+    unpaid: float,
+    rate: float,
+    gate_blocked: bool,
+    review_n: int,
+) -> str:
+    """جيدة | تحتاج متابعة | حرجة — owner-facing only."""
+    if gate_blocked:
+        return "تحتاج متابعة"
+    if late_n >= 5 or unpaid >= 30_000 or (rate and rate < 70):
+        return "حرجة"
+    if late_n >= 1 or unpaid > 0 or review_n >= 2 or (rate and rate < 85):
+        return "تحتاج متابعة"
+    return "جيدة"
+
+
 def build_executive_brief(
     knowledge: dict,
     reasoning: dict,
     gate: Optional[dict] = None,
     lang: Lang = "ar",
+    metrics: Optional[dict] = None,
 ) -> dict:
-    """One-screen owner brief — derived only from Property Knowledge + Koil reasoning."""
+    """Owner decision brief — Property Knowledge only. No client-specific rules."""
     knowledge = knowledge or {}
     reasoning = reasoning or {}
     gate = gate or {}
+    metrics = metrics or {}
     ar = lang == "ar"
 
     units = knowledge.get("units") or {}
@@ -98,131 +117,183 @@ def build_executive_brief(
     quality = knowledge.get("quality") or {}
     contracts = knowledge.get("contracts") or {}
 
-    total_units = int(units.get("total") or 0)
-    late_n = int(late.get("tenant_count") or 0)
-    unpaid = float(late.get("total_unpaid") or coll.get("total_unpaid") or 0)
-    collected = float(coll.get("total_collected") or 0)
-    expected = float(coll.get("total_expected") or 0)
-    rate = round(collected / expected * 100) if expected else 0
-    maint_total = float(maint.get("total") or 0)
-    maint_count = int(maint.get("count") or len(maint.get("entries") or []))
+    total_units = int(units.get("total") or metrics.get("units") or 0)
+    active = int(units.get("active_count") or metrics.get("occupied_units") or 0)
+    occupancy = (
+        round(float(metrics.get("occupancy_pct") or 0))
+        if metrics.get("occupancy_pct") is not None
+        else (round(active / total_units * 100) if total_units else 0)
+    )
+    late_n = int(late.get("tenant_count") or metrics.get("late_tenants") or 0)
+    unpaid = float(late.get("total_unpaid") or coll.get("total_unpaid") or metrics.get("late_value") or 0)
+    collected = float(coll.get("total_collected") or metrics.get("collected") or 0)
+    expected = float(coll.get("total_expected") or metrics.get("total_revenue_annual") or 0)
+    rate = int(metrics.get("collection_rate_pct") or 0) or (
+        round(collected / expected * 100) if expected else 0
+    )
+    maint_total = float(maint.get("total") or metrics.get("total_expenses") or 0)
+    maint_count = int(maint.get("count") or len(maint.get("entries") or []) or 0)
+    expired_n = int(metrics.get("contracts_expired") or 0)
+    expiring_n = int(metrics.get("contracts_expiring_soon") or 0)
+
     period = ""
     if meta.get("period_from") and meta.get("period_to"):
         period = f"{meta['period_from']} → {meta['period_to']}"
 
-    if gate.get("decision_status") == "blocked_for_review":
-        status = (
-            f"العقار يحتاج مراجعة قبل أي إجراء تحصيل — اكتُشفت تعارضات في البيانات ({period or 'الفترة'})."
-            if ar
-            else f"Property needs review before collection actions — data conflicts found ({period or 'period'})."
-        )
-    elif late_n == 0 and unpaid <= 0:
-        status = (
-            f"الوضع مستقر خلال {period or 'الفترة'}: لا متأخرات مؤكدة على {total_units} وحدة."
-            if ar
-            else f"Stable through {period or 'the period'}: no confirmed arrears across {total_units} units."
-        )
-    elif late_n <= 2:
-        status = (
-            f"تحصيل جيد عمومًا ({rate}%) مع {late_n} حالة متأخرات مؤكدة تحتاج متابعة."
-            if ar
-            else f"Collection mostly healthy ({rate}%) with {late_n} confirmed arrears to follow up."
-        )
-    else:
-        status = (
-            f"ضغط تحصيل: {late_n} مستأجرين بمتأخرات مؤكدة بقيمة {unpaid:,.0f} ر.س خلال {period or 'الفترة'}."
-            if ar
-            else f"Collection pressure: {late_n} tenants with confirmed arrears totaling {unpaid:,.0f} SAR."
-        )
+    gate_blocked = gate.get("decision_status") == "blocked_for_review"
 
-    risks = sorted(
-        reasoning.get("risks") or [],
-        key=lambda r: {"critical": 0, "high": 1, "medium": 2, "low": 3}.get(str(r.get("severity") or "medium"), 9),
-    )
-    recs = sorted(
-        reasoning.get("recommendations") or [],
-        key=lambda r: {"critical": 0, "high": 1, "medium": 2, "low": 3}.get(str(r.get("priority") or "medium"), 9),
-    )
-    top_risk = (risks[0].get("text") if risks else None) or (
-        "لا مخاطر مؤكدة الآن" if ar else "No confirmed risks now"
-    )
-    top_action = (recs[0].get("action") if recs else None) or (
-        "لا إجراء عاجل — راجع الملخص فقط" if ar else "No urgent action — review the brief only"
-    )
-
-    key_numbers = []
-    if total_units:
-        key_numbers.append(
-            {
-                "label": "الوحدات" if ar else "Units",
-                "value": str(total_units),
-            }
-        )
-    key_numbers.append(
-        {
-            "label": "التحصيل" if ar else "Collection",
-            "value": f"{rate}%" if expected else "—",
-        }
-    )
-    if unpaid > 0 or late_n:
-        key_numbers.append(
-            {
-                "label": "متأخرات مؤكدة" if ar else "Confirmed arrears",
-                "value": f"{unpaid:,.0f} ر.س" if ar else f"{unpaid:,.0f} SAR",
-            }
-        )
-    elif maint_total > 0:
-        key_numbers.append(
-            {
-                "label": "صيانة/مصروفات" if ar else "Maintenance",
-                "value": f"{maint_total:,.0f} ر.س" if ar else f"{maint_total:,.0f} SAR",
-            }
-        )
-    key_numbers = key_numbers[:3]
-
+    # --- Needs review (unit-first, cautious) ---
     needs_review: List[str] = []
-    for c in (gate.get("conflicts") or [])[:4]:
+    for c in (gate.get("conflicts") or [])[:3]:
         if c.get("detail"):
             needs_review.append(str(c["detail"]))
-    for a in (reasoning.get("what_happened") or []):
-        pass
-    # Ambiguities / quality
-    for w in (quality.get("warnings") or [])[:3]:
+    for ch in (lc.get("tenant_changes") or [])[:4]:
+        unit = ch.get("unit") or "—"
+        needs_review.append(
+            f"الوحدة {unit}: يحتمل وجود تغيير ويحتاج مراجعتك"
+            if ar
+            else f"Unit {unit}: possible change — needs your review"
+        )
+    for row in (contracts.get("missing_phone") or [])[:2]:
+        needs_review.append(
+            f"الوحدة {row.get('unit')}: بيانات الجوال تحتاج مراجعة"
+            if ar
+            else f"Unit {row.get('unit')}: phone data needs review"
+        )
+    for row in (contracts.get("missing_contract") or [])[:2]:
+        needs_review.append(
+            f"الوحدة {row.get('unit')}: بيانات العقد تحتاج مراجعة"
+            if ar
+            else f"Unit {row.get('unit')}: contract data needs review"
+        )
+    for w in (quality.get("warnings") or [])[:2]:
         needs_review.append(str(w))
-    miss_p = len((contracts.get("missing_phone") or []))
-    miss_c = len((contracts.get("missing_contract") or []))
-    if miss_p:
-        needs_review.append(
-            f"{miss_p} مستأجر بلا جوال ظاهر" if ar else f"{miss_p} tenants missing phone"
-        )
-    if miss_c:
-        needs_review.append(
-            f"{miss_c} مستأجر بلا رقم عقد ظاهر" if ar else f"{miss_c} tenants missing contract"
-        )
-    # Unknown payment months aren't in PK directly — skip
+    # Dedupe preserve order
+    seen: set = set()
+    uniq_review: List[str] = []
+    for line in needs_review:
+        if line in seen:
+            continue
+        seen.add(line)
+        uniq_review.append(line)
+    needs_review = uniq_review[:5]
     if not needs_review:
-        needs_review.append("لا يوجد ما يحتاج مراجعتك الآن" if ar else "Nothing needs your review now")
+        needs_review = ["لا يوجد ما يحتاج مراجعتك الآن" if ar else "Nothing needs your review now"]
+
+    status_label = _status_tier(late_n, unpaid, float(rate), gate_blocked, len([x for x in needs_review if "لا يوجد" not in x and "Nothing" not in x]))
+    if ar:
+        status_map = {
+            "جيدة": f"حالة العقار: جيدة — التحصيل {rate}% ولا ضغط تحصيل مؤكد.",
+            "تحتاج متابعة": f"حالة العقار: تحتاج متابعة — راقب المتأخرات المؤكدة والمراجعات.",
+            "حرجة": f"حالة العقار: حرجة — أولوية التحصيل والمراجعة قبل أي قرار آخر.",
+        }
+        if gate_blocked:
+            property_status = "حالة العقار: تحتاج متابعة — تعارض في البيانات يمنع توصيات التحصيل الآلية."
+        else:
+            property_status = status_map.get(status_label, status_map["تحتاج متابعة"])
+        if period:
+            property_status = f"{property_status} ({period})"
+    else:
+        property_status = f"Status: {status_label}" + (f" ({period})" if period else "")
+
+    # --- Top 3 decisions today ---
+    decisions: List[str] = []
+    for lt in (late.get("tenants") or [])[:2]:
+        name = lt.get("tenant") or "—"
+        unit = lt.get("unit") or "—"
+        phone = (lt.get("phone") or "").strip()
+        if phone:
+            decisions.append(
+                f"تواصل مع المستأجر ({name}) — الوحدة {unit}"
+                if ar
+                else f"Contact tenant ({name}) — unit {unit}"
+            )
+        else:
+            decisions.append(
+                f"راجع بيانات التواصل للمستأجر ({name}) — الوحدة {unit}"
+                if ar
+                else f"Review contact for ({name}) — unit {unit}"
+            )
+    if expiring_n or expired_n:
+        decisions.append(
+            f"راجع العقود ({expired_n} منتهية · {expiring_n} قريبة من الانتهاء)"
+            if ar
+            else f"Review contracts ({expired_n} expired · {expiring_n} expiring)"
+        )
+    if maint_count > 0 and maint_total > 0:
+        decisions.append(
+            f"راجع الصيانة/المصروفات ({maint_count} سجل · {maint_total:,.0f} ر.س) واعتمد ما يلزم"
+            if ar
+            else f"Review maintenance ({maint_count} rows · {maint_total:,.0f} SAR) and approve as needed"
+        )
+    for r in sorted(
+        reasoning.get("recommendations") or [],
+        key=lambda x: {"critical": 0, "high": 1, "medium": 2, "low": 3}.get(str(x.get("priority") or "medium"), 9),
+    ):
+        action = (r.get("action") or "").strip()
+        if action and action not in decisions:
+            decisions.append(action)
+        if len(decisions) >= 3:
+            break
+    decisions = decisions[:3]
+    if not decisions:
+        decisions = [
+            "لا إجراء عاجل اليوم — راجع الأرقام فقط" if ar else "No urgent action today — review figures only"
+        ]
+
+    key_numbers = [
+        {"label": "الوحدات" if ar else "Units", "value": str(total_units or "—")},
+        {"label": "نسبة الإشغال" if ar else "Occupancy", "value": f"{occupancy}%"},
+        {"label": "التحصيل" if ar else "Collection", "value": f"{rate}%" if expected or rate else "—"},
+        {
+            "label": "المتأخرات المؤكدة" if ar else "Confirmed arrears",
+            "value": f"{unpaid:,.0f} ر.س" if ar else f"{unpaid:,.0f} SAR",
+        },
+        {
+            "label": "الصيانة" if ar else "Maintenance",
+            "value": f"{maint_count} · {maint_total:,.0f}" if maint_count else ("—" if not maint_total else f"{maint_total:,.0f}"),
+        },
+        {
+            "label": "العقود المنتهية" if ar else "Expired contracts",
+            "value": str(expired_n),
+        },
+    ]
 
     conf = float(reasoning.get("confidence") or 80)
+    if gate_blocked:
+        conf = min(conf, 60)
     gate_status = str(gate.get("decision_status") or "ok")
     level = _confidence_level(conf, gate_status, lang)
 
+    # Keep legacy fields for older clients
+    top_action = decisions[0] if decisions else "—"
+    top_risk = (
+        (f"{late_n} متأخر مؤكد · {unpaid:,.0f} ر.س" if late_n else "لا متأخرات مؤكدة")
+        if ar
+        else (f"{late_n} confirmed late · {unpaid:,.0f}" if late_n else "No confirmed arrears")
+    )
+
     return {
-        "property_status": status,
-        "top_risk": top_risk,
-        "top_action": top_action,
+        "title": "تقرير كويل التنفيذي" if ar else "Koil executive report",
+        "status_label": status_label,
+        "property_status": property_status,
+        "decisions_today": decisions,
         "key_numbers": key_numbers,
+        "needs_review": needs_review,
         "confidence": conf,
         "confidence_level": level,
-        "needs_review": needs_review[:5],
         "decision_status": gate_status,
         "period": period,
+        "top_risk": top_risk,
+        "top_action": top_action,
         "meta": {
             "units": total_units,
+            "occupancy_pct": occupancy,
             "late_tenants": late_n,
             "maintenance_count": maint_count,
             "maintenance_total": maint_total,
             "collection_rate_pct": rate,
+            "contracts_expired": expired_n,
         },
     }
 

@@ -51,36 +51,22 @@ def run_koil_reasoning(knowledge: dict, lang: Lang = "ar") -> dict:
         m = int(ch.get("month") or 0)
         y = int(ch.get("year") or 0)
         ml = f"{month_label(m, lang)} {y}".strip() if m else "—"
-        if ch.get("type") == "replacement":
-            txt = (
-                f"تغيّر مستأجر الوحدة {unit}: {ch.get('from_tenant')} ← {ch.get('to_tenant')} في {ml}"
-                if ar
-                else f"Unit {unit} tenant changed: {ch.get('from_tenant')} → {ch.get('to_tenant')} ({ml})"
-            )
-            ev = [f"unit={unit}", f"month={m}/{y}", f"from={ch.get('from_tenant')}", f"to={ch.get('to_tenant')}"]
-        elif ch.get("type") == "arrival":
-            txt = (
-                f"دخل مستأجر جديد: {ch.get('to_tenant')} — الوحدة {unit} ({ml})"
-                if ar
-                else f"New tenant {ch.get('to_tenant')} — unit {unit} ({ml})"
-            )
-            ev = [f"unit={unit}", f"tenant={ch.get('to_tenant')}", f"month={m}/{y}"]
-        else:
-            txt = (
-                f"غادر مستأجر الوحدة {unit}: {ch.get('from_tenant')} ({ml})"
-                if ar
-                else f"Tenant departed unit {unit}: {ch.get('from_tenant')} ({ml})"
-            )
-            ev = [f"unit={unit}", f"tenant={ch.get('from_tenant')}", f"month={m}/{y}"]
+        # Cautious language — name/identity flips are never stated as confirmed exits.
+        txt = (
+            f"يحتمل وجود تغيير في الوحدة {unit} خلال {ml} ويحتاج مراجعتك"
+            if ar
+            else f"Possible change on unit {unit} in {ml} — needs your review"
+        )
+        ev = [f"unit={unit}", f"month={m}/{y}", f"type={ch.get('type')}"]
         what.append(_fact(txt, ev, f"change_{i}"))
 
     late_n = int(late.get("tenant_count") or 0)
     if late_n:
         total_u = late.get("total_unpaid") or 0
         txt = (
-            f"يوجد {late_n} مستأجر{'ين' if late_n > 1 else ''} متأخر — إجمالي {total_u:,.0f} ر.س"
+            f"يوجد {late_n} مستأجر{'ين' if late_n > 1 else ''} بمتأخرات مؤكدة — إجمالي {total_u:,.0f} ر.س"
             if ar
-            else f"{late_n} late tenant(s) — total {total_u:,.0f} SAR"
+            else f"{late_n} tenant(s) with confirmed arrears — total {total_u:,.0f} SAR"
         )
         what.append(_fact(txt, [f"late_count={late_n}", f"total_unpaid={total_u}"], "late_summary"))
 
@@ -112,7 +98,9 @@ def run_koil_reasoning(knowledge: dict, lang: Lang = "ar") -> dict:
         n = lc["departed_count"]
         what.append(
             _fact(
-                f"غادر {n} مستأجر{'ين' if n > 1 else ''} خلال الفترة المحلّلة" if ar else f"{n} tenant(s) departed",
+                f"يحتمل وجود {n} تغيّر{'ات' if n > 1 else ''} في الإشغال ويحتاج مراجعتك"
+                if ar
+                else f"{n} possible occupancy change(s) — needs your review",
                 [f"departed_count={n}"],
                 "departures",
             )
@@ -154,16 +142,15 @@ def run_koil_reasoning(knowledge: dict, lang: Lang = "ar") -> dict:
             why.append(_fact(txt, [f"unit={lt.get('unit')}", "status=partial"], f"why_partial_{lt.get('unit')}"))
 
     for ch in lc.get("tenant_changes") or []:
-        if ch.get("type") == "replacement":
-            why.append(
-                _fact(
-                    f"الوحدة {ch.get('unit')}: تغيّر المستأجر أثناء الفترة — راجع العقد والتحصيل السابق"
-                    if ar
-                    else f"Unit {ch.get('unit')}: mid-period tenant change",
-                    [f"unit={ch.get('unit')}", f"from={ch.get('from_tenant')}", f"to={ch.get('to_tenant')}"],
-                    f"why_change_{ch.get('unit')}",
-                )
+        why.append(
+            _fact(
+                f"الوحدة {ch.get('unit')}: اختلاف في بيانات المستأجر بين الأشهر — غير مؤكد ويحتاج مراجعتك"
+                if ar
+                else f"Unit {ch.get('unit')}: tenant field differs across months — unconfirmed, needs review",
+                [f"unit={ch.get('unit')}", f"type={ch.get('type')}"],
+                f"why_change_{ch.get('unit')}",
             )
+        )
 
     for row in contracts.get("missing_contract") or []:
         why.append(
@@ -294,8 +281,8 @@ def run_koil_reasoning(knowledge: dict, lang: Lang = "ar") -> dict:
         recs.append(
             _rec(
                 "medium",
-                f"راجع {lc.get('departed_count')} وحدة بعد مغادرة المستأجر" if ar else "Review units after tenant departures",
-                "تأكد من التسليم والصيانة قبل مستأجر جديد" if ar else "Verify handover and maintenance",
+                f"راجع {lc.get('departed_count')} وحدة يحتمل تغيّر إشغالها" if ar else "Review units with possible occupancy change",
+                "غير مؤكد — أكّد من الكشوف قبل أي إجراء" if ar else "Unconfirmed — verify from statements first",
                 [f"departed={lc.get('departed_count')}"],
                 "rec_departed",
                 "page:units",

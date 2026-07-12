@@ -242,7 +242,6 @@ def analyze_upload_portfolio(
     koil_reasoning = run_koil_reasoning(property_knowledge, lang)
     consistency_gate = run_consistency_gate(deep, property_knowledge, lang)
     koil_reasoning = apply_gate_to_reasoning(koil_reasoning, consistency_gate, lang)
-    executive_brief = build_executive_brief(property_knowledge, koil_reasoning, consistency_gate, lang)
 
     units_summary_items = [
         _item("الوحدات السكنية" if lang == "ar" else "Residential units", str(apartment_count or max(0, total_units - shop_count))),
@@ -380,6 +379,14 @@ def analyze_upload_portfolio(
         "newcomers_count": len(newcomers),
         "collection_rate_pct": round(collected / expected * 100) if expected else 0,
     }
+
+    executive_brief = build_executive_brief(
+        property_knowledge,
+        koil_reasoning,
+        consistency_gate,
+        lang,
+        metrics=metrics,
+    )
 
     return {
         "analysis_id": str(uuid.uuid4()),
