@@ -145,156 +145,180 @@ def build_executive_brief(
     collection_ok = bool(lq.get("collection_recs_allowed", False)) if lq else False
     unknown_n = int(lq.get("unknown_month_count") or 0)
 
-    # --- Operational story (confirmed facts only) ---
-    story_lines: List[str] = []
-    if period:
-        story_lines.append(
-            f"خلال الفترة {period} رُبطت {int(meta.get('month_count') or 0) or len(coll.get('by_month') or [])} أشهر على {total_units} وحدة."
-            if ar
-            else f"Over {period}, {total_units} units were linked across months."
-        )
-    if expected:
-        story_lines.append(
-            f"التحصيل المؤكد: {collected:,.0f} من أصل {expected:,.0f} ر.س ({rate}%)."
-            if ar
-            else f"Confirmed collection: {collected:,.0f} of {expected:,.0f} ({rate}%)."
-        )
-    if late_n:
-        story_lines.append(
-            f"المتأخرات المؤكدة فقط: {late_n} مستأجر · {unpaid:,.0f} ر.س."
-            if ar
-            else f"Confirmed arrears only: {late_n} tenants · {unpaid:,.0f}."
-        )
-    else:
-        story_lines.append(
-            "لا متأخرات مؤكدة في دفتر الدفعات."
-            if ar
-            else "No confirmed arrears in the payment ledger."
-        )
-    if unknown_n:
-        story_lines.append(
-            f"يوجد {unknown_n} شهرًا بحالة سداد غير واضحة — تحتاج مراجعتك قبل التحصيل."
-            if ar
-            else f"{unknown_n} unclear payment months — review before collection."
-        )
-    if maint_count:
-        story_lines.append(
-            f"الصيانة/المصروفات: {maint_count} سجلًا بإجمالي {maint_total:,.0f} ر.س."
-            if ar
-            else f"Maintenance: {maint_count} rows totaling {maint_total:,.0f}."
-        )
-
-    # Confirmed occupancy moves only when identity matched (lifecycle already soft);
-    # still phrase cautiously in story.
-    confirmed_out: List[str] = []
-    confirmed_in: List[str] = []
-    review_moves: List[str] = []
-    for ch in lc.get("tenant_changes") or []:
-        unit = ch.get("unit") or "—"
-        if ch.get("type") == "departure" and ch.get("from_tenant") and ch.get("confirmed"):
-            confirmed_out.append(f"{ch.get('from_tenant')} (وحدة {unit})" if ar else f"{ch.get('from_tenant')} (unit {unit})")
-        elif ch.get("type") == "arrival" and ch.get("to_tenant") and ch.get("confirmed"):
-            confirmed_in.append(f"{ch.get('to_tenant')} (وحدة {unit})" if ar else f"{ch.get('to_tenant')} (unit {unit})")
-        else:
-            review_moves.append(str(unit))
-
-    what_changed = (
-        (
-            f"تغيّر إشغال مؤكد في {len(confirmed_out) + len(confirmed_in)} حالة."
-            if (confirmed_out or confirmed_in)
-            else (
-                f"يحتمل وجود تغييرات إشغال في {len(lc.get('tenant_changes') or [])} وحدة — غير مؤكدة وتحتاج مراجعتك."
-                if lc.get("tenant_changes")
-                else "لا تغيّر إشغال مؤكد في الفترة."
-            )
-        )
-        if ar
-        else (
-            f"Confirmed occupancy moves: {len(confirmed_out) + len(confirmed_in)}."
-            if (confirmed_out or confirmed_in)
-            else (
-                f"Possible occupancy changes in {len(lc.get('tenant_changes') or [])} units — unconfirmed."
-                if lc.get("tenant_changes")
-                else "No confirmed occupancy change."
-            )
-        )
+    # --- Critical confirmed arrears (facts — never hidden by collection gate) ---
+    late_tenants = list(late.get("tenants") or [])
+    critical_tenants = sorted(
+        late_tenants,
+        key=lambda t: (-int(t.get("consecutive_late") or t.get("late_month_count") or 0), -float(t.get("total_unpaid") or 0)),
     )
-    if confirmed_out:
-        who_left = ("خرج: " if ar else "Left: ") + " · ".join(confirmed_out[:5])
-    elif review_moves:
-        who_left = (
-            "لم يُؤكد خروج مستأجر — وحدات للمراجعة: " + "، ".join(review_moves[:5])
+    critical_names: List[str] = []
+    for lt in critical_tenants[:3]:
+        if (int(lt.get("consecutive_late") or lt.get("late_month_count") or 0) >= 2) or float(lt.get("total_unpaid") or 0) >= 3000:
+            critical_names.append(
+                f"{lt.get('tenant') or '—'} (وحدة {lt.get('unit') or '—'} · {float(lt.get('total_unpaid') or 0):,.0f})"
+                if ar
+                else f"{lt.get('tenant') or '—'} (unit {lt.get('unit') or '—'} · {float(lt.get('total_unpaid') or 0):,.0f})"
+            )
+    if late_n and not critical_names and critical_tenants:
+        # Always surface at least the top confirmed case as a fact (not outreach).
+        lt = critical_tenants[0]
+        critical_names.append(
+            f"{lt.get('tenant') or '—'} (وحدة {lt.get('unit') or '—'} · {float(lt.get('total_unpaid') or 0):,.0f})"
             if ar
-            else "No confirmed departures — review units: " + ", ".join(review_moves[:5])
+            else f"{lt.get('tenant') or '—'} (unit {lt.get('unit') or '—'} · {float(lt.get('total_unpaid') or 0):,.0f})"
         )
-    else:
-        who_left = "لا خروج مؤكد من الكشوف." if ar else "No confirmed departures from sheets."
 
-    if confirmed_in:
-        who_entered = ("دخل: " if ar else "Entered: ") + " · ".join(confirmed_in[:5])
-    elif review_moves:
-        who_entered = (
-            "لم يُؤكد دخول مستأجر — أي اختلاف أسماء يُعرض للمراجعة فقط."
-            if ar
-            else "No confirmed arrivals — name differences are for review only."
-        )
-    else:
-        who_entered = "لا دخول مؤكد من الكشوف." if ar else "No confirmed arrivals from sheets."
-
-    biggest_problem = (
-        (
+    arrears_block = {
+        "count": late_n,
+        "total": round(unpaid, 2),
+        "critical_names": critical_names,
+        "label": (
             f"متأخرات مؤكدة: {late_n} مستأجر · {unpaid:,.0f} ر.س"
             if late_n
-            else (
-                f"حالات سداد غير واضحة ({unknown_n} شهرًا) تمنع توصيات التحصيل"
-                if unknown_n
-                else ("لا مشكلة تحصيل مؤكدة الآن" if ar else "No confirmed collection problem")
-            )
+            else ("لا متأخرات مؤكدة" if ar else "No confirmed arrears")
         )
         if ar
         else (
             f"Confirmed arrears: {late_n} · {unpaid:,.0f}"
             if late_n
-            else (
-                f"Unclear payment months ({unknown_n}) block collection advice"
-                if unknown_n
-                else "No confirmed collection problem"
+            else "No confirmed arrears"
+        ),
+    }
+
+    # --- Occupancy moves (confirmed clear switches only) ---
+    confirmed_out: List[str] = []
+    confirmed_in: List[str] = []
+    confirmed_replacements: List[str] = []
+    for ch in lc.get("tenant_changes") or []:
+        if not ch.get("confirmed"):
+            continue
+        unit = ch.get("unit") or "—"
+        if ch.get("type") == "departure" and ch.get("from_tenant"):
+            confirmed_out.append(f"{ch.get('from_tenant')} (وحدة {unit})" if ar else f"{ch.get('from_tenant')} (unit {unit})")
+        elif ch.get("type") == "arrival" and ch.get("to_tenant"):
+            confirmed_in.append(f"{ch.get('to_tenant')} (وحدة {unit})" if ar else f"{ch.get('to_tenant')} (unit {unit})")
+        elif ch.get("type") == "replacement":
+            confirmed_replacements.append(
+                f"{ch.get('from_tenant') or '—'} → {ch.get('to_tenant') or '—'} (وحدة {unit})"
+                if ar
+                else f"{ch.get('from_tenant') or '—'} → {ch.get('to_tenant') or '—'} (unit {unit})"
             )
+
+    # --- Manager answers (< 1 minute) ---
+    what_happened_parts: List[str] = []
+    if period:
+        what_happened_parts.append(
+            f"خلال {period}: {total_units} وحدة · إشغال {occupancy}% · تحصيل {rate}%."
+            if ar
+            else f"Over {period}: {total_units} units · occupancy {occupancy}% · collection {rate}%."
         )
+    else:
+        what_happened_parts.append(
+            f"{total_units} وحدة · إشغال {occupancy}% · تحصيل {rate}%."
+            if ar
+            else f"{total_units} units · occupancy {occupancy}% · collection {rate}%."
+        )
+    if expected:
+        what_happened_parts.append(
+            f"المحصّل {collected:,.0f} من أصل {expected:,.0f} ر.س."
+            if ar
+            else f"Collected {collected:,.0f} of {expected:,.0f}."
+        )
+    if late_n:
+        what_happened_parts.append(arrears_block["label"])
+    elif unknown_n:
+        what_happened_parts.append(
+            f"لا متأخرات مؤكدة — لكن {unknown_n} شهر سداد غير واضح."
+            if ar
+            else f"No confirmed arrears — {unknown_n} unclear payment months."
+        )
+    if maint_count:
+        what_happened_parts.append(
+            f"صيانة/مصروفات: {maint_count} سجل · {maint_total:,.0f} ر.س."
+            if ar
+            else f"Maintenance: {maint_count} · {maint_total:,.0f}."
+        )
+    what_happened = " ".join(what_happened_parts)
+
+    move_n = len(confirmed_out) + len(confirmed_in) + len(confirmed_replacements)
+    if move_n:
+        what_changed = (
+            f"تغيّر إشغال مؤكد: {len(confirmed_replacements)} استبدال · {len(confirmed_out)} خروج · {len(confirmed_in)} دخول."
+            if ar
+            else f"Confirmed moves: {len(confirmed_replacements)} replacements · {len(confirmed_out)} exits · {len(confirmed_in)} arrivals."
+        )
+    else:
+        what_changed = (
+            "لا تغيّر إشغال مؤكد (اختلاف الأسماء وحده لا يُحسب خروجًا)."
+            if ar
+            else "No confirmed occupancy change (name spelling alone is not a move)."
+        )
+
+    who_left = (
+        ("خرج: " + " · ".join(confirmed_out[:5]))
+        if confirmed_out
+        else (("استبدال: " + " · ".join(confirmed_replacements[:4])) if confirmed_replacements else ("لا خروج مؤكد." if ar else "No confirmed exit."))
+    ) if ar else (
+        ("Left: " + " · ".join(confirmed_out[:5]))
+        if confirmed_out
+        else (("Replaced: " + " · ".join(confirmed_replacements[:4])) if confirmed_replacements else "No confirmed exit.")
+    )
+    who_entered = (
+        ("دخل: " + " · ".join(confirmed_in[:5]))
+        if confirmed_in
+        else (("استبدال إلى: " + " · ".join((ch.split("→")[-1].strip() for ch in confirmed_replacements[:4]))) if confirmed_replacements else ("لا دخول مؤكد." if ar else "No confirmed arrival."))
+    ) if ar else (
+        ("Entered: " + " · ".join(confirmed_in[:5]))
+        if confirmed_in
+        else "No confirmed arrival."
     )
 
-    # --- Needs review (unit-first, cautious) ---
+    if late_n:
+        biggest_problem = arrears_block["label"]
+        if critical_names:
+            biggest_problem += (" — الحرجة: " if ar else " — critical: ") + " · ".join(critical_names)
+        if unknown_n:
+            biggest_problem += (
+                f" · ملاحظة: {unknown_n} شهر غير واضح يمنع توصيات التحصيل الآلية"
+                if ar
+                else f" · note: {unknown_n} unclear months block auto collection advice"
+            )
+    elif unknown_n:
+        biggest_problem = (
+            f"حالات سداد غير واضحة ({unknown_n} شهرًا) — لا توصيات تحصيل حتى تتضح"
+            if ar
+            else f"Unclear payment months ({unknown_n}) — no collection advice yet"
+        )
+    elif gate_blocked:
+        biggest_problem = "تعارض بيانات يمنع قرارات آلية" if ar else "Data conflicts block automated decisions"
+    elif maint_total >= 10000:
+        biggest_problem = f"مصروفات صيانة مرتفعة: {maint_total:,.0f} ر.س" if ar else f"High maintenance: {maint_total:,.0f}"
+    else:
+        biggest_problem = "لا مشكلة تشغيلية حرجة مؤكدة الآن" if ar else "No confirmed critical operating issue"
+
+    # --- Needs review ---
     needs_review: List[str] = []
     if unknown_n:
         needs_review.append(
-            f"أكمل توضيح {unknown_n} شهر سداد غير واضح قبل أي تحصيل"
+            f"وضّح {unknown_n} شهر سداد غير واضح قبل أي تواصل تحصيل"
             if ar
-            else f"Clarify {unknown_n} unclear payment months before collection"
+            else f"Clarify {unknown_n} unclear payment months before any collection outreach"
         )
-    for c in (gate.get("conflicts") or [])[:3]:
+    for c in (gate.get("conflicts") or [])[:2]:
         if c.get("detail"):
             needs_review.append(str(c["detail"]))
-    for ch in (lc.get("tenant_changes") or [])[:4]:
-        unit = ch.get("unit") or "—"
+    if late_n and not collection_ok:
         needs_review.append(
-            f"الوحدة {unit}: يحتمل وجود تغيير ويحتاج مراجعتك"
+            f"راجع حالات المتأخرين المؤكدين ({late_n}) يدويًا — لا تواصل آلي حتى يكتمل الدفتر"
             if ar
-            else f"Unit {unit}: possible change — needs your review"
+            else f"Review {late_n} confirmed late cases manually — no auto outreach until ledger is clear"
         )
     for row in (contracts.get("missing_phone") or [])[:2]:
         needs_review.append(
-            f"الوحدة {row.get('unit')}: بيانات الجوال تحتاج مراجعة"
+            f"الوحدة {row.get('unit')}: الجوال ناقص"
             if ar
-            else f"Unit {row.get('unit')}: phone data needs review"
+            else f"Unit {row.get('unit')}: missing phone"
         )
-    for row in (contracts.get("missing_contract") or [])[:2]:
-        needs_review.append(
-            f"الوحدة {row.get('unit')}: بيانات العقد تحتاج مراجعة"
-            if ar
-            else f"Unit {row.get('unit')}: contract data needs review"
-        )
-    for w in (quality.get("warnings") or [])[:2]:
-        needs_review.append(str(w))
     seen: set = set()
     uniq_review: List[str] = []
     for line in needs_review:
@@ -310,88 +334,103 @@ def build_executive_brief(
         late_n,
         unpaid,
         float(rate),
-        gate_blocked or not collection_ok,
+        gate_blocked or (not collection_ok and late_n == 0),
         len([x for x in needs_review if "لا يوجد" not in x and "Nothing" not in x]),
     )
     if ar:
-        status_map = {
-            "جيدة": f"حالة العقار: جيدة — التحصيل {rate}% ولا ضغط تحصيل مؤكد.",
-            "تحتاج متابعة": f"حالة العقار: تحتاج متابعة — راقب المتأخرات المؤكدة والمراجعات.",
-            "حرجة": f"حالة العقار: حرجة — أولوية التحصيل والمراجعة قبل أي قرار آخر.",
-        }
-        if gate_blocked:
-            property_status = "حالة العقار: تحتاج متابعة — تعارض في البيانات يمنع توصيات التحصيل الآلية."
+        if late_n:
+            property_status = f"حالة العقار: {status_label} — {arrears_block['label']}."
+            if not collection_ok:
+                property_status += " توصيات التحصيل الآلية متوقفة حتى تتضح الأشهر غير الواضحة."
         elif not collection_ok:
-            property_status = "حالة العقار: تحتاج متابعة — دفتر الدفعات غير مكتمل لبناء توصيات تحصيل."
+            property_status = "حالة العقار: تحتاج متابعة — دفتر الدفعات فيه أشهر غير واضحة؛ لا متأخرات مؤكدة للعرض كتحصيل."
+        elif gate_blocked:
+            property_status = "حالة العقار: تحتاج متابعة — تعارض في البيانات."
         else:
-            property_status = status_map.get(status_label, status_map["تحتاج متابعة"])
+            property_status = {
+                "جيدة": f"حالة العقار: جيدة — التحصيل {rate}% ولا ضغط تحصيل مؤكد.",
+                "تحتاج متابعة": f"حالة العقار: تحتاج متابعة — راقب الأرقام والمراجعات.",
+                "حرجة": f"حالة العقار: حرجة — أولوية المراجعة قبل أي قرار آخر.",
+            }.get(status_label, f"حالة العقار: {status_label}.")
         if period:
             property_status = f"{property_status} ({period})"
     else:
-        property_status = f"Status: {status_label}" + (f" ({period})" if period else "")
+        property_status = f"Status: {status_label}" + (f" — {arrears_block['label']}" if late_n else "") + (f" ({period})" if period else "")
 
-    # --- Top 3 decisions (no collection until ledger clear) ---
-    decisions: List[str] = []
-    if not collection_ok:
-        decisions.append(
-            "راجع حالات السداد غير الواضحة قبل أي تواصل تحصيل"
+    # --- Actions today (3–5): facts first; outreach only if collection_ok ---
+    actions: List[str] = []
+    if not collection_ok and unknown_n:
+        actions.append(
+            "راجع الأشهر ذات حالة السداد غير الواضحة قبل أي تحصيل"
             if ar
-            else "Review unclear payment statuses before any collection outreach"
+            else "Review unclear payment months before any collection"
         )
-    elif late_n:
-        for lt in (late.get("tenants") or [])[:2]:
-            name = lt.get("tenant") or "—"
-            unit = lt.get("unit") or "—"
-            decisions.append(
-                f"تواصل مع المستأجر ({name}) — الوحدة {unit}"
+    if late_n:
+        if collection_ok:
+            for name in critical_names[:2]:
+                actions.append(
+                    f"تابع التحصيل مع: {name}"
+                    if ar
+                    else f"Follow up collection with: {name}"
+                )
+        else:
+            actions.append(
+                f"اطّلع على المتأخرات المؤكدة ({late_n} · {unpaid:,.0f} ر.س) دون تواصل آلي"
                 if ar
-                else f"Contact tenant ({name}) — unit {unit}"
+                else f"Review confirmed arrears ({late_n} · {unpaid:,.0f}) without auto outreach"
             )
+    if confirmed_replacements or confirmed_out or confirmed_in:
+        actions.append(
+            f"أكد تغييرات الإشغال ({move_n} حالة مؤكدة)"
+            if ar
+            else f"Confirm occupancy moves ({move_n} confirmed)"
+        )
     if expiring_n or expired_n:
-        decisions.append(
-            f"راجع العقود ({expired_n} منتهية · {expiring_n} قريبة من الانتهاء)"
+        actions.append(
+            f"راجع العقود ({expired_n} منتهية · {expiring_n} قريبة)"
             if ar
             else f"Review contracts ({expired_n} expired · {expiring_n} expiring)"
         )
-    if maint_count > 0 and maint_total > 0:
-        decisions.append(
-            f"راجع الصيانة/المصروفات ({maint_count} سجل · {maint_total:,.0f} ر.س) واعتمد ما يلزم"
+    if maint_count > 0 and maint_total > 0 and len(actions) < 5:
+        actions.append(
+            f"راجع الصيانة ({maint_count} · {maint_total:,.0f} ر.س)"
             if ar
-            else f"Review maintenance ({maint_count} rows · {maint_total:,.0f} SAR)"
+            else f"Review maintenance ({maint_count} · {maint_total:,.0f})"
         )
     for r in sorted(
         reasoning.get("recommendations") or [],
         key=lambda x: {"critical": 0, "high": 1, "medium": 2, "low": 3}.get(str(x.get("priority") or "medium"), 9),
     ):
-        action = (r.get("action") or "").strip()
-        key = (r.get("action_key") or "") + action
         if "whatsapp" in (r.get("action_key") or "") and not collection_ok:
             continue
-        if action and action not in decisions:
-            decisions.append(action)
-        if len(decisions) >= 3:
+        action = (r.get("action") or "").strip()
+        if action and action not in actions:
+            actions.append(action)
+        if len(actions) >= 5:
             break
-    decisions = decisions[:3]
-    if not decisions:
-        decisions = [
-            "لا إجراء عاجل اليوم — راجع الأرقام فقط" if ar else "No urgent action today — review figures only"
-        ]
+    actions = actions[:5]
+    if not actions:
+        actions = ["لا إجراء عاجل — راقب الأرقام فقط" if ar else "No urgent action — monitor figures only"]
+
+    story_lines = [what_happened, what_changed, biggest_problem]
+    if critical_names:
+        story_lines.append(("الحالات الحرجة: " if ar else "Critical cases: ") + " · ".join(critical_names))
 
     key_numbers = [
-        {"label": "الوحدات" if ar else "Units", "value": str(total_units or "—")},
-        {"label": "نسبة الإشغال" if ar else "Occupancy", "value": f"{occupancy}%"},
-        {"label": "التحصيل" if ar else "Collection", "value": f"{rate}%" if expected or rate else "—"},
         {
-            "label": "المتأخرات المؤكدة" if ar else "Confirmed arrears",
+            "label": "المتأخرون المؤكدون" if ar else "Confirmed late",
+            "value": str(late_n),
+        },
+        {
+            "label": "إجمالي المتأخرات" if ar else "Arrears total",
             "value": f"{unpaid:,.0f} ر.س" if ar else f"{unpaid:,.0f} SAR",
         },
+        {"label": "التحصيل" if ar else "Collection", "value": f"{rate}%" if expected or rate else "—"},
+        {"label": "الإشغال" if ar else "Occupancy", "value": f"{occupancy}%"},
+        {"label": "الوحدات" if ar else "Units", "value": str(total_units or "—")},
         {
-            "label": "الصيانة" if ar else "Maintenance",
-            "value": f"{maint_count} · {maint_total:,.0f}" if maint_count else ("—" if not maint_total else f"{maint_total:,.0f}"),
-        },
-        {
-            "label": "العقود المنتهية" if ar else "Expired contracts",
-            "value": str(expired_n),
+            "label": "أشهر غير واضحة" if ar else "Unclear months",
+            "value": str(unknown_n),
         },
     ]
 
@@ -401,21 +440,21 @@ def build_executive_brief(
     gate_status = str(gate.get("decision_status") or "ok")
     level = _confidence_level(conf, "blocked_for_review" if not collection_ok else gate_status, lang)
 
-    top_action = decisions[0] if decisions else "—"
-    top_risk = biggest_problem
-
     return {
         "title": "تقرير كويل التنفيذي" if ar else "Koil executive report",
         "status_label": status_label,
         "property_status": property_status,
         "story": story_lines,
-        "what_happened": " ".join(story_lines[:2]) if story_lines else property_status,
+        "what_happened": what_happened,
         "what_changed": what_changed,
         "who_left": who_left,
         "who_entered": who_entered,
         "biggest_problem": biggest_problem,
-        "top_decision": top_action,
-        "decisions_today": decisions,
+        "top_decision": actions[0],
+        "decisions_today": actions,
+        "actions_today": actions,
+        "arrears": arrears_block,
+        "critical_cases": critical_names,
         "key_numbers": key_numbers,
         "needs_review": needs_review,
         "confidence": conf,
@@ -423,17 +462,19 @@ def build_executive_brief(
         "decision_status": gate_status,
         "collection_recs_allowed": collection_ok,
         "period": period,
-        "top_risk": top_risk,
-        "top_action": top_action,
+        "top_risk": biggest_problem,
+        "top_action": actions[0],
         "meta": {
             "units": total_units,
             "occupancy_pct": occupancy,
             "late_tenants": late_n,
+            "late_total": unpaid,
             "maintenance_count": maint_count,
             "maintenance_total": maint_total,
             "collection_rate_pct": rate,
             "contracts_expired": expired_n,
             "unknown_month_count": unknown_n,
+            "confirmed_moves": move_n,
         },
     }
 

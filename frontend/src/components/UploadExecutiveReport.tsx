@@ -320,17 +320,65 @@ export function UploadExecutiveReport({ analysis, delay = 0 }: Props) {
         ) : null}
         <Text style={[styles.statusText, isRTL && styles.rtl]}>{brief.property_status}</Text>
 
-        <View style={styles.briefBlock}>
+        {/* Confirmed arrears — always visible at top */}
+        <View style={[styles.arrearsBox, (brief.arrears?.count || 0) > 0 && styles.arrearsHot]}>
           <Text style={[styles.statusLabel, isRTL && styles.rtl]}>
-            {ar ? 'ماذا حدث خلال الفترة؟' : 'What happened?'}
+            {ar ? 'المتأخرات المؤكدة' : 'Confirmed arrears'}
           </Text>
-          {(brief.story?.length
-            ? brief.story
-            : brief.what_happened
-              ? [brief.what_happened]
-              : [brief.property_status]
-          ).map((line) => (
-            <Text key={line} style={[styles.storyLine, isRTL && styles.rtl]}>
+          <Text style={[styles.arrearsTitle, isRTL && styles.rtl]}>
+            {brief.arrears?.label ||
+              (ar
+                ? `${brief.arrears?.count ?? analysis.late_payments?.summary.late_tenant_count ?? 0} مستأجر · ${(brief.arrears?.total ?? analysis.late_payments?.summary.total_unpaid ?? 0).toLocaleString()} ر.س`
+                : `${brief.arrears?.count ?? 0} · ${brief.arrears?.total ?? 0}`)}
+          </Text>
+          {(brief.critical_cases || brief.arrears?.critical_names || []).length > 0 ? (
+            <Text style={[styles.criticalLine, isRTL && styles.rtl]}>
+              {(ar ? 'الحرجة: ' : 'Critical: ') +
+                (brief.critical_cases || brief.arrears?.critical_names || []).join(' · ')}
+            </Text>
+          ) : null}
+          {brief.collection_recs_allowed === false ? (
+            <Text style={[styles.noteLine, isRTL && styles.rtl]}>
+              {ar
+                ? 'لا توصيات تحصيل آلية — يوجد أشهر سداد غير واضحة'
+                : 'No auto collection advice — unclear payment months remain'}
+            </Text>
+          ) : null}
+        </View>
+
+        <View style={styles.briefBlock}>
+          <Text style={[styles.statusLabel, isRTL && styles.rtl]}>{ar ? 'ماذا حدث؟' : 'What happened?'}</Text>
+          <Text style={[styles.storyLine, isRTL && styles.rtl]}>
+            {brief.what_happened || brief.story?.[0] || brief.property_status}
+          </Text>
+        </View>
+
+        <View style={styles.briefBlock}>
+          <Text style={[styles.statusLabel, isRTL && styles.rtl]}>{ar ? 'ماذا تغيّر؟' : 'What changed?'}</Text>
+          <Text style={[styles.storyLine, isRTL && styles.rtl]}>
+            {brief.what_changed || (ar ? 'لا تغيّر مؤكد.' : 'No confirmed change.')}
+          </Text>
+          <Text style={[styles.metaLine, isRTL && styles.rtl]}>
+            {(ar ? 'خرج: ' : 'Left: ') + (brief.who_left || '—')}
+          </Text>
+          <Text style={[styles.metaLine, isRTL && styles.rtl]}>
+            {(ar ? 'دخل: ' : 'Entered: ') + (brief.who_entered || '—')}
+          </Text>
+        </View>
+
+        <View style={styles.briefBlock}>
+          <Text style={[styles.statusLabel, isRTL && styles.rtl]}>{ar ? 'ما الأخطر؟' : 'Biggest risk?'}</Text>
+          <Text style={[styles.problemLine, isRTL && styles.rtl]}>
+            {brief.biggest_problem || brief.top_risk || '—'}
+          </Text>
+        </View>
+
+        <View style={styles.reviewBox}>
+          <Text style={[styles.statusLabel, isRTL && styles.rtl]}>
+            {ar ? 'ماذا أراجع اليوم؟' : 'What to review today?'}
+          </Text>
+          {brief.needs_review.map((line) => (
+            <Text key={line} style={[styles.reviewLine, isRTL && styles.rtl]}>
               • {line}
             </Text>
           ))}
@@ -338,51 +386,14 @@ export function UploadExecutiveReport({ analysis, delay = 0 }: Props) {
 
         <View style={styles.briefBlock}>
           <Text style={[styles.statusLabel, isRTL && styles.rtl]}>
-            {ar ? 'ما الذي تغيّر؟' : 'What changed?'}
+            {ar ? 'إجراءات اليوم' : 'Actions today'}
           </Text>
-          <Text style={[styles.storyLine, isRTL && styles.rtl]}>
-            {brief.what_changed || (ar ? 'لا تغيّر مؤكد في الفترة.' : 'No confirmed change.')}
-          </Text>
-        </View>
-
-        <View style={styles.briefBlock}>
-          <Text style={[styles.statusLabel, isRTL && styles.rtl]}>{ar ? 'من خرج؟' : 'Who left?'}</Text>
-          <Text style={[styles.storyLine, isRTL && styles.rtl]}>
-            {brief.who_left || (ar ? 'لا خروج مؤكد.' : 'No confirmed departure.')}
-          </Text>
-          <Text style={[styles.statusLabel, isRTL && styles.rtl]}>{ar ? 'من دخل؟' : 'Who entered?'}</Text>
-          <Text style={[styles.storyLine, isRTL && styles.rtl]}>
-            {brief.who_entered || (ar ? 'لا دخول مؤكد.' : 'No confirmed arrival.')}
-          </Text>
-        </View>
-
-        <View style={styles.briefBlock}>
-          <Text style={[styles.statusLabel, isRTL && styles.rtl]}>
-            {ar ? 'أهم مشكلة' : 'Biggest problem'}
-          </Text>
-          <Text style={[styles.problemLine, isRTL && styles.rtl]}>
-            {brief.biggest_problem || brief.top_risk || '—'}
-          </Text>
-          <Text style={[styles.statusLabel, isRTL && styles.rtl]}>
-            {ar ? 'أهم قرار اليوم' : 'Top decision today'}
-          </Text>
-          <Text style={[styles.decisionLine, isRTL && styles.rtl]}>
-            {brief.top_decision || decisions[0] || '—'}
-          </Text>
-        </View>
-
-        {decisions.length > 1 ? (
-          <View style={styles.briefBlock}>
-            <Text style={[styles.statusLabel, isRTL && styles.rtl]}>
-              {ar ? 'قرارات إضافية' : 'More decisions'}
+          {(brief.actions_today?.length ? brief.actions_today : decisions).slice(0, 5).map((d, i) => (
+            <Text key={`${i}-${d}`} style={[styles.decisionLine, isRTL && styles.rtl]}>
+              {i + 1}. {d}
             </Text>
-            {decisions.slice(1, 3).map((d, i) => (
-              <Text key={`${i}-${d}`} style={[styles.storyLine, isRTL && styles.rtl]}>
-                {i + 2}. {d}
-              </Text>
-            ))}
-          </View>
-        ) : null}
+          ))}
+        </View>
 
         <Text style={[styles.statusLabel, isRTL && styles.rtl]}>{ar ? 'أهم الأرقام' : 'Key numbers'}</Text>
         <View style={styles.numRow}>
@@ -407,17 +418,6 @@ export function UploadExecutiveReport({ analysis, delay = 0 }: Props) {
             {brief.confidence_level}
           </Text>
           <Text style={[styles.confPct, isRTL && styles.rtl]}>{Math.round(brief.confidence)}%</Text>
-        </View>
-
-        <View style={styles.reviewBox}>
-          <Text style={[styles.statusLabel, isRTL && styles.rtl]}>
-            {ar ? 'ما يحتاج مراجعتي' : 'Needs my review'}
-          </Text>
-          {brief.needs_review.map((line) => (
-            <Text key={line} style={[styles.reviewLine, isRTL && styles.rtl]}>
-              • {line}
-            </Text>
-          ))}
         </View>
       </GlassCard>
 
@@ -495,12 +495,49 @@ const styles = StyleSheet.create({
     lineHeight: 22,
     marginBottom: 4,
   },
+  metaLine: {
+    color: colors.textDim,
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 2,
+  },
   problemLine: {
     color: colors.text,
     fontSize: 15,
     lineHeight: 24,
     fontWeight: typography.weight.semibold,
-    marginBottom: 12,
+    marginBottom: 4,
+  },
+  arrearsBox: {
+    marginBottom: 16,
+    padding: 12,
+    borderRadius: radius.md,
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    gap: 4,
+  },
+  arrearsHot: {
+    borderColor: 'rgba(220,80,80,0.45)',
+    backgroundColor: 'rgba(220,80,80,0.10)',
+  },
+  arrearsTitle: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: typography.weight.semibold,
+    lineHeight: 22,
+  },
+  criticalLine: {
+    color: colors.danger,
+    fontSize: 13,
+    lineHeight: 20,
+    marginTop: 4,
+  },
+  noteLine: {
+    color: colors.textMuted,
+    fontSize: 12,
+    lineHeight: 18,
+    marginTop: 4,
   },
   numRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 },
   numCell: {

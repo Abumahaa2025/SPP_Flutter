@@ -105,12 +105,15 @@ export type TenantKnowledgeCard = {
   rent?: number;
   contract_start?: string;
   contract_end?: string;
+  contract_start_label?: string;
+  contract_end_label?: string;
   first_seen_label?: string;
   last_seen_label?: string;
   dates_note?: string;
   months?: TenantMonthStatus[];
   confirmed_arrears?: number;
   confirmed_late_months?: number;
+  last_important_change?: string;
 };
 
 export type PropertyKnowledge = {
@@ -135,6 +138,14 @@ export type ExecutiveBrief = {
   biggest_problem?: string;
   top_decision?: string;
   decisions_today?: string[];
+  actions_today?: string[];
+  arrears?: {
+    count?: number;
+    total?: number;
+    critical_names?: string[];
+    label?: string;
+  };
+  critical_cases?: string[];
   key_numbers: { label: string; value: string }[];
   needs_review: string[];
   confidence: number;

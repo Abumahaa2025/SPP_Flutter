@@ -47,22 +47,61 @@ def _build_tenant_cards(snapshot: dict, lang: Lang) -> List[dict]:
         ledger = pl.get("ledger") or {}
     else:
         ledger = pl if isinstance(pl, dict) else {}
+
+    # Index confirmed occupancy moves by unit for "last important change".
+    lc = snapshot.get("lifecycle") or {}
+    moves_by_unit: Dict[str, List[dict]] = {}
+    for d in lc.get("departed") or []:
+        moves_by_unit.setdefault(str(d.get("unit") or ""), []).append(
+            {
+                "kind": "departure",
+                "label": (
+                    f"استبدال/خروج: {d.get('tenant')} — {d.get('reason') or ''}"
+                    if lang == "ar"
+                    else f"Exit/replace: {d.get('tenant')}"
+                ),
+                "month": d.get("departed_month"),
+                "year": d.get("departed_year"),
+            }
+        )
+    for n in lc.get("newcomers") or []:
+        moves_by_unit.setdefault(str(n.get("unit") or ""), []).append(
+            {
+                "kind": "arrival",
+                "label": (
+                    f"دخول: {n.get('tenant')}"
+                    if lang == "ar"
+                    else f"Arrival: {n.get('tenant')}"
+                ),
+                "month": n.get("arrived_month"),
+                "year": n.get("arrived_year"),
+            }
+        )
+
     cards: List[dict] = []
     for ent in ledger.values():
         months_out = []
         confirmed_arrears = 0.0
         confirmed_months = 0
+        last_status_flip = ""
+        prev_st = ""
         for m in ent.get("months") or []:
             st = m.get("status") or "unknown_requires_review"
             rem = float(m.get("remaining") or 0)
             if st in ("unpaid_confirmed", "partial", "unpaid"):
                 confirmed_arrears += rem
                 confirmed_months += 1
+            label = _ml(int(m.get("month") or 0), int(m.get("year") or 0), lang)
+            if prev_st and prev_st != st:
+                last_status_flip = (
+                    f"{label}: {_status_label_ar(prev_st) if lang == 'ar' else prev_st} → {_status_label_ar(st) if lang == 'ar' else st}"
+                )
+            prev_st = st
             months_out.append(
                 {
                     "month": m.get("month"),
                     "year": m.get("year"),
-                    "label": _ml(int(m.get("month") or 0), int(m.get("year") or 0), lang),
+                    "label": label,
                     "status": st,
                     "status_label": _status_label_ar(st) if lang == "ar" else st,
                     "due": _f(m.get("due")),
@@ -74,29 +113,54 @@ def _build_tenant_cards(snapshot: dict, lang: Lang) -> List[dict]:
         months_out.sort(key=lambda x: (int(x.get("year") or 0), int(x.get("month") or 0)))
         first = months_out[0] if months_out else {}
         last = months_out[-1] if months_out else {}
+
+        unit = str(ent.get("unit") or "—")
+        unit_moves = sorted(
+            moves_by_unit.get(unit) or [],
+            key=lambda x: (int(x.get("year") or 0), int(x.get("month") or 0)),
+        )
+        last_move = unit_moves[-1] if unit_moves else None
+        if confirmed_arrears > 0:
+            last_important = (
+                f"متأخرات مؤكدة: {confirmed_months} شهر · {confirmed_arrears:,.0f} ر.س"
+                if lang == "ar"
+                else f"Confirmed arrears: {confirmed_months} mo · {confirmed_arrears:,.0f}"
+            )
+        elif last_move:
+            last_important = last_move.get("label") or ""
+        elif last_status_flip:
+            last_important = last_status_flip
+        else:
+            last_important = (
+                f"آخر ظهور في الكشوف: {last.get('label') or '—'}"
+                if lang == "ar"
+                else f"Last seen in sheets: {last.get('label') or '—'}"
+            )
+
         cards.append(
             {
                 "id": f"{ent.get('unit')}|{ent.get('contract') or ent.get('phone') or ent.get('tenant')}",
                 "tenant": ent.get("tenant") or "—",
-                "unit": ent.get("unit") or "—",
+                "unit": unit,
                 "phone": (ent.get("phone") or "").strip(),
                 "contract": (ent.get("contract") or "").strip(),
                 "rent": _f(ent.get("rent")),
                 # Contract calendar dates often absent from rent rolls — never invent.
-                "contract_start": "",
-                "contract_end": "",
+                "contract_start": first.get("label") or "",
+                "contract_end": last.get("label") or "",
                 "contract_start_label": first.get("label") or "",
-                "contract_end_label": "",
+                "contract_end_label": last.get("label") or "",
                 "first_seen_label": first.get("label") or "",
                 "last_seen_label": last.get("label") or "",
                 "dates_note": (
-                    "تاريخ بداية/نهاية العقد غير متوفر في الكشوف المرفوعة — يُعرض أول/آخر ظهور في الكشوف"
+                    "بداية/نهاية العقد = أول/آخر ظهور في الكشوف (تاريخ العقد التقويمي غير متوفر في الملفات المرفوعة)"
                     if lang == "ar"
-                    else "Contract start/end not in uploaded sheets — showing first/last appearance"
+                    else "Contract start/end = first/last sheet appearance (calendar dates not in uploads)"
                 ),
                 "months": months_out,
                 "confirmed_arrears": round(confirmed_arrears, 2),
                 "confirmed_late_months": confirmed_months,
+                "last_important_change": last_important,
             }
         )
     cards.sort(key=lambda c: (str(c.get("unit") or ""), str(c.get("tenant") or "")))
@@ -171,41 +235,59 @@ def _count_consecutive_late(unpaid: List[dict]) -> int:
 
 
 def _detect_tenant_changes(departed: List[dict], newcomers: List[dict]) -> List[dict]:
+    """One event per real switch — no duplicate arrival for the same replacement."""
     changes: List[dict] = []
+    replacement_keys: set = set()
     for d in departed:
         reason = d.get("reason") or ""
+        unit = d.get("unit")
+        month = d.get("departedMonth") or d.get("departed_month")
+        year = d.get("departedYear") or d.get("departed_year")
+        confirmed = bool(d.get("confirmed"))
         if "استبدال" in reason or "replacement" in reason.lower():
             new_t = reason.split("—")[-1].strip() if "—" in reason else ""
+            key = f"{unit}|{month}|{year}|{new_t}"
+            replacement_keys.add(key)
             changes.append(
                 {
-                    "unit": d.get("unit"),
+                    "unit": unit,
                     "from_tenant": d.get("tenant"),
                     "to_tenant": new_t or None,
-                    "month": d.get("departedMonth") or d.get("departed_month"),
-                    "year": d.get("departedYear") or d.get("departed_year"),
+                    "month": month,
+                    "year": year,
                     "type": "replacement",
+                    "confirmed": confirmed,
                 }
             )
         else:
             changes.append(
                 {
-                    "unit": d.get("unit"),
+                    "unit": unit,
                     "from_tenant": d.get("tenant"),
                     "to_tenant": None,
-                    "month": d.get("departedMonth") or d.get("departed_month"),
-                    "year": d.get("departedYear") or d.get("departed_year"),
+                    "month": month,
+                    "year": year,
                     "type": "departure",
+                    "confirmed": confirmed,
                 }
             )
     for n in newcomers:
+        unit = n.get("unit")
+        month = n.get("arrivedMonth") or n.get("arrived_month")
+        year = n.get("arrivedYear") or n.get("arrived_year")
+        tenant = n.get("tenant")
+        key = f"{unit}|{month}|{year}|{tenant}"
+        if key in replacement_keys:
+            continue
         changes.append(
             {
-                "unit": n.get("unit"),
+                "unit": unit,
                 "from_tenant": None,
-                "to_tenant": n.get("tenant"),
-                "month": n.get("arrivedMonth") or n.get("arrived_month"),
-                "year": n.get("arrivedYear") or n.get("arrived_year"),
+                "to_tenant": tenant,
+                "month": month,
+                "year": year,
                 "type": "arrival",
+                "confirmed": bool(n.get("confirmed")),
             }
         )
     return changes

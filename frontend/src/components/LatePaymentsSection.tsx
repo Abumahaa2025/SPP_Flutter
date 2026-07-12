@@ -102,26 +102,33 @@ function TenantDetailModal({
               value={card.contract || (ar ? 'غير متوفر' : 'N/A')}
               isRTL={isRTL}
             />
+            <FieldRow label={ar ? 'قيمة الإيجار' : 'Rent'} value={fmt(card.rent || 0, ar)} isRTL={isRTL} accent />
             <FieldRow
-              label={ar ? 'بداية الظهور في الكشوف' : 'First seen in sheets'}
-              value={card.first_seen_label || card.contract_start || (ar ? 'غير متوفر' : 'N/A')}
+              label={ar ? 'بداية العقد (أول ظهور)' : 'Contract start (first seen)'}
+              value={card.contract_start || card.first_seen_label || (ar ? 'غير متوفر' : 'N/A')}
               isRTL={isRTL}
             />
             <FieldRow
-              label={ar ? 'آخر ظهور في الكشوف' : 'Last seen in sheets'}
-              value={card.last_seen_label || card.contract_end || (ar ? 'غير متوفر' : 'N/A')}
+              label={ar ? 'نهاية العقد (آخر ظهور)' : 'Contract end (last seen)'}
+              value={card.contract_end || card.last_seen_label || (ar ? 'غير متوفر' : 'N/A')}
               isRTL={isRTL}
             />
             {card.dates_note ? (
               <Text style={[styles.note, isRTL && styles.rtl]}>{card.dates_note}</Text>
             ) : null}
-            <FieldRow label={ar ? 'قيمة الإيجار' : 'Rent'} value={fmt(card.rent || 0, ar)} isRTL={isRTL} accent />
             <FieldRow
               label={ar ? 'المتأخرات المؤكدة' : 'Confirmed arrears'}
               value={fmt(card.confirmed_arrears || 0, ar)}
               isRTL={isRTL}
               accent
             />
+            {card.last_important_change ? (
+              <FieldRow
+                label={ar ? 'آخر تغيير مهم' : 'Last important change'}
+                value={card.last_important_change}
+                isRTL={isRTL}
+              />
+            ) : null}
 
             <Text style={[styles.monthsHeading, isRTL && styles.rtl]}>
               {ar ? 'حالة السداد لكل شهر' : 'Payment status by month'}
