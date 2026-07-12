@@ -54,7 +54,12 @@ export function UploadExecutiveReport({ analysis, delay = 0 }: Props) {
         }
         return (
           <Animated.View key={sec.key} entering={FadeInDown.duration(500).delay(delay + 80 + i * 50)}>
-            <GlassCard padding={18} radiusToken="md" style={styles.sectionCard}>
+            <GlassCard
+              padding={18}
+              radiusToken="md"
+              style={styles.sectionCard}
+              edge={sec.key.startsWith('koil_understanding') ? 'emerald' : sec.key.startsWith('koil_') ? 'gold' : undefined}
+            >
               <Text style={[styles.sectionTitle, isRTL && styles.rtl]}>{sec.title}</Text>
               {sec.items.map((item) => (
                 <View key={`${sec.key}-${item.label}`} style={[styles.row, isRTL && styles.rowRtl]}>

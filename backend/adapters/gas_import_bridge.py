@@ -9,7 +9,18 @@ from typing import Any, Dict, List, Literal, Optional
 from .gas_client import GasClientError
 from .live_data import get_gas_client
 from .upload_analysis.intake_classifier import month_label
+from .upload_analysis.late_report_format import build_late_section_items, build_late_payments_view_model
 from .upload_analysis.portfolio_engine import analyze_upload_portfolio
+from .koil import (
+    apply_koil_to_executive_report,
+    apply_understanding_to_executive_report,
+    build_property_knowledge,
+    deep_stub_from_gas,
+    reasoning_to_smart_decisions,
+    run_koil_reasoning,
+    run_koil_understanding,
+    snapshot_from_gas_report,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -54,8 +65,8 @@ def _labels(lang: Lang) -> Dict[str, str]:
             "months": "ربط الأشهر والمقارنة",
             "moved_out": "من غادر",
             "moved_in": "من دخل / جدد",
-            "late": "المتأخرات — بالاسم والوحدة",
-            "late_tenants": "المستأجرون المتأخرون",
+            "late": "المتأخرات — شهرًا بشهر",
+            "late_tenants": "المتأخرات — شهرًا بشهر",
             "units_summary": "ملخص الوحدات",
             "quality": "سجل المراجعة والأخطاء",
             "revenue": "الإيرادات والتحصيل",
@@ -75,8 +86,8 @@ def _labels(lang: Lang) -> Dict[str, str]:
         "months": "Month linking & comparison",
         "moved_out": "Departed tenants",
         "moved_in": "New / renewed tenants",
-        "late": "Late payments — by name & unit",
-        "late_tenants": "Late tenants",
+        "late": "Late payments — by month",
+        "late_tenants": "Late payments — by month",
         "units_summary": "Units summary",
         "quality": "Review log & warnings",
         "revenue": "Revenue & collection",
@@ -219,29 +230,26 @@ def map_gas_report_to_portfolio(
             )
         )
 
-    late_items = []
-    for lt in late_tenants_detailed[:20]:
-        months_txt = lt.get("monthLabels") or ""
-        late_items.append(
-            _item(
-                f"{lt.get('tenant')} — {lt.get('unit')}",
-                f"{lt.get('lateMonthCount', 0)} أشهر · {float(lt.get('totalUnpaid') or 0):,.0f} ر.س · "
-                f"عقد {lt.get('contract') or '—'} · {lt.get('phone') or 'بدون جوال'}"
-                + (f" · {months_txt}" if months_txt and lang == "ar" else ""),
-            )
-        )
-    if not late_items:
-        for lt in late_rows[:15]:
-            late_items.append(
-                _item(
-                    f"{lt.get('tenant')} — {lt.get('unit')}",
-                    f"{float(lt.get('rent') or 0):,.0f} ر.س · {lt.get('phone') or 'بدون جوال'}",
-                )
-            )
-    if not late_items:
-        late_items.append(
-            _item("—", "لا متأخرات في الأشهر المحلّلة" if lang == "ar" else "No late rows in parsed months")
-        )
+    late_by_month = pb.get("lateByMonth") or {}
+    late_payments = build_late_payments_view_model(
+        late_by_month=late_by_month,
+        late_tenants_detailed=late_tenants_detailed,
+        total_unpaid=total_unpaid,
+        late_tenant_count=late_tenant_count,
+        lang=lang,
+    )
+    late_items = build_late_section_items(
+        late_by_month=late_by_month,
+        late_tenants_detailed=late_tenants_detailed,
+        total_unpaid=total_unpaid,
+        late_tenant_count=late_tenant_count,
+        lang=lang,
+    )
+
+    import_snapshot = snapshot_from_gas_report(report, batch_id, files)
+    koil_understanding = run_koil_understanding(files, deep_stub_from_gas(report, files), lang)
+    property_knowledge = build_property_knowledge(import_snapshot, lang)
+    koil_reasoning = run_koil_reasoning(property_knowledge, lang)
 
     units_summary_items = [
         _item("الوحدات السكنية" if lang == "ar" else "Residential units", str(apartment_count or max(0, unique_units - shop_count))),
@@ -275,7 +283,6 @@ def map_gas_report_to_portfolio(
             _sec("departed", labels["moved_out"], departed_items),
             _sec("moved_in", labels["moved_in"], moved_in_items or [_item("—", "—")]),
             _sec("late_tenants", labels["late_tenants"], late_items),
-            _sec("late", labels["late"], late_items[:8]),
             _sec(
                 "revenue",
                 labels["revenue"],
@@ -304,38 +311,10 @@ def map_gas_report_to_portfolio(
             ),
         ],
     }
+    executive_report = apply_understanding_to_executive_report(executive_report, koil_understanding, lang)
+    executive_report = apply_koil_to_executive_report(executive_report, koil_reasoning, lang)
 
-    smart_decisions: List[dict] = []
-    for lt in (late_tenants_detailed or late_rows)[:4]:
-        months_n = lt.get("lateMonthCount") or 1
-        amount = float(lt.get("totalUnpaid") or lt.get("rent") or 0)
-        smart_decisions.append(
-            {
-                "id": f"late_{lt.get('unit')}_{lt.get('tenant')}",
-                "priority": "critical",
-                "title": (
-                    f"{lt.get('tenant')} — وحدة {lt.get('unit')} — {months_n} أشهر · {amount:,.0f} ر.س"
-                    if lang == "ar"
-                    else f"{lt.get('tenant')} — unit {lt.get('unit')} — {months_n} mo · {amount:,.0f}"
-                ),
-                "action": "إرسال تذكير تحصيل + مراجعة العقد" if lang == "ar" else "Send collection reminder",
-            }
-        )
-    if departed:
-        d0 = departed[0]
-        ml = month_label(int(d0.get("departedMonth") or 0), lang)
-        smart_decisions.append(
-            {
-                "id": "vacancy_fill",
-                "priority": "medium",
-                "title": (
-                    f"وحدة {d0.get('unit')} شاغرة منذ {ml}"
-                    if lang == "ar"
-                    else f"Unit {d0.get('unit')} vacant since {ml}"
-                ),
-                "action": "تسريع التسويق وتحديث الإشغال" if lang == "ar" else "Accelerate marketing",
-            }
-        )
+    smart_decisions: List[dict] = reasoning_to_smart_decisions(koil_reasoning, lang)
     smart_decisions.append(
         {
             "id": "ud_pdf",
@@ -366,7 +345,7 @@ def map_gas_report_to_portfolio(
 
     return {
         "analysis_id": analysis_id,
-        "success_message": report.get("headline") or labels["success"].format(months=month_count),
+        "success_message": koil_reasoning.get("brief") or report.get("headline") or labels["success"].format(months=month_count),
         "prompt_message": labels["prompt"],
         "what_now_message": labels["what_now"],
         "prompt_options": [
@@ -403,6 +382,10 @@ def map_gas_report_to_portfolio(
             "analysis_confidence_pct": confidence,
         },
         "executive_report": executive_report,
+        "late_payments": late_payments,
+        "property_knowledge": property_knowledge,
+        "koil_understanding": koil_understanding,
+        "koil_reasoning": koil_reasoning,
         "month_comparison": month_cmp,
         "expense_by_type": [],
         "smart_decisions": smart_decisions[:8],
@@ -424,7 +407,8 @@ def map_gas_report_to_portfolio(
             "files_without_content": report.get("filesWithoutContent") or [],
             "quality_log": quality_log,
             "gas_mode": gas_payload.get("mode"),
-            "employee_brief": report.get("employeeBrief"),
+            "employee_brief": koil_reasoning.get("brief") or report.get("employeeBrief"),
+            "koil_version": koil_reasoning.get("version"),
         },
     }
 

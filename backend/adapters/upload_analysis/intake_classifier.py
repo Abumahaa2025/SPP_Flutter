@@ -102,7 +102,9 @@ class FileClassification:
 
 
 def _norm(s: str) -> str:
-    return re.sub(r"\s+", " ", (s or "").strip().lower())
+    # Strip Arabic tatweel/kashida so «الاســــم» matches «اسم»
+    s = (s or "").replace("\u0640", "")
+    return re.sub(r"\s+", " ", s.strip().lower())
 
 
 def extract_year(name: str, default: int = 2026) -> int:
@@ -152,14 +154,37 @@ def classify_file(file_meta: dict, lang: str = "ar") -> FileClassification:
     confidence = 45
     reasons: List[str] = []
 
+    name_hint = _norm(name)
+    # Monthly rent rolls often embed electricity «فاتورة» columns — name+شهر wins over expense.
+    looks_like_monthly_rent = bool(
+        re.search(r"(?:كشف|roll|شكشف)", name_hint)
+        and re.search(r"(?:شهر|month)", name_hint)
+    )
+    has_rent_columns = bool(
+        re.search(r"(?:رقم الشقة|ايجار|إيجار|مستأجر|الاسم|رق.?م ال.?عقد|rent|tenant|unit)", snippet[:800])
+    )
+    rent_signals = looks_like_monthly_rent or has_rent_columns
+
     if re.search(r"(?:صيان|صيانه|صيانة|maint|repair|بلاغ|work.?order)", hint) and re.search(
         r"(?:كشف|roll|xlsx|xls|202)", hint
-    ):
+    ) and not rent_signals:
         doc_type = "maintenance"
         confidence = 86
         reasons.append("كشف صيانة")
-    elif re.search(r"(?:مصروف|expense|مصاريف|فاتورة|invoice)", hint) and not re.search(
-        r"(?:إيجار|rent roll|كشف إيجار)", hint
+    elif rent_signals or (
+        re.search(r"(?:كشف|roll|rent.?roll|إيجار|ايجار|تحصيل|rent)", hint)
+        and re.search(
+            r"(?:شهر|month|يناير|فبر|مار|أب|مايو|يون|excel|xlsx|xls|\d[\s._-]*20\d{2})",
+            hint,
+        )
+    ):
+        doc_type = "rent_roll"
+        confidence = 92 if looks_like_monthly_rent else 90
+        reasons.append("كشف إيجارات شهري")
+    elif re.search(r"(?:مصروف|expense|مصاريف)", hint) or (
+        re.search(r"(?:فاتورة|invoice)", hint)
+        and not rent_signals
+        and not re.search(r"(?:إيجار|ايجار|rent roll|كشف إيجار|كشف شهر)", hint)
     ):
         doc_type = "expense"
         confidence = 84
@@ -168,13 +193,7 @@ def classify_file(file_meta: dict, lang: str = "ar") -> FileClassification:
         doc_type = "comprehensive"
         confidence = 88
         reasons.append("كشف شامل")
-    elif re.search(r"(?:كشف|roll|rent.?roll|إيجار|ايجار|تحصيل|rent)", hint) and re.search(
-        r"(?:شهر|month|يناير|فبر|مار|أب|مايو|يون|excel|xlsx|xls|\d[\s._-]*20\d{2})", hint
-    ):
-        doc_type = "rent_roll"
-        confidence = 90
-        reasons.append("كشف إيجارات شهري")
-    elif re.search(r"(?:كشف|roll|إيجار|rent)", hint):
+    elif re.search(r"(?:كشف|roll|إيجار|ايجار|rent)", hint):
         doc_type = "rent_roll"
         confidence = 74
         reasons.append("كشف إيجارات محتمل")

@@ -86,3 +86,11 @@ android-sdk/
 credentials.json
 *.key
 .credentials
+
+# SPP Benchmark Library (in-project; spreadsheets gitignored — travel with project folder)
+benchmarks/library/_staging/*
+!benchmarks/library/_staging/IMPORT_HERE.txt
+benchmarks/library/sets/*/files/*
+!benchmarks/library/sets/*/files/.gitkeep
+benchmarks/golden_benchmark/config.local.json
+benchmarks/golden_benchmark/cache/*
