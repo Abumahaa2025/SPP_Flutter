@@ -86,15 +86,20 @@ export type ReportSection = {
 };
 
 export type ExecutiveBrief = {
+  title?: string;
+  status_label?: string;
   property_status: string;
-  top_risk: string;
-  top_action: string;
+  decisions_today?: string[];
   key_numbers: { label: string; value: string }[];
+  needs_review: string[];
   confidence: number;
   confidence_level: string;
-  needs_review: string[];
   decision_status?: string;
   period?: string;
+  /** @deprecated kept for older clients */
+  top_risk?: string;
+  /** @deprecated kept for older clients */
+  top_action?: string;
 };
 
 export type SmartDecision = {

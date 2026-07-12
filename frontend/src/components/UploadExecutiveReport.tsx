@@ -65,15 +65,13 @@ function CollapsibleSection({
   title,
   summary,
   children,
-  defaultOpen = false,
 }: {
   title: string;
   summary: string;
   children: React.ReactNode;
-  defaultOpen?: boolean;
 }) {
   const { isRTL } = useI18n();
-  const [open, setOpen] = useState(defaultOpen);
+  const [open, setOpen] = useState(false);
 
   const toggle = () => {
     Haptics.selectionAsync();
@@ -124,23 +122,34 @@ function SectionItems({ sec, isRTL, ar }: { sec: ReportSection; isRTL: boolean; 
   );
 }
 
+function statusTone(label?: string): 'good' | 'watch' | 'critical' {
+  const s = label || '';
+  if (s.includes('حرج') || s.toLowerCase().includes('critical')) return 'critical';
+  if (s.includes('جيدة') || s.toLowerCase().includes('good')) return 'good';
+  return 'watch';
+}
+
 function buildBriefFallback(analysis: PortfolioAnalysis, ar: boolean): ExecutiveBrief {
   const m = analysis.metrics;
   return {
-    property_status: analysis.success_message || (ar ? 'تقرير العقار جاهز للمراجعة.' : 'Property report ready.'),
-    top_risk: ar ? 'راجع التفاصيل المطوية أدناه' : 'Review folded details below',
-    top_action: ar ? 'افتح الأقسام عند الحاجة فقط' : 'Open sections only if needed',
+    title: ar ? 'تقرير كويل التنفيذي' : 'Koil executive report',
+    status_label: ar ? 'تحتاج متابعة' : 'Needs follow-up',
+    property_status: analysis.success_message || (ar ? 'التقرير جاهز.' : 'Report ready.'),
+    decisions_today: [ar ? 'افتح الأقسام فقط عند الحاجة' : 'Open sections only if needed'],
     key_numbers: [
       { label: ar ? 'الوحدات' : 'Units', value: String(m.units) },
-      { label: ar ? 'الإشغال' : 'Occupancy', value: `${m.occupancy_pct}%` },
+      { label: ar ? 'نسبة الإشغال' : 'Occupancy', value: `${m.occupancy_pct}%` },
+      { label: ar ? 'التحصيل' : 'Collection', value: `${m.collection_rate_pct ?? '—'}%` },
       {
-        label: ar ? 'متأخرات' : 'Arrears',
-        value: `${(m.late_value || 0).toLocaleString()} ${ar ? 'ر.س' : 'SAR'}`,
+        label: ar ? 'المتأخرات المؤكدة' : 'Confirmed arrears',
+        value: `${(m.late_value || 0).toLocaleString()}`,
       },
+      { label: ar ? 'الصيانة' : 'Maintenance', value: String(m.total_expenses || 0) },
+      { label: ar ? 'العقود المنتهية' : 'Expired contracts', value: String(m.contracts_expired || 0) },
     ],
-    confidence: 75,
+    confidence: 70,
     confidence_level: ar ? 'مرجح' : 'Likely',
-    needs_review: [ar ? 'حدّث التطبيق لعرض الملخص التنفيذي الكامل' : 'Update app for full executive brief'],
+    needs_review: [ar ? 'حدّث التطبيق لعرض الملخص الكامل' : 'Update app for full brief'],
   };
 }
 
@@ -151,12 +160,20 @@ function groupSections(
 ): DetailGroup[] {
   const byKey = Object.fromEntries(sections.map((s) => [s.key, s]));
   const take = (...keys: string[]) => keys.map((k) => byKey[k]).filter(Boolean) as ReportSection[];
+  const m = analysis.metrics;
+  const late = analysis.late_payments?.summary;
 
-  const monthsSecs = take('months', 'revenue', 'portfolio');
-  const unitsSecs = take('units_summary');
+  const summarize = (secs: ReportSection[], fallback: string) => {
+    if (!secs.length) return fallback;
+    const first = secs[0]?.items?.[0];
+    if (first) return `${first.label}: ${primaryText(first.value)}`.replace(/^—:\s*/, '');
+    return fallback;
+  };
+
+  const monthsSecs = take('months', 'revenue', 'portfolio', 'units_summary');
   const lateSecs = take('late_tenants', 'late');
-  const maintSecs = take('expenses');
   const contractSecs = take('contracts');
+  const maintSecs = take('expenses');
   const moveSecs = take('departed', 'moved_in');
   const qualitySecs = take(
     'quality',
@@ -168,88 +185,64 @@ function groupSections(
   );
   const techSecs = take('koil_why', 'koil_what', 'koil_risks', 'koil_recommendations', 'koil_brief');
 
-  const m = analysis.metrics;
-  const late = analysis.late_payments?.summary;
-
-  const summarize = (secs: ReportSection[], fallback: string) => {
-    if (!secs.length) return fallback;
-    const first = secs[0]?.items?.[0];
-    if (first) return `${first.label}: ${primaryText(first.value)}`.replace(/^—:\s*/, '');
-    return fallback;
-  };
-
   const groups: DetailGroup[] = [
     {
-      id: 'months',
-      title: ar ? 'التحصيل والأشهر' : 'Collection & months',
-      summary:
-        monthsSecs.length > 0
-            ? ar
-            ? `تحصيل ${m.collection_rate_pct ?? '—'}% · إيراد ${(m.collected || 0).toLocaleString()} ر.س`
-            : `Collection · revenue ${(m.collected || 0).toLocaleString()}`
-          : ar
-            ? 'لا بيانات أشهر'
-            : 'No month data',
+      id: 'collection',
+      title: ar ? 'التحصيل' : 'Collection',
+      summary: ar
+        ? `تحصيل ${m.collection_rate_pct ?? '—'}% · محصل ${(m.collected || 0).toLocaleString()} ر.س`
+        : `Collection ${m.collection_rate_pct ?? '—'}%`,
       sections: monthsSecs,
     },
     {
-      id: 'units',
-      title: ar ? 'الوحدات' : 'Units',
-      summary: ar
-        ? `${m.units} وحدة · إشغال ${m.occupancy_pct}%`
-        : `${m.units} units · ${m.occupancy_pct}% occupancy`,
-      sections: unitsSecs,
-    },
-    {
       id: 'late',
-      title: ar ? 'المتأخرات المؤكدة' : 'Confirmed arrears',
+      title: ar ? 'المتأخرات' : 'Arrears',
       summary: late
         ? ar
           ? `${late.late_tenant_count} مستأجر · ${(late.total_unpaid || 0).toLocaleString()} ر.س`
-          : `${late.late_tenant_count} tenants · ${(late.total_unpaid || 0).toLocaleString()} SAR`
+          : `${late.late_tenant_count} · ${(late.total_unpaid || 0).toLocaleString()}`
         : ar
-          ? `${m.late_tenants || 0} مستأجر · ${(m.late_value || 0).toLocaleString()} ر.س`
-          : `${m.late_tenants || 0} tenants`,
+          ? `${m.late_tenants || 0} · ${(m.late_value || 0).toLocaleString()} ر.س`
+          : `${m.late_tenants || 0}`,
       sections: lateSecs,
       late: true,
-    },
-    {
-      id: 'maint',
-      title: ar ? 'الصيانة والمصروفات' : 'Maintenance & expenses',
-      summary: ar
-        ? `مصروفات ${(m.total_expenses || 0).toLocaleString()} ر.س`
-        : `Expenses ${(m.total_expenses || 0).toLocaleString()}`,
-      sections: maintSecs,
     },
     {
       id: 'contracts',
       title: ar ? 'العقود' : 'Contracts',
       summary: ar
         ? `منتهية ${m.contracts_expired || 0} · قريبة ${m.contracts_expiring_soon || 0}`
-        : `Expired ${m.contracts_expired || 0} · soon ${m.contracts_expiring_soon || 0}`,
+        : `Expired ${m.contracts_expired || 0}`,
       sections: contractSecs,
+    },
+    {
+      id: 'maint',
+      title: ar ? 'الصيانة' : 'Maintenance',
+      summary: ar
+        ? `إجمالي ${(m.total_expenses || 0).toLocaleString()} ر.س`
+        : `Total ${(m.total_expenses || 0).toLocaleString()}`,
+      sections: maintSecs,
     },
     {
       id: 'moves',
       title: ar ? 'حركة المستأجرين' : 'Tenant movement',
-      summary: summarize(moveSecs, ar ? 'لا حركة مؤكدة' : 'No confirmed movement'),
+      summary: summarize(moveSecs, ar ? 'يحتمل تغييرات — راجع عند الحاجة' : 'Possible changes — review if needed'),
       sections: moveSecs,
     },
     {
       id: 'quality',
       title: ar ? 'جودة البيانات' : 'Data quality',
-      summary: summarize(qualitySecs, ar ? 'جودة البيانات ضمن التقرير' : 'Data quality in report'),
+      summary: summarize(qualitySecs, ar ? 'جودة الملفات والاستيراد' : 'File and import quality'),
       sections: qualitySecs,
     },
     {
-      id: 'tech',
-      title: ar ? 'الأدلة التقنية' : 'Technical evidence',
-      summary: ar ? 'تفاصيل الاستنتاج للمراجعة عند الحاجة' : 'Inference detail when you need it',
+      id: 'evidence',
+      title: ar ? 'الأدلة' : 'Evidence',
+      summary: ar ? 'تفاصيل الاستنتاج عند الحاجة فقط' : 'Inference detail only if needed',
       sections: techSecs,
     },
   ];
 
-  // Month comparison as synthetic section under months
   if (analysis.month_comparison?.length) {
     const cmpSec: ReportSection = {
       key: 'month_comparison_inline',
@@ -261,14 +254,14 @@ function groupSections(
           : `rev ${row.revenue.toLocaleString()} · exp ${row.expenses.toLocaleString()}`,
       })),
     };
-    const g = groups.find((x) => x.id === 'months');
+    const g = groups.find((x) => x.id === 'collection');
     if (g) g.sections = [...g.sections, cmpSec];
   }
 
   return groups.filter((g) => g.sections.length > 0 || (g.late && analysis.late_payments));
 }
 
-/** Executive Brief first — property manager language, details folded. */
+/** Decision-first executive report — details stay folded. */
 export function UploadExecutiveReport({ analysis, delay = 0 }: Props) {
   const { isRTL } = useI18n();
   const ar = isRTL;
@@ -284,6 +277,14 @@ export function UploadExecutiveReport({ analysis, delay = 0 }: Props) {
     [report.sections, analysis, ar],
   );
 
+  const decisions =
+    brief.decisions_today?.length
+      ? brief.decisions_today
+      : brief.top_action
+        ? [brief.top_action]
+        : [];
+
+  const tone = statusTone(brief.status_label);
   const confTone =
     brief.confidence_level.includes('مؤكد') || brief.confidence_level.toLowerCase().includes('confirm')
       ? 'ok'
@@ -296,33 +297,41 @@ export function UploadExecutiveReport({ analysis, delay = 0 }: Props) {
       <View style={[styles.header, isRTL && styles.rowRtl]}>
         <AppIcon name="cpu" size="md" accent="gold" />
         <Text style={[styles.title, isRTL && styles.rtl]}>
-          {ar ? 'تقرير كويل — قرار المالك' : 'Koil report — owner decision'}
+          {brief.title || (ar ? 'تقرير كويل التنفيذي' : 'Koil executive report')}
         </Text>
       </View>
 
       <GlassCard padding={20} radiusToken="lg" edge="gold">
-        <Text style={[styles.briefEyebrow, isRTL && styles.rtl]}>
-          {ar ? 'الملخص التنفيذي' : 'Executive brief'}
-        </Text>
-        {brief.period ? (
-          <Text style={[styles.period, isRTL && styles.rtl]}>{brief.period}</Text>
-        ) : null}
+        {brief.period ? <Text style={[styles.period, isRTL && styles.rtl]}>{brief.period}</Text> : null}
 
         <Text style={[styles.statusLabel, isRTL && styles.rtl]}>{ar ? 'حالة العقار' : 'Property status'}</Text>
+        {brief.status_label ? (
+          <Text
+            style={[
+              styles.statusBadge,
+              tone === 'good' && styles.statusGood,
+              tone === 'watch' && styles.statusWatch,
+              tone === 'critical' && styles.statusCritical,
+              isRTL && styles.rtl,
+            ]}
+          >
+            {brief.status_label}
+          </Text>
+        ) : null}
         <Text style={[styles.statusText, isRTL && styles.rtl]}>{brief.property_status}</Text>
 
         <View style={styles.briefBlock}>
-          <Text style={[styles.statusLabel, isRTL && styles.rtl]}>{ar ? 'أهم خطر' : 'Top risk'}</Text>
-          <Text style={[styles.riskText, isRTL && styles.rtl]}>{brief.top_risk}</Text>
-        </View>
-
-        <View style={styles.briefBlock}>
           <Text style={[styles.statusLabel, isRTL && styles.rtl]}>
-            {ar ? 'أهم إجراء اليوم' : 'Action for today'}
+            {ar ? 'أهم 3 قرارات اليوم' : 'Top 3 decisions today'}
           </Text>
-          <Text style={[styles.actionText, isRTL && styles.rtl]}>{brief.top_action}</Text>
+          {decisions.slice(0, 3).map((d, i) => (
+            <Text key={`${i}-${d}`} style={[styles.decisionLine, isRTL && styles.rtl]}>
+              {i + 1}. {d}
+            </Text>
+          ))}
         </View>
 
+        <Text style={[styles.statusLabel, isRTL && styles.rtl]}>{ar ? 'أهم الأرقام' : 'Key numbers'}</Text>
         <View style={styles.numRow}>
           {brief.key_numbers.map((n) => (
             <View key={n.label} style={styles.numCell}>
@@ -349,7 +358,7 @@ export function UploadExecutiveReport({ analysis, delay = 0 }: Props) {
 
         <View style={styles.reviewBox}>
           <Text style={[styles.statusLabel, isRTL && styles.rtl]}>
-            {ar ? 'ما يحتاج مراجعتك' : 'Needs your review'}
+            {ar ? 'ما يحتاج مراجعتي' : 'Needs my review'}
           </Text>
           {brief.needs_review.map((line) => (
             <Text key={line} style={[styles.reviewLine, isRTL && styles.rtl]}>
@@ -360,7 +369,7 @@ export function UploadExecutiveReport({ analysis, delay = 0 }: Props) {
       </GlassCard>
 
       <Text style={[styles.detailsHint, isRTL && styles.rtl]}>
-        {ar ? 'التفاصيل — اضغط للفتح عند الحاجة' : 'Details — tap to expand if needed'}
+        {ar ? 'التفاصيل اختيارية — اضغط للفتح عند الحاجة' : 'Optional details — tap to expand'}
       </Text>
 
       {groups.map((g, i) => (
@@ -387,35 +396,43 @@ const styles = StyleSheet.create({
   header: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 4 },
   rowRtl: { flexDirection: 'row-reverse' },
   title: { color: colors.text, fontSize: 18, fontWeight: typography.weight.semibold, flex: 1 },
-  briefEyebrow: {
-    color: colors.gold,
-    fontSize: 11,
-    letterSpacing: 1.1,
-    textTransform: 'uppercase',
-    marginBottom: 6,
-    fontWeight: typography.weight.medium,
-  },
-  period: { color: colors.textMuted, fontSize: 12, marginBottom: 14 },
+  period: { color: colors.textMuted, fontSize: 12, marginBottom: 12 },
   statusLabel: {
     color: colors.textMuted,
     fontSize: 11,
-    marginBottom: 4,
+    marginBottom: 6,
     fontWeight: typography.weight.medium,
   },
+  statusBadge: {
+    alignSelf: 'flex-start',
+    fontSize: 13,
+    fontWeight: typography.weight.semibold,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
+    borderRadius: radius.sm,
+    overflow: 'hidden',
+    marginBottom: 8,
+  },
+  statusGood: { color: '#7dcea0', backgroundColor: 'rgba(125,206,160,0.14)' },
+  statusWatch: { color: colors.gold, backgroundColor: 'rgba(212,175,55,0.14)' },
+  statusCritical: { color: colors.danger, backgroundColor: 'rgba(220,80,80,0.14)' },
   statusText: {
     color: colors.text,
-    fontSize: 16,
-    lineHeight: 26,
-    fontWeight: typography.weight.semibold,
-    marginBottom: 14,
+    fontSize: 15,
+    lineHeight: 24,
+    fontWeight: typography.weight.medium,
+    marginBottom: 16,
   },
-  briefBlock: { marginBottom: 12 },
-  riskText: { color: colors.text, fontSize: 14, lineHeight: 22 },
-  actionText: { color: colors.gold, fontSize: 15, lineHeight: 24, fontWeight: typography.weight.semibold },
-  numRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 4, marginBottom: 14 },
+  briefBlock: { marginBottom: 16, gap: 6 },
+  decisionLine: {
+    color: colors.gold,
+    fontSize: 15,
+    lineHeight: 24,
+    fontWeight: typography.weight.semibold,
+  },
+  numRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 },
   numCell: {
-    minWidth: '30%',
-    flexGrow: 1,
+    width: '47%',
     paddingVertical: 10,
     paddingHorizontal: 12,
     borderRadius: radius.md,
