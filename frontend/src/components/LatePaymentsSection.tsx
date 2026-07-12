@@ -4,6 +4,8 @@ import {
   Text,
   StyleSheet,
   Pressable,
+  Modal,
+  ScrollView,
   LayoutAnimation,
   Platform,
   UIManager,
@@ -13,7 +15,7 @@ import * as Haptics from 'expo-haptics';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
 import { GlassCard } from '@/src/components/GlassCard';
-import type { LatePaymentsReport } from '@/src/api/portfolio-analysis';
+import type { LatePaymentsReport, TenantKnowledgeCard } from '@/src/api/portfolio-analysis';
 import { colors, spacing, typography, radius } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
 
@@ -25,8 +27,8 @@ type Props = {
   data: LatePaymentsReport;
   title: string;
   delay?: number;
-  /** When true, skip outer card/title (parent already provides them). */
   embedded?: boolean;
+  tenantCards?: TenantKnowledgeCard[];
 };
 
 function fmt(n: number, ar: boolean) {
@@ -52,39 +54,92 @@ function FieldRow({
   );
 }
 
-function TenantCard({
-  tenant,
-  isRTL,
+function findCard(
+  cards: TenantKnowledgeCard[] | undefined,
+  unit: string,
+  tenant: string,
+): TenantKnowledgeCard | null {
+  if (!cards?.length) return null;
+  const exact = cards.find((c) => c.unit === unit && c.tenant === tenant);
+  if (exact) return exact;
+  return cards.find((c) => c.unit === unit) || null;
+}
+
+function TenantDetailModal({
+  card,
+  visible,
+  onClose,
   ar,
+  isRTL,
 }: {
-  tenant: LatePaymentsReport['months'][0]['tenants'][0];
-  isRTL: boolean;
+  card: TenantKnowledgeCard | null;
+  visible: boolean;
+  onClose: () => void;
   ar: boolean;
+  isRTL: boolean;
 }) {
+  if (!card) return null;
   return (
-    <View style={styles.tenantCard}>
-      <Text style={[styles.tenantName, isRTL && styles.rtl]}>{tenant.tenant}</Text>
-      <FieldRow label={ar ? 'الوحدة' : 'Unit'} value={tenant.unit} isRTL={isRTL} />
-      <FieldRow
-        label={ar ? 'رقم العقد' : 'Contract'}
-        value={tenant.contract || '—'}
-        isRTL={isRTL}
-      />
-      <FieldRow
-        label={ar ? 'الجوال' : 'Phone'}
-        value={tenant.phone || (ar ? 'بدون جوال' : 'No phone')}
-        isRTL={isRTL}
-      />
-      <FieldRow label={ar ? 'المستحق' : 'Due'} value={fmt(tenant.due, ar)} isRTL={isRTL} />
-      <FieldRow label={ar ? 'المدفوع' : 'Paid'} value={fmt(tenant.paid, ar)} isRTL={isRTL} />
-      <FieldRow
-        label={ar ? 'المتبقي' : 'Remaining'}
-        value={fmt(tenant.remaining, ar)}
-        isRTL={isRTL}
-        accent
-      />
-      <FieldRow label={ar ? 'الحالة' : 'Status'} value={tenant.status_label} isRTL={isRTL} />
-    </View>
+    <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalSheet}>
+          <View style={[styles.modalHeader, isRTL && styles.rowRtl]}>
+            <Text style={[styles.modalTitle, isRTL && styles.rtl]}>{ar ? 'بطاقة المستأجر' : 'Tenant card'}</Text>
+            <Pressable onPress={onClose} hitSlop={12}>
+              <Feather name="x" size={22} color={colors.textMuted} />
+            </Pressable>
+          </View>
+          <ScrollView style={styles.modalBody} contentContainerStyle={{ paddingBottom: 32 }}>
+            <FieldRow label={ar ? 'الاسم' : 'Name'} value={card.tenant} isRTL={isRTL} accent />
+            <FieldRow label={ar ? 'الوحدة' : 'Unit'} value={card.unit} isRTL={isRTL} />
+            <FieldRow
+              label={ar ? 'الجوال' : 'Phone'}
+              value={card.phone || (ar ? 'غير متوفر' : 'N/A')}
+              isRTL={isRTL}
+            />
+            <FieldRow
+              label={ar ? 'رقم العقد' : 'Contract'}
+              value={card.contract || (ar ? 'غير متوفر' : 'N/A')}
+              isRTL={isRTL}
+            />
+            <FieldRow
+              label={ar ? 'بداية الظهور في الكشوف' : 'First seen in sheets'}
+              value={card.first_seen_label || card.contract_start || (ar ? 'غير متوفر' : 'N/A')}
+              isRTL={isRTL}
+            />
+            <FieldRow
+              label={ar ? 'آخر ظهور في الكشوف' : 'Last seen in sheets'}
+              value={card.last_seen_label || card.contract_end || (ar ? 'غير متوفر' : 'N/A')}
+              isRTL={isRTL}
+            />
+            {card.dates_note ? (
+              <Text style={[styles.note, isRTL && styles.rtl]}>{card.dates_note}</Text>
+            ) : null}
+            <FieldRow label={ar ? 'قيمة الإيجار' : 'Rent'} value={fmt(card.rent || 0, ar)} isRTL={isRTL} accent />
+            <FieldRow
+              label={ar ? 'المتأخرات المؤكدة' : 'Confirmed arrears'}
+              value={fmt(card.confirmed_arrears || 0, ar)}
+              isRTL={isRTL}
+              accent
+            />
+
+            <Text style={[styles.monthsHeading, isRTL && styles.rtl]}>
+              {ar ? 'حالة السداد لكل شهر' : 'Payment status by month'}
+            </Text>
+            {(card.months || []).map((m, i) => (
+              <View key={`${m.year}-${m.month}-${i}`} style={styles.monthRow}>
+                <FieldRow label={m.label} value={m.status_label || m.status} isRTL={isRTL} />
+                {m.status === 'unpaid_confirmed' || m.status === 'partial' ? (
+                  <Text style={[styles.monthAmt, isRTL && styles.rtl]}>
+                    {ar ? `متبقي مؤكد: ${fmt(m.remaining || 0, true)}` : `Confirmed remaining: ${fmt(m.remaining || 0, false)}`}
+                  </Text>
+                ) : null}
+              </View>
+            ))}
+          </ScrollView>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -129,10 +184,17 @@ function CollapsibleBlock({
   );
 }
 
-export function LatePaymentsSection({ data, title, delay = 0, embedded = false }: Props) {
+export function LatePaymentsSection({ data, title, delay = 0, embedded = false, tenantCards }: Props) {
   const { isRTL } = useI18n();
   const ar = isRTL;
   const { summary, months, tenant_totals } = data;
+  const [selected, setSelected] = useState<TenantKnowledgeCard | null>(null);
+
+  const openTenant = (unit: string, tenant: string) => {
+    Haptics.selectionAsync();
+    const card = findCard(tenantCards, unit, tenant);
+    if (card) setSelected(card);
+  };
 
   const topLine = summary.top_tenant
     ? ar
@@ -150,93 +212,97 @@ export function LatePaymentsSection({ data, title, delay = 0, embedded = false }
     <>
       {!embedded ? <Text style={[styles.sectionTitle, isRTL && styles.rtl]}>{title}</Text> : null}
 
-        <View style={styles.summaryBox}>
-          <FieldRow
-            label={ar ? 'إجمالي المتأخرات' : 'Total overdue'}
-            value={fmt(summary.total_unpaid, ar)}
-            isRTL={isRTL}
-            accent
-          />
-          <FieldRow
-            label={ar ? 'عدد المستأجرين المتأخرين' : 'Late tenants'}
-            value={String(summary.late_tenant_count)}
-            isRTL={isRTL}
-          />
-          <FieldRow label={ar ? 'أعلى متأخر' : 'Highest overdue'} value={topLine} isRTL={isRTL} />
-          <FieldRow label={ar ? 'أقدم متأخر' : 'Oldest overdue'} value={oldestLine} isRTL={isRTL} />
-        </View>
+      <View style={styles.summaryBox}>
+        <FieldRow
+          label={ar ? 'إجمالي المتأخرات المؤكدة' : 'Confirmed overdue total'}
+          value={fmt(summary.total_unpaid, ar)}
+          isRTL={isRTL}
+          accent
+        />
+        <FieldRow
+          label={ar ? 'عدد المتأخرين المؤكدين' : 'Confirmed late tenants'}
+          value={String(summary.late_tenant_count)}
+          isRTL={isRTL}
+        />
+        <FieldRow label={ar ? 'أعلى متأخر' : 'Highest overdue'} value={topLine} isRTL={isRTL} />
+        <FieldRow label={ar ? 'أقدم متأخر' : 'Oldest overdue'} value={oldestLine} isRTL={isRTL} />
+      </View>
 
-        {months.length === 0 && tenant_totals.length === 0 ? (
-          <Text style={[styles.empty, isRTL && styles.rtl]}>
-            {ar ? 'لا متأخرات في الأشهر المحلّلة' : 'No late rows in parsed months'}
+      {months.length === 0 && tenant_totals.length === 0 ? (
+        <Text style={[styles.empty, isRTL && styles.rtl]}>
+          {ar ? 'لا متأخرات مؤكدة في الأشهر المحلّلة' : 'No confirmed late rows in parsed months'}
+        </Text>
+      ) : null}
+
+      {months.map((m) => (
+        <CollapsibleBlock
+          key={m.key}
+          testID={`late-month-${m.key}`}
+          header={m.label}
+          sub={
+            ar
+              ? `${m.tenant_count} مستأجر متأخر مؤكد`
+              : `${m.tenant_count} confirmed late`
+          }
+          meta={ar ? `إجمالي الشهر: ${fmt(m.month_total, true)}` : `Month total: ${fmt(m.month_total, false)}`}
+        >
+          {m.tenants.map((t, i) => (
+            <Pressable
+              key={`${m.key}-${t.unit}-${t.tenant}-${i}`}
+              onPress={() => openTenant(t.unit, t.tenant)}
+              style={styles.tenantCard}
+            >
+              <Text style={[styles.tenantName, isRTL && styles.rtl]}>{t.tenant}</Text>
+              <FieldRow label={ar ? 'الوحدة' : 'Unit'} value={t.unit} isRTL={isRTL} />
+              <FieldRow label={ar ? 'المتبقي المؤكد' : 'Confirmed remaining'} value={fmt(t.remaining, ar)} isRTL={isRTL} accent />
+              <FieldRow label={ar ? 'الحالة' : 'Status'} value={t.status_label} isRTL={isRTL} />
+              <Text style={[styles.tapHint, isRTL && styles.rtl]}>
+                {ar ? 'اضغط لبطاقة المستأجر الكاملة' : 'Tap for full tenant card'}
+              </Text>
+            </Pressable>
+          ))}
+        </CollapsibleBlock>
+      ))}
+
+      {tenant_totals.length > 0 ? (
+        <View style={styles.totalsSection}>
+          <Text style={[styles.totalsHeading, isRTL && styles.rtl]}>
+            {ar ? 'إجمالي كل مستأجر (مؤكد فقط)' : 'Per-tenant totals (confirmed only)'}
           </Text>
-        ) : null}
+          {tenant_totals.map((tt, idx) => (
+            <CollapsibleBlock
+              key={`${tt.unit}-${tt.tenant}-${idx}`}
+              testID={`late-tenant-total-${idx}`}
+              header={`${tt.tenant} — ${tt.unit}`}
+              sub={ar ? `أشهر مؤكدة: ${tt.late_month_count}` : `Confirmed months: ${tt.late_month_count}`}
+              meta={ar ? `إجمالي: ${fmt(tt.total_unpaid, true)}` : `Total: ${fmt(tt.total_unpaid, false)}`}
+            >
+              <Pressable onPress={() => openTenant(tt.unit, tt.tenant)} style={styles.tenantCard}>
+                <FieldRow label={ar ? 'رقم العقد' : 'Contract'} value={tt.contract || '—'} isRTL={isRTL} />
+                <FieldRow
+                  label={ar ? 'الجوال' : 'Phone'}
+                  value={tt.phone || (ar ? 'بدون جوال' : 'No phone')}
+                  isRTL={isRTL}
+                />
+                {tt.months.map((mo, mi) => (
+                  <FieldRow key={`${mo.label}-${mi}`} label={mo.label} value={fmt(mo.amount, ar)} isRTL={isRTL} />
+                ))}
+                <Text style={[styles.tapHint, isRTL && styles.rtl]}>
+                  {ar ? 'اضغط لبطاقة المستأجر الكاملة' : 'Tap for full tenant card'}
+                </Text>
+              </Pressable>
+            </CollapsibleBlock>
+          ))}
+        </View>
+      ) : null}
 
-        {months.map((m) => (
-          <CollapsibleBlock
-            key={m.key}
-            testID={`late-month-${m.key}`}
-            header={m.label}
-            sub={
-              ar
-                ? `${m.tenant_count} مستأجر${m.tenant_count === 1 ? '' : 'ين'} متأخر${m.tenant_count === 1 ? '' : 'ين'}`
-                : `${m.tenant_count} late tenant${m.tenant_count === 1 ? '' : 's'}`
-            }
-            meta={ar ? `إجمالي الشهر: ${fmt(m.month_total, true)}` : `Month total: ${fmt(m.month_total, false)}`}
-          >
-            {m.tenants.map((t, i) => (
-              <TenantCard key={`${m.key}-${t.unit}-${t.tenant}-${i}`} tenant={t} isRTL={isRTL} ar={ar} />
-            ))}
-          </CollapsibleBlock>
-        ))}
-
-        {tenant_totals.length > 0 ? (
-          <View style={styles.totalsSection}>
-            <Text style={[styles.totalsHeading, isRTL && styles.rtl]}>
-              {ar ? 'إجمالي كل مستأجر عبر الأشهر' : 'Per-tenant totals across months'}
-            </Text>
-            {tenant_totals.map((tt, idx) => (
-              <CollapsibleBlock
-                key={`${tt.unit}-${tt.tenant}-${idx}`}
-                testID={`late-tenant-total-${idx}`}
-                header={`${tt.tenant} — ${tt.unit}`}
-                sub={
-                  ar
-                    ? `عدد الأشهر المتأخرة: ${tt.late_month_count}`
-                    : `Late months: ${tt.late_month_count}`
-                }
-                meta={ar ? `إجمالي: ${fmt(tt.total_unpaid, true)}` : `Total: ${fmt(tt.total_unpaid, false)}`}
-              >
-                <View style={styles.tenantCard}>
-                  <FieldRow
-                    label={ar ? 'رقم العقد' : 'Contract'}
-                    value={tt.contract || '—'}
-                    isRTL={isRTL}
-                  />
-                  <FieldRow
-                    label={ar ? 'الجوال' : 'Phone'}
-                    value={tt.phone || (ar ? 'بدون جوال' : 'No phone')}
-                    isRTL={isRTL}
-                  />
-                  {tt.months.map((mo, mi) => (
-                    <FieldRow
-                      key={`${mo.label}-${mi}`}
-                      label={mo.label}
-                      value={fmt(mo.amount, ar)}
-                      isRTL={isRTL}
-                    />
-                  ))}
-                  <FieldRow
-                    label={ar ? 'إجمالي المتأخر' : 'Total overdue'}
-                    value={fmt(tt.total_unpaid, ar)}
-                    isRTL={isRTL}
-                    accent
-                  />
-                </View>
-              </CollapsibleBlock>
-            ))}
-          </View>
-        ) : null}
+      <TenantDetailModal
+        card={selected}
+        visible={!!selected}
+        onClose={() => setSelected(null)}
+        ar={ar}
+        isRTL={isRTL}
+      />
     </>
   );
 
@@ -311,6 +377,7 @@ const styles = StyleSheet.create({
     fontWeight: typography.weight.semibold,
     marginBottom: 4,
   },
+  tapHint: { color: colors.gold, fontSize: 11, marginTop: 6 },
   fieldRow: {
     flexDirection: 'row',
     justifyContent: 'space-between',
@@ -336,4 +403,37 @@ const styles = StyleSheet.create({
     marginBottom: 6,
     letterSpacing: 0.3,
   },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'flex-end',
+  },
+  modalSheet: {
+    maxHeight: '88%',
+    backgroundColor: '#0b1220',
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    paddingTop: 14,
+  },
+  modalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 18,
+    marginBottom: 8,
+  },
+  modalTitle: { color: colors.text, fontSize: 17, fontWeight: typography.weight.semibold },
+  modalBody: { paddingHorizontal: 18 },
+  note: { color: colors.textDim, fontSize: 11, lineHeight: 16, marginVertical: 8 },
+  monthsHeading: {
+    color: colors.text,
+    fontSize: 13,
+    fontWeight: typography.weight.semibold,
+    marginTop: 14,
+    marginBottom: 8,
+  },
+  monthRow: { marginBottom: 6, gap: 2 },
+  monthAmt: { color: colors.gold, fontSize: 11, marginBottom: 4 },
 });

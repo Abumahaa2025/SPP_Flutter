@@ -10,14 +10,26 @@ Lang = Literal["ar", "en"]
 
 _STATUS_LABELS_AR = {
     "unpaid": "غير مدفوع",
+    "unpaid_confirmed": "متأخر مؤكد",
     "partial": "سداد جزئي",
-    "pending": "لم يُسدد",
+    "pending": "غير واضح",
+    "unknown_requires_review": "يحتاج مراجعة",
+    "vacated": "إخلاء",
+    "paid": "مدفوع",
+    "not_due": "غير مستحق",
 }
 _STATUS_LABELS_EN = {
     "unpaid": "Unpaid",
+    "unpaid_confirmed": "Confirmed overdue",
     "partial": "Partial payment",
-    "pending": "Not paid",
+    "pending": "Unclear",
+    "unknown_requires_review": "Needs review",
+    "vacated": "Vacated",
+    "paid": "Paid",
+    "not_due": "Not due",
 }
+
+CONFIRMED_LATE_STATUSES = ("unpaid_confirmed", "partial", "unpaid")
 
 
 def _item(label: str, value: str) -> dict:
@@ -98,7 +110,15 @@ def build_late_payments_view_model(
         label = _month_display(mb, lang)
         year = int(mb.get("year") or 0)
         month = int(mb.get("month") or 0)
-        tenants = [_normalize_tenant_entry(it, lang) for it in _sort_month_items(mb.get("items") or [])]
+        confirmed_items = [
+            it
+            for it in (mb.get("items") or [])
+            if (it.get("status") or "") in CONFIRMED_LATE_STATUSES
+        ]
+        tenants = [_normalize_tenant_entry(it, lang) for it in _sort_month_items(confirmed_items)]
+        if not tenants:
+            continue
+        month_total = round(sum(float(t.get("remaining") or 0) for t in tenants), 2)
         months_out.append(
             {
                 "key": f"{year}-{month}",
@@ -106,7 +126,7 @@ def build_late_payments_view_model(
                 "year": year,
                 "month": month,
                 "tenant_count": len(tenants),
-                "month_total": round(float(mb.get("monthTotal") or mb.get("month_total") or 0), 2),
+                "month_total": month_total,
                 "tenants": tenants,
             }
         )
@@ -115,8 +135,9 @@ def build_late_payments_view_model(
     for lt in late_tenants_detailed or []:
         unpaid_months = []
         for m in lt.get("months") or []:
-            st = m.get("status") or "pending"
-            if st in ("paid", "not_due"):
+            st = m.get("status") or ""
+            # Confirmed arrears only — never unknown / vacated / pending.
+            if st not in CONFIRMED_LATE_STATUSES:
                 continue
             ml = month_label(int(m.get("month") or 0), lang)
             yr = m.get("year")
@@ -128,27 +149,35 @@ def build_late_payments_view_model(
                     "amount": round(float(m.get("remaining") or m.get("due") or 0), 2),
                     "year": int(m.get("year") or 0),
                     "month": int(m.get("month") or 0),
+                    "status": st,
+                    "status_label": _status_label(st, lang),
                 }
             )
-        if not unpaid_months and lt.get("monthLabels"):
-            # Legacy GAS string fallback — keep totals even without month objects
-            unpaid_months = [{"label": lt.get("monthLabels"), "amount": float(lt.get("totalUnpaid") or lt.get("total_unpaid") or 0)}]
+        if not unpaid_months:
+            continue
 
-        om = lt.get("oldestMonth") or lt.get("oldest_month") or (unpaid_months[0] if unpaid_months else {})
+        om = lt.get("oldestMonth") or lt.get("oldest_month") or unpaid_months[0]
         tenant_totals.append(
             {
                 "tenant": str(lt.get("tenant") or "—"),
                 "unit": str(lt.get("unit") or "—"),
                 "contract": str(lt.get("contract") or "").strip(),
                 "phone": str(lt.get("phone") or "").strip(),
-                "late_month_count": int(lt.get("lateMonthCount") or lt.get("late_month_count") or len(unpaid_months)),
-                "total_unpaid": round(float(lt.get("totalUnpaid") or lt.get("total_unpaid") or 0), 2),
+                "late_month_count": len(unpaid_months),
+                "total_unpaid": round(
+                    sum(float(x.get("amount") or 0) for x in unpaid_months),
+                    2,
+                ),
                 "months": unpaid_months,
                 "oldest_month": om,
             }
         )
 
     tenant_totals = _sort_tenant_totals(tenant_totals)
+    confirmed_total = round(sum(float(r.get("total_unpaid") or 0) for r in tenant_totals), 2)
+    # Always publish confirmed-only figures (ignore upstream totals that may mix unknowns).
+    total_unpaid = confirmed_total
+    late_tenant_count = len(tenant_totals)
 
     top = tenant_totals[0] if tenant_totals else None
     oldest = None

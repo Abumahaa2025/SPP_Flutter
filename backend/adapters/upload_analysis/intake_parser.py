@@ -198,20 +198,25 @@ def normalize_saudi_phone(raw: Any) -> Dict[str, Any]:
 def _infer_payment_status(row: dict) -> str:
     """paid | partial | unpaid_confirmed | not_due | vacated | unknown_requires_review"""
     ps = _norm_ar_nums(str(row.get("pay_status") or "")).lower()
-    late = _norm_ar_nums(str(row.get("late") or "")).lower()
-    blob = f"{ps} {late}".strip()
+    late_raw = _norm_ar_nums(str(row.get("late") or "")).lower()
     rent = float(row.get("rent") or 0)
     paid_amt = float(row.get("paid") or 0)
 
     if rent <= 0:
         return "not_due"
-    if any(k in blob for k in VACATED_MARKERS):
+    if any(k in ps for k in VACATED_MARKERS):
         return "vacated"
-    if any(k in blob for k in PAID_MARKERS) or (paid_amt >= rent > 0):
-        return "paid"
-    if 0 < paid_amt < rent:
+    # Partial before paid markers — «سداد» matches inside «سداد جزئي».
+    if "جزئي" in ps or "partial" in ps or (0 < paid_amt < rent):
         return "partial"
-    if any(k in blob for k in UNPAID_CONFIRMED_MARKERS):
+    if any(k in ps for k in PAID_MARKERS) or (paid_amt >= rent > 0):
+        return "paid"
+    # Confirmed unpaid — from payment-status text only (not the monetary arrears column).
+    if any(k in ps for k in UNPAID_CONFIRMED_MARKERS):
+        return "unpaid_confirmed"
+    # Non-numeric late-note cell may confirm unpaid; pure amounts do not.
+    late_is_amount = bool(re.match(r"^[\d.,\s]+(?:ر\.?\s*س|ريال|sar)?$", late_raw.strip())) if late_raw.strip() else False
+    if late_raw.strip() and not late_is_amount and any(k in late_raw for k in UNPAID_CONFIRMED_MARKERS):
         return "unpaid_confirmed"
     return "unknown_requires_review"
 

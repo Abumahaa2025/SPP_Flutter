@@ -27,6 +27,115 @@ def _ml(month: int, year: int, lang: Lang) -> str:
     return base
 
 
+def _status_label_ar(status: str) -> str:
+    return {
+        "paid": "مدفوع",
+        "partial": "سداد جزئي",
+        "unpaid_confirmed": "متأخر مؤكد",
+        "unpaid": "متأخر مؤكد",
+        "vacated": "إخلاء",
+        "not_due": "غير مستحق",
+        "unknown_requires_review": "يحتاج مراجعة",
+        "pending": "يحتاج مراجعة",
+    }.get(status or "", status or "—")
+
+
+def _build_tenant_cards(snapshot: dict, lang: Lang) -> List[dict]:
+    """Full tenant cards from payment ledger — Property Knowledge source of truth."""
+    pl = snapshot.get("payment_ledger") or {}
+    if isinstance(pl, dict) and "ledger" in pl:
+        ledger = pl.get("ledger") or {}
+    else:
+        ledger = pl if isinstance(pl, dict) else {}
+    cards: List[dict] = []
+    for ent in ledger.values():
+        months_out = []
+        confirmed_arrears = 0.0
+        confirmed_months = 0
+        for m in ent.get("months") or []:
+            st = m.get("status") or "unknown_requires_review"
+            rem = float(m.get("remaining") or 0)
+            if st in ("unpaid_confirmed", "partial", "unpaid"):
+                confirmed_arrears += rem
+                confirmed_months += 1
+            months_out.append(
+                {
+                    "month": m.get("month"),
+                    "year": m.get("year"),
+                    "label": _ml(int(m.get("month") or 0), int(m.get("year") or 0), lang),
+                    "status": st,
+                    "status_label": _status_label_ar(st) if lang == "ar" else st,
+                    "due": _f(m.get("due")),
+                    "paid": _f(m.get("paid")),
+                    "remaining": rem if st in ("unpaid_confirmed", "partial", "unpaid") else 0.0,
+                    "pay_status_raw": m.get("pay_status_raw") or "",
+                }
+            )
+        months_out.sort(key=lambda x: (int(x.get("year") or 0), int(x.get("month") or 0)))
+        first = months_out[0] if months_out else {}
+        last = months_out[-1] if months_out else {}
+        cards.append(
+            {
+                "id": f"{ent.get('unit')}|{ent.get('contract') or ent.get('phone') or ent.get('tenant')}",
+                "tenant": ent.get("tenant") or "—",
+                "unit": ent.get("unit") or "—",
+                "phone": (ent.get("phone") or "").strip(),
+                "contract": (ent.get("contract") or "").strip(),
+                "rent": _f(ent.get("rent")),
+                # Contract calendar dates often absent from rent rolls — never invent.
+                "contract_start": "",
+                "contract_end": "",
+                "contract_start_label": first.get("label") or "",
+                "contract_end_label": "",
+                "first_seen_label": first.get("label") or "",
+                "last_seen_label": last.get("label") or "",
+                "dates_note": (
+                    "تاريخ بداية/نهاية العقد غير متوفر في الكشوف المرفوعة — يُعرض أول/آخر ظهور في الكشوف"
+                    if lang == "ar"
+                    else "Contract start/end not in uploaded sheets — showing first/last appearance"
+                ),
+                "months": months_out,
+                "confirmed_arrears": round(confirmed_arrears, 2),
+                "confirmed_late_months": confirmed_months,
+            }
+        )
+    cards.sort(key=lambda c: (str(c.get("unit") or ""), str(c.get("tenant") or "")))
+    return cards
+
+
+def _ledger_quality(snapshot: dict) -> dict:
+    pl = snapshot.get("payment_ledger") or {}
+    ledger = (pl.get("ledger") if isinstance(pl, dict) and "ledger" in pl else pl) or {}
+    unknown = 0
+    vacated = 0
+    confirmed_late = 0
+    paid = 0
+    total_months = 0
+    for ent in (ledger.values() if isinstance(ledger, dict) else []):
+        for m in ent.get("months") or []:
+            total_months += 1
+            st = m.get("status") or ""
+            if st == "unknown_requires_review":
+                unknown += 1
+            elif st == "vacated":
+                vacated += 1
+            elif st in ("unpaid_confirmed", "partial", "unpaid"):
+                confirmed_late += 1
+            elif st == "paid":
+                paid += 1
+    # Collection recommendations only when no unclear payment months remain.
+    collection_recs_allowed = unknown == 0
+    return {
+        "total_month_rows": total_months,
+        "unknown_month_count": unknown,
+        "vacated_month_count": vacated,
+        "confirmed_late_month_count": confirmed_late,
+        "paid_month_count": paid,
+        "collection_recs_allowed": collection_recs_allowed,
+        "ledger_trust": "ok" if unknown == 0 else "needs_review",
+    }
+
+
 def _normalize_late_tenant(row: dict) -> dict:
     months = row.get("months") or []
     unpaid = [m for m in months if (m.get("status") or "") in ("unpaid_confirmed", "partial", "unpaid")]
@@ -215,4 +324,6 @@ def build_property_knowledge(snapshot: dict, lang: Lang = "ar") -> dict:
             "count": len(snapshot.get("maintenance_log") or []),
         },
         "files": list(snapshot.get("file_classifications") or [])[:20],
+        "tenants": _build_tenant_cards(snapshot, lang),
+        "ledger_quality": _ledger_quality(snapshot),
     }

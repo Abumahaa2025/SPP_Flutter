@@ -85,16 +85,62 @@ export type ReportSection = {
   items: { label: string; value: string; evidence?: string[] }[];
 };
 
+export type TenantMonthStatus = {
+  month?: number;
+  year?: number;
+  label: string;
+  status: string;
+  status_label?: string;
+  due?: number;
+  paid?: number;
+  remaining?: number;
+};
+
+export type TenantKnowledgeCard = {
+  id?: string;
+  tenant: string;
+  unit: string;
+  phone?: string;
+  contract?: string;
+  rent?: number;
+  contract_start?: string;
+  contract_end?: string;
+  first_seen_label?: string;
+  last_seen_label?: string;
+  dates_note?: string;
+  months?: TenantMonthStatus[];
+  confirmed_arrears?: number;
+  confirmed_late_months?: number;
+};
+
+export type PropertyKnowledge = {
+  tenants?: TenantKnowledgeCard[];
+  ledger_quality?: {
+    unknown_month_count?: number;
+    collection_recs_allowed?: boolean;
+    ledger_trust?: string;
+  };
+};
+
 export type ExecutiveBrief = {
   title?: string;
   status_label?: string;
   property_status: string;
+  /** Operational story lines (confirmed facts) */
+  story?: string[];
+  what_happened?: string;
+  what_changed?: string;
+  who_left?: string;
+  who_entered?: string;
+  biggest_problem?: string;
+  top_decision?: string;
   decisions_today?: string[];
   key_numbers: { label: string; value: string }[];
   needs_review: string[];
   confidence: number;
   confidence_level: string;
   decision_status?: string;
+  collection_recs_allowed?: boolean;
   period?: string;
   /** @deprecated kept for older clients */
   top_risk?: string;
@@ -125,6 +171,7 @@ export type PortfolioAnalysis = {
   executive_brief?: ExecutiveBrief | null;
   executive_report: { title: string; year: number; sections: ReportSection[] };
   late_payments?: LatePaymentsReport | null;
+  property_knowledge?: PropertyKnowledge | null;
   month_comparison: { month: string; revenue: number; expenses: number }[];
   expense_by_type: { type: string; amount: number }[];
   smart_decisions: SmartDecision[];

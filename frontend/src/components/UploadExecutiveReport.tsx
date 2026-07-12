@@ -322,14 +322,67 @@ export function UploadExecutiveReport({ analysis, delay = 0 }: Props) {
 
         <View style={styles.briefBlock}>
           <Text style={[styles.statusLabel, isRTL && styles.rtl]}>
-            {ar ? 'أهم 3 قرارات اليوم' : 'Top 3 decisions today'}
+            {ar ? 'ماذا حدث خلال الفترة؟' : 'What happened?'}
           </Text>
-          {decisions.slice(0, 3).map((d, i) => (
-            <Text key={`${i}-${d}`} style={[styles.decisionLine, isRTL && styles.rtl]}>
-              {i + 1}. {d}
+          {(brief.story?.length
+            ? brief.story
+            : brief.what_happened
+              ? [brief.what_happened]
+              : [brief.property_status]
+          ).map((line) => (
+            <Text key={line} style={[styles.storyLine, isRTL && styles.rtl]}>
+              • {line}
             </Text>
           ))}
         </View>
+
+        <View style={styles.briefBlock}>
+          <Text style={[styles.statusLabel, isRTL && styles.rtl]}>
+            {ar ? 'ما الذي تغيّر؟' : 'What changed?'}
+          </Text>
+          <Text style={[styles.storyLine, isRTL && styles.rtl]}>
+            {brief.what_changed || (ar ? 'لا تغيّر مؤكد في الفترة.' : 'No confirmed change.')}
+          </Text>
+        </View>
+
+        <View style={styles.briefBlock}>
+          <Text style={[styles.statusLabel, isRTL && styles.rtl]}>{ar ? 'من خرج؟' : 'Who left?'}</Text>
+          <Text style={[styles.storyLine, isRTL && styles.rtl]}>
+            {brief.who_left || (ar ? 'لا خروج مؤكد.' : 'No confirmed departure.')}
+          </Text>
+          <Text style={[styles.statusLabel, isRTL && styles.rtl]}>{ar ? 'من دخل؟' : 'Who entered?'}</Text>
+          <Text style={[styles.storyLine, isRTL && styles.rtl]}>
+            {brief.who_entered || (ar ? 'لا دخول مؤكد.' : 'No confirmed arrival.')}
+          </Text>
+        </View>
+
+        <View style={styles.briefBlock}>
+          <Text style={[styles.statusLabel, isRTL && styles.rtl]}>
+            {ar ? 'أهم مشكلة' : 'Biggest problem'}
+          </Text>
+          <Text style={[styles.problemLine, isRTL && styles.rtl]}>
+            {brief.biggest_problem || brief.top_risk || '—'}
+          </Text>
+          <Text style={[styles.statusLabel, isRTL && styles.rtl]}>
+            {ar ? 'أهم قرار اليوم' : 'Top decision today'}
+          </Text>
+          <Text style={[styles.decisionLine, isRTL && styles.rtl]}>
+            {brief.top_decision || decisions[0] || '—'}
+          </Text>
+        </View>
+
+        {decisions.length > 1 ? (
+          <View style={styles.briefBlock}>
+            <Text style={[styles.statusLabel, isRTL && styles.rtl]}>
+              {ar ? 'قرارات إضافية' : 'More decisions'}
+            </Text>
+            {decisions.slice(1, 3).map((d, i) => (
+              <Text key={`${i}-${d}`} style={[styles.storyLine, isRTL && styles.rtl]}>
+                {i + 2}. {d}
+              </Text>
+            ))}
+          </View>
+        ) : null}
 
         <Text style={[styles.statusLabel, isRTL && styles.rtl]}>{ar ? 'أهم الأرقام' : 'Key numbers'}</Text>
         <View style={styles.numRow}>
@@ -376,7 +429,13 @@ export function UploadExecutiveReport({ analysis, delay = 0 }: Props) {
         <Animated.View key={g.id} entering={FadeInDown.duration(450).delay(delay + 40 + i * 35)}>
           {g.late && late_payments ? (
             <CollapsibleSection title={g.title} summary={g.summary}>
-              <LatePaymentsSection data={late_payments} title={g.title} delay={0} embedded />
+              <LatePaymentsSection
+                data={late_payments}
+                title={g.title}
+                delay={0}
+                embedded
+                tenantCards={analysis.property_knowledge?.tenants || []}
+              />
             </CollapsibleSection>
           ) : (
             <CollapsibleSection title={g.title} summary={g.summary}>
@@ -429,6 +488,19 @@ const styles = StyleSheet.create({
     fontSize: 15,
     lineHeight: 24,
     fontWeight: typography.weight.semibold,
+  },
+  storyLine: {
+    color: colors.text,
+    fontSize: 14,
+    lineHeight: 22,
+    marginBottom: 4,
+  },
+  problemLine: {
+    color: colors.text,
+    fontSize: 15,
+    lineHeight: 24,
+    fontWeight: typography.weight.semibold,
+    marginBottom: 12,
   },
   numRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 14 },
   numCell: {

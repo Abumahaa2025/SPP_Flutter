@@ -57,6 +57,21 @@ def test_empty_status_unknown_not_late():
     assert _infer_payment_status(row) == "unknown_requires_review"
 
 
+def test_late_amount_column_alone_not_confirmed_unpaid():
+    row = {"pay_status": "", "rent": 1800, "paid": 0, "late": "1800"}
+    assert _infer_payment_status(row) == "unknown_requires_review"
+
+
+def test_partial_before_paid_marker_substring():
+    row = {"pay_status": "سداد جزئي", "rent": 2000, "paid": 500, "late": ""}
+    assert _infer_payment_status(row) == "partial"
+
+
+def test_confirmed_late_marker():
+    row = {"pay_status": "متاخرات", "rent": 1100, "paid": 0, "late": ""}
+    assert _infer_payment_status(row) == "unpaid_confirmed"
+
+
 def test_phone_normalization():
     info = normalize_saudi_phone("531695119")
     assert info["phone"] == "0531695119"
@@ -227,3 +242,84 @@ def test_ledger_matches_late_board(deep):
     ledger_unpaid = sum(float(e.get("total_unpaid") or 0) for e in deep["payment_ledger"]["ledger"].values())
     board = float((deep.get("late_by_month") or {}).get("grand_total") or 0)
     assert abs(ledger_unpaid - board) < 1.0, f"ledger={ledger_unpaid} board={board}"
+
+
+@pytest.mark.skipif(not _have_real_files(), reason="Desktop golden xlsx files missing")
+def test_unknown_months_block_collection_recs(deep):
+    from adapters.koil.property_knowledge_engine import build_property_knowledge
+    from adapters.koil.import_snapshot import snapshot_from_deep
+    from adapters.koil.koil_reasoning_engine import run_koil_reasoning
+
+    snap = snapshot_from_deep(deep)
+    pk = build_property_knowledge(snap, "ar")
+    lq = pk.get("ledger_quality") or {}
+    assert int(lq.get("unknown_month_count") or 0) > 0
+    assert lq.get("collection_recs_allowed") is False
+    assert pk.get("tenants"), "tenant cards missing from Property Knowledge"
+    reasoning = run_koil_reasoning(pk, "ar")
+    for r in reasoning.get("recommendations") or []:
+        key = r.get("action_key") or ""
+        title = r.get("title") or ""
+        assert "whatsapp" not in key
+        if "تواصل مع" in title:
+            assert False, f"collection contact should be blocked: {title}"
+
+
+def test_late_view_excludes_unknown_status():
+    from adapters.upload_analysis.late_report_format import build_late_payments_view_model
+
+    vm = build_late_payments_view_model(
+        late_by_month={
+            "months": [
+                {
+                    "year": 2026,
+                    "month": 5,
+                    "month_label": "مايو 2026",
+                    "month_total": 5000,
+                    "items": [
+                        {
+                            "tenant": "A",
+                            "unit": "1",
+                            "status": "unknown_requires_review",
+                            "amount": 2000,
+                            "rent": 2000,
+                            "paid": 0,
+                        },
+                        {
+                            "tenant": "B",
+                            "unit": "2",
+                            "status": "unpaid_confirmed",
+                            "amount": 1100,
+                            "rent": 1100,
+                            "paid": 0,
+                        },
+                    ],
+                }
+            ],
+            "grand_total": 3100,
+            "late_tenant_count": 2,
+        },
+        late_tenants_detailed=[
+            {
+                "tenant": "A",
+                "unit": "1",
+                "months": [{"month": 5, "year": 2026, "status": "unknown_requires_review", "remaining": 2000}],
+                "total_unpaid": 2000,
+            },
+            {
+                "tenant": "B",
+                "unit": "2",
+                "months": [{"month": 5, "year": 2026, "status": "unpaid_confirmed", "remaining": 1100}],
+                "total_unpaid": 1100,
+                "oldest_month": {"month": 5, "year": 2026},
+            },
+        ],
+        total_unpaid=3100,
+        late_tenant_count=2,
+        lang="ar",
+    )
+    assert vm["summary"]["late_tenant_count"] == 1
+    assert abs(vm["summary"]["total_unpaid"] - 1100) < 0.1
+    assert len(vm["months"]) == 1
+    assert len(vm["months"][0]["tenants"]) == 1
+    assert vm["months"][0]["tenants"][0]["unit"] == "2"
