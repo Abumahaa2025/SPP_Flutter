@@ -127,23 +127,102 @@ def _cell(row: List[str], idx: int) -> str:
     return str(row[idx]).strip()
 
 
-def _infer_paid(row: dict) -> bool:
+# Payment month statuses — only unpaid_confirmed creates overdue amounts.
+PAID_MARKERS = (
+    "مسدد",
+    "paid",
+    "كاش",
+    "بنك",
+    "بنكي",
+    "تحويل",
+    "سداد",
+    "منصه",
+    "منصة",
+    "المنصه",
+    "المنصة",
+)
+VACATED_MARKERS = ("اخلاء", "إخلاء", "اخلت", "تسليم", "vacat", "moved out")
+# Never use bare «لم» — it matches inside «المنصة».
+UNPAID_CONFIRMED_MARKERS = (
+    "متاخرات",
+    "متأخرات",
+    "متاخر",
+    "متأخر",
+    "late",
+    "overdue",
+    "لم يسدد",
+    "لم يُسدد",
+    "غير مسدد",
+    "غير مسدّد",
+)
+
+
+def normalize_saudi_phone(raw: Any) -> Dict[str, Any]:
+    """Keep original + local 05… + WhatsApp 966… forms."""
+    original = str(raw or "").strip()
+    if not original or original.lower() in ("none", "nan", "-", "بدون"):
+        return {
+            "phone_raw": original,
+            "phone": "",
+            "phone_e164": "",
+            "phone_confidence": 0,
+        }
+    digits = re.sub(r"\D", "", _norm_ar_nums(original))
+    local = ""
+    e164 = ""
+    conf = 0
+    if digits.startswith("966") and len(digits) >= 12:
+        local = "0" + digits[3:12]
+        e164 = digits[:12]
+        conf = 95
+    elif digits.startswith("05") and len(digits) >= 10:
+        local = digits[:10]
+        e164 = "966" + digits[1:10]
+        conf = 95
+    elif len(digits) == 9 and digits.startswith("5"):
+        local = "0" + digits
+        e164 = "966" + digits
+        conf = 90
+    elif len(digits) >= 8:
+        local = digits
+        e164 = digits
+        conf = 60
+    return {
+        "phone_raw": original,
+        "phone": local,
+        "phone_e164": e164,
+        "phone_confidence": conf,
+    }
+
+
+def _infer_payment_status(row: dict) -> str:
+    """paid | partial | unpaid_confirmed | not_due | vacated | unknown_requires_review"""
     ps = _norm_ar_nums(str(row.get("pay_status") or "")).lower()
-    if any(k in ps for k in ("مسدد", "paid", "كاش", "بنك", "تحويل", "سداد")):
-        return True
-    if any(k in ps for k in ("لم", "pending", "متأخر", "late", "غير")):
-        return False
-    if row.get("paid") and float(row["paid"]) > 0:
-        return True
-    return False
+    late = _norm_ar_nums(str(row.get("late") or "")).lower()
+    blob = f"{ps} {late}".strip()
+    rent = float(row.get("rent") or 0)
+    paid_amt = float(row.get("paid") or 0)
+
+    if rent <= 0:
+        return "not_due"
+    if any(k in blob for k in VACATED_MARKERS):
+        return "vacated"
+    if any(k in blob for k in PAID_MARKERS) or (paid_amt >= rent > 0):
+        return "paid"
+    if 0 < paid_amt < rent:
+        return "partial"
+    if any(k in blob for k in UNPAID_CONFIRMED_MARKERS):
+        return "unpaid_confirmed"
+    return "unknown_requires_review"
+
+
+def _infer_paid(row: dict) -> bool:
+    return _infer_payment_status(row) == "paid"
 
 
 def _infer_late(row: dict) -> bool:
-    ps = _norm_ar_nums(str(row.get("pay_status") or "")).lower()
-    late = _norm_ar_nums(str(row.get("late") or "")).lower()
-    if any(k in ps + late for k in ("متأخر", "late", "overdue", "لم يسدد", "غير مسدد")):
-        return True
-    return not row.get("is_paid") and float(row.get("rent") or 0) > 0
+    """Confirmed arrears only — empty/vacated/unknown are not overdue."""
+    return _infer_payment_status(row) == "unpaid_confirmed"
 
 
 # قواعد عامة — هوية الوحدة (أي عميل، أي تنسيق أعمدة)
@@ -457,21 +536,32 @@ def parse_rent_roll_text(text: str, file_meta: dict) -> dict:
         unit_info = parse_unit_cell(unit_raw, "", tenant)
         unit = unit_info["unit"]
         rent = _money(_cell(cells, col_map.get("rent", -1)))
+        phone_raw = _cell(cells, col_map.get("phone", -1))
+        phone_info = normalize_saudi_phone(phone_raw)
         row = {
             "unit": unit,
             "unit_no": unit_info["unit_no"],
             "unit_type": unit_info["unit_type"],
             "unit_raw": unit_info["unit_raw"],
             "tenant": tenant or unit,
-            "phone": _cell(cells, col_map.get("phone", -1)),
+            "phone": phone_info["phone"] or phone_raw,
+            "phone_raw": phone_info["phone_raw"],
+            "phone_e164": phone_info["phone_e164"],
+            "phone_confidence": phone_info["phone_confidence"],
+            "phone_source": {
+                "file": file_meta.get("name") or "",
+                "column": (col_map.get("phone") if col_map.get("phone") is not None else -1),
+                "header": headers[col_map["phone"]] if col_map.get("phone") is not None and col_map["phone"] < len(headers) else "",
+            },
             "contract": _cell(cells, col_map.get("contract", -1)),
             "rent": rent,
             "pay_status": _cell(cells, col_map.get("pay_status", -1)),
             "late": _cell(cells, col_map.get("late", -1)),
             "paid": _money(_cell(cells, col_map.get("paid", -1))),
         }
-        row["is_paid"] = _infer_paid(row)
-        row["is_late"] = _infer_late(row)
+        row["payment_status"] = _infer_payment_status(row)
+        row["is_paid"] = row["payment_status"] == "paid"
+        row["is_late"] = row["payment_status"] == "unpaid_confirmed"
         rows.append(row)
 
     name = file_meta.get("name") or ""
@@ -493,39 +583,111 @@ def parse_rent_roll_text(text: str, file_meta: dict) -> dict:
     }
 
 
+def _map_expense_columns(headers: List[str]) -> Dict[str, int]:
+    col: Dict[str, int] = {}
+    for i, h in enumerate(headers):
+        hl = _norm_ar_nums(h.strip().lower())
+        if not hl:
+            continue
+        if any(k in hl for k in ("رقم الطلب", "ticket", "work order")) and "وحد" not in hl:
+            col.setdefault("request_id", i)
+        if any(k in hl for k in ("رقم الوحده", "رقم الوحدة", "الوحده", "الوحدة", "unit")) and "طلب" not in hl:
+            col.setdefault("unit", i)
+        if any(k in hl for k in ("وصف العطل", "الوصف", "description", "ملاحظات")):
+            col.setdefault("description", i)
+        if "نوع المصروف" in hl or hl in ("category", "مصروف"):
+            col.setdefault("category", i)
+        if (
+            ("تكلفه" in hl or "تكلفة" in hl or "المبلغ" in hl or "cost" in hl or "amount" in hl)
+            and "تاريخ" not in hl
+            and "نوع" not in hl
+        ):
+            col.setdefault("amount", i)
+        if any(k in hl for k in ("الحاله", "الحالة", "status")):
+            col.setdefault("status", i)
+        if any(k in hl for k in ("الفني", "technician", "vendor")):
+            col.setdefault("technician", i)
+        if any(k in hl for k in ("الجهه الدافع", "الجهة الدافع", "payer")):
+            col.setdefault("payer", i)
+    return col
+
+
 def parse_expense_text(text: str, file_meta: dict) -> dict:
+    """Parse maintenance/expense sheets by headers — never scrape dates as amounts."""
     text = _norm_ar_nums(text or "")
     lines = [ln for ln in text.splitlines() if ln.strip()]
     rows: List[dict] = []
     total = 0.0
-    for line in lines[1:]:
-        delim = _detect_delimiter(line)
-        cells = next(csv.reader(io.StringIO(line), delimiter=delim), [])
-        if len(cells) < 2:
-            continue
-        desc = cells[0].strip()
-        amount = _money(cells[-1])
-        if amount <= 0:
-            continue
-        unit = ""
-        for c in cells[1:-1]:
-            if re.search(r"\d|محل|شقة|unit", c, re.I):
-                unit = c.strip()
-                break
-        rows.append({"description": desc, "unit": unit, "amount": amount, "category": "صيانة"})
-        total += amount
+    if not lines:
+        return {
+            "ok": False,
+            "rows": [],
+            "total": 0.0,
+            "file_name": file_meta.get("name") or "",
+            "row_count": 0,
+            "doc_type": "maintenance_expense",
+        }
 
-    if not rows and text:
-        for m in re.finditer(r"([\d,]+(?:\.\d+)?)\s*(?:ر\.?س|sar|aed|درهم)?", text):
-            v = _money(m.group(1))
-            if v > 50:
-                rows.append({"description": "بند مصروف", "unit": "", "amount": v, "category": "مصروف"})
-                total += v
+    delim = _detect_delimiter(lines[0])
+    headers = next(csv.reader(io.StringIO(lines[0]), delimiter=delim), [])
+    col_map = _map_expense_columns(headers)
+    has_structured = col_map.get("amount") is not None
+
+    if has_structured:
+        for line in lines[1:]:
+            cells = next(csv.reader(io.StringIO(line), delimiter=delim), [])
+            if not cells:
+                continue
+            amount = _money(_cell(cells, col_map.get("amount", -1)))
+            desc = _cell(cells, col_map.get("description", -1))
+            # Trailing incomplete rows (empty description after real data) — stop.
+            if not desc.strip() and rows:
+                break
+            if amount <= 0:
+                continue
+            if not desc.strip() and not _cell(cells, col_map.get("unit", -1)):
+                continue
+            unit = _cell(cells, col_map.get("unit", -1))
+            category = _cell(cells, col_map.get("category", -1)) or "صيانة"
+            rows.append(
+                {
+                    "request_id": _cell(cells, col_map.get("request_id", -1)),
+                    "description": desc or category,
+                    "unit": unit,
+                    "amount": amount,
+                    "category": category,
+                    "status": _cell(cells, col_map.get("status", -1)),
+                    "technician": _cell(cells, col_map.get("technician", -1)),
+                    "payer": _cell(cells, col_map.get("payer", -1)),
+                }
+            )
+            total += amount
+    else:
+        for line in lines[1:]:
+            cells = next(csv.reader(io.StringIO(line), delimiter=delim), [])
+            if len(cells) < 2:
+                continue
+            desc = cells[0].strip()
+            amount = _money(cells[-1])
+            if amount <= 0 or amount > 500_000:
+                continue
+            # Skip date-like first cells mistaken as amounts in fallback path.
+            if re.match(r"^\d{4}-\d{2}-\d{2}", desc):
+                continue
+            unit = ""
+            for c in cells[1:-1]:
+                if re.search(r"\d|محل|شقة|unit", c, re.I):
+                    unit = c.strip()
+                    break
+            rows.append({"description": desc, "unit": unit, "amount": amount, "category": "صيانة"})
+            total += amount
 
     return {
         "ok": total > 0,
-        "rows": rows[:50],
+        "rows": rows[:200],
         "total": round(total, 2),
         "file_name": file_meta.get("name") or "",
         "row_count": len(rows),
+        "doc_type": "maintenance_expense",
+        "column_map": col_map if has_structured else {},
     }

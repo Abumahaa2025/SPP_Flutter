@@ -29,7 +29,7 @@ def _ml(month: int, year: int, lang: Lang) -> str:
 
 def _normalize_late_tenant(row: dict) -> dict:
     months = row.get("months") or []
-    unpaid = [m for m in months if (m.get("status") or "") in ("unpaid", "partial", "pending")]
+    unpaid = [m for m in months if (m.get("status") or "") in ("unpaid_confirmed", "partial", "unpaid")]
     return {
         "tenant": row.get("tenant") or row.get("Tenant") or "—",
         "unit": row.get("unit") or "—",
