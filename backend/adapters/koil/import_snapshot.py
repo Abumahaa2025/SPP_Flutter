@@ -95,8 +95,30 @@ def snapshot_from_deep(deep: dict) -> dict:
         "monthly_breakdown": monthly_breakdown,
         "late_by_month": deep.get("late_by_month") or {},
         "late_tenants": pl.get("late_tenants") or deep.get("late_tenants") or [],
-        "maintenance_log": [],
+        "maintenance_log": _maintenance_from_expense_rolls(deep.get("expense_rolls") or []),
+        "expense_rolls": deep.get("expense_rolls") or [],
         "payment_ledger": pl.get("ledger") or {},
         "parsed_rolls": deep.get("parsed_rolls") or [],
+        "file_classifications": deep.get("file_classifications") or [],
         "files_count": len(deep.get("file_classifications") or []),
     }
+
+
+def _maintenance_from_expense_rolls(expense_rolls: List[dict]) -> List[dict]:
+    """Flatten expense/maintenance rolls into Property Knowledge entries."""
+    out: List[dict] = []
+    for er in expense_rolls:
+        fname = er.get("file_name") or ""
+        for r in er.get("rows") or []:
+            out.append(
+                {
+                    "description": r.get("description") or "صيانة",
+                    "unit": r.get("unit") or "",
+                    "amount": r.get("amount") or 0,
+                    "category": r.get("category") or "صيانة",
+                    "status": r.get("status") or "",
+                    "file_name": fname,
+                    "request_id": r.get("request_id") or "",
+                }
+            )
+    return out[:200]

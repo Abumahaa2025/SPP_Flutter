@@ -22,6 +22,7 @@ export type PortfolioMetrics = {
   net_profit: number;
   balance: number;
   files_analyzed: number;
+  collection_rate_pct?: number;
 };
 
 export type LatePaymentTenantEntry = {
@@ -80,7 +81,20 @@ export type LatePaymentsReport = {
 export type ReportSection = {
   key: string;
   title: string;
+  summary?: string;
   items: { label: string; value: string; evidence?: string[] }[];
+};
+
+export type ExecutiveBrief = {
+  property_status: string;
+  top_risk: string;
+  top_action: string;
+  key_numbers: { label: string; value: string }[];
+  confidence: number;
+  confidence_level: string;
+  needs_review: string[];
+  decision_status?: string;
+  period?: string;
 };
 
 export type SmartDecision = {
@@ -103,6 +117,7 @@ export type PortfolioAnalysis = {
   what_now_message: string;
   prompt_options: { key: string; label: string }[];
   metrics: PortfolioMetrics;
+  executive_brief?: ExecutiveBrief | null;
   executive_report: { title: string; year: number; sections: ReportSection[] };
   late_payments?: LatePaymentsReport | null;
   month_comparison: { month: string; revenue: number; expenses: number }[];

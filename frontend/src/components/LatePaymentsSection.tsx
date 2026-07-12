@@ -25,6 +25,8 @@ type Props = {
   data: LatePaymentsReport;
   title: string;
   delay?: number;
+  /** When true, skip outer card/title (parent already provides them). */
+  embedded?: boolean;
 };
 
 function fmt(n: number, ar: boolean) {
@@ -127,7 +129,7 @@ function CollapsibleBlock({
   );
 }
 
-export function LatePaymentsSection({ data, title, delay = 0 }: Props) {
+export function LatePaymentsSection({ data, title, delay = 0, embedded = false }: Props) {
   const { isRTL } = useI18n();
   const ar = isRTL;
   const { summary, months, tenant_totals } = data;
@@ -144,10 +146,9 @@ export function LatePaymentsSection({ data, title, delay = 0 }: Props) {
       : `${summary.oldest_tenant.tenant} — ${summary.oldest_tenant.unit} (${summary.oldest_tenant.month_label})`
     : '—';
 
-  return (
-    <Animated.View entering={FadeInDown.duration(500).delay(delay)}>
-      <GlassCard padding={18} radiusToken="md" edge="gold" style={styles.sectionCard}>
-        <Text style={[styles.sectionTitle, isRTL && styles.rtl]}>{title}</Text>
+  const inner = (
+    <>
+      {!embedded ? <Text style={[styles.sectionTitle, isRTL && styles.rtl]}>{title}</Text> : null}
 
         <View style={styles.summaryBox}>
           <FieldRow
@@ -236,6 +237,17 @@ export function LatePaymentsSection({ data, title, delay = 0 }: Props) {
             ))}
           </View>
         ) : null}
+    </>
+  );
+
+  if (embedded) {
+    return <View>{inner}</View>;
+  }
+
+  return (
+    <Animated.View entering={FadeInDown.duration(500).delay(delay)}>
+      <GlassCard padding={18} radiusToken="md" edge="gold" style={styles.sectionCard}>
+        {inner}
       </GlassCard>
     </Animated.View>
   );
