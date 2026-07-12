@@ -41,6 +41,31 @@ def _tenant_key(name: str) -> str:
     return "".join((name or "").lower().split())
 
 
+def _name_tokens(name: str) -> List[str]:
+    return [t for t in re.split(r"\s+", (name or "").lower().strip()) if len(t) >= 2]
+
+
+def _soft_name_same(a: str, b: str) -> bool:
+    """Same-script soft match only — never invent bilingual transliteration."""
+    ka, kb = _tenant_key(a), _tenant_key(b)
+    if not ka or not kb:
+        return False
+    if ka == kb:
+        return True
+    shorter, longer = (ka, kb) if len(ka) <= len(kb) else (kb, ka)
+    # Containment covers incomplete vs full Arabic name (نور محمد ⊂ نور محمد يونس).
+    if len(shorter) >= 6 and shorter in longer:
+        return True
+    ta, tb = set(_name_tokens(a)), set(_name_tokens(b))
+    if not ta or not tb:
+        return False
+    if ta <= tb or tb <= ta:
+        smaller = ta if len(ta) <= len(tb) else tb
+        # Require ≥2 tokens so a shared mid-name alone never merges strangers.
+        return len(smaller) >= 2
+    return False
+
+
 def _norm_phone_digits(phone: str) -> str:
     from .intake_parser import normalize_saudi_phone
 
@@ -55,17 +80,66 @@ def _norm_contract(contract: str) -> str:
     return c
 
 
+def _phones_match(a: str, b: str) -> bool:
+    pp, cp = _norm_phone_digits(a), _norm_phone_digits(b)
+    return bool(len(pp) >= 8 and len(cp) >= 8 and (pp == cp or pp[-9:] == cp[-9:]))
+
+
 def _same_tenant_identity(prev: dict, cur: dict) -> bool:
-    """Strong identity: property+unit already scoped; then contract / phone / name."""
-    if _tenant_key(prev.get("tenant") or "") == _tenant_key(cur.get("tenant") or ""):
+    """Same tenant on a unit: exact/soft name, or shared contract/phone. Generic — any client."""
+    prev_n = prev.get("tenant") or ""
+    cur_n = cur.get("tenant") or ""
+    if _tenant_key(prev_n) == _tenant_key(cur_n):
+        return True
+    if _soft_name_same(prev_n, cur_n):
         return True
     pc, cc = _norm_contract(prev.get("contract") or ""), _norm_contract(cur.get("contract") or "")
     if pc and cc and pc == cc:
         return True
-    pp, cp = _norm_phone_digits(prev.get("phone") or ""), _norm_phone_digits(cur.get("phone") or "")
-    if len(pp) >= 8 and len(cp) >= 8 and (pp == cp or pp[-9:] == cp[-9:]):
+    if _phones_match(prev.get("phone") or "", cur.get("phone") or ""):
         return True
     return False
+
+
+def _clear_identity_switch(prev: dict, cur: dict) -> bool:
+    """True only when evidence shows a different person (not a spelling/bilingual flip)."""
+    if _same_tenant_identity(prev, cur):
+        return False
+    pc, cc = _norm_contract(prev.get("contract") or ""), _norm_contract(cur.get("contract") or "")
+    if pc and cc and pc != cc:
+        return True
+    pp, cp = _norm_phone_digits(prev.get("phone") or ""), _norm_phone_digits(cur.get("phone") or "")
+    if len(pp) >= 8 and len(cp) >= 8 and pp[-9:] != cp[-9:]:
+        return True
+    # Names differ and both sides lack phone+contract — too weak; do not assert departure.
+    return False
+
+
+def _filter_false_turnover(departed: List[dict], newcomers: List[dict]) -> Tuple[List[dict], List[dict]]:
+    """Drop departed/newcomer pairs that share unit+month and phone or contract."""
+    drop_dep: set = set()
+    drop_new: set = set()
+    for i, d in enumerate(departed):
+        for j, n in enumerate(newcomers):
+            if str(d.get("unit") or "") != str(n.get("unit") or ""):
+                continue
+            if int(d.get("departed_month") or 0) != int(n.get("arrived_month") or 0):
+                continue
+            if int(d.get("departed_year") or 0) != int(n.get("arrived_year") or 0):
+                continue
+            same_c = _norm_contract(d.get("contract") or "") and (
+                _norm_contract(d.get("contract") or "") == _norm_contract(n.get("contract") or "")
+            )
+            same_p = _phones_match(d.get("phone") or "", n.get("phone") or "")
+            # Also soft-name + no opposing phone/contract evidence.
+            soft = _soft_name_same(d.get("tenant") or "", n.get("tenant") or "")
+            if same_c or same_p or soft:
+                drop_dep.add(i)
+                drop_new.add(j)
+    return (
+        [d for i, d in enumerate(departed) if i not in drop_dep],
+        [n for j, n in enumerate(newcomers) if j not in drop_new],
+    )
 
 
 def _timeline_identity_key(unit: str, row: dict) -> str:
@@ -142,7 +216,8 @@ def build_lifecycle(monthly_index: dict) -> dict:
             if i > 0:
                 prev = seq[i - 1]["row"]
                 prev_t = prev.get("tenant") or unit
-                if not _same_tenant_identity(prev, row):
+                # Only assert occupancy change on clear identity switch (phone/contract diverge).
+                if _clear_identity_switch(prev, row):
                     dep_k = f"{unit}|{_tenant_key(prev_t)}|{cur['month']}/{cur['year']}"
                     if dep_k not in seen_dep:
                         seen_dep.add(dep_k)
@@ -158,6 +233,7 @@ def build_lifecycle(monthly_index: dict) -> dict:
                                 "reason": f"استبدال — {tenant}" if tenant else "غادر — وحدة شاغرة",
                                 "had_late": prev.get("is_late", False),
                                 "stay_months": i,
+                                "confirmed": True,
                             }
                         )
                     if tenant:
@@ -173,6 +249,7 @@ def build_lifecycle(monthly_index: dict) -> dict:
                                     "rent": row.get("rent", 0),
                                     "arrived_month": cur["month"],
                                     "arrived_year": cur["year"],
+                                    "confirmed": True,
                                 }
                             )
 
@@ -205,7 +282,7 @@ def build_lifecycle(monthly_index: dict) -> dict:
                 prev_row = (prev.get("units") or {}).get(unit)
                 cur_t = cur_row.get("tenant") or unit
                 prev_t = (prev_row or {}).get("tenant") or ""
-                if prev_row and not _same_tenant_identity(prev_row, cur_row):
+                if prev_row and _clear_identity_switch(prev_row, cur_row):
                     new_in_last.append(
                         {
                             "unit": unit,
@@ -214,8 +291,11 @@ def build_lifecycle(monthly_index: dict) -> dict:
                             "arrived_month": last["month"],
                             "arrived_year": last["year"],
                             "replaced": prev_t or "شاغرة",
+                            "confirmed": True,
                         }
                     )
+
+    departed, newcomers = _filter_false_turnover(departed, newcomers)
 
     return {
         "timeline": timeline,

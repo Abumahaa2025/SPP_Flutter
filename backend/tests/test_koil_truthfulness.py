@@ -72,6 +72,30 @@ def test_confirmed_late_marker():
     assert _infer_payment_status(row) == "unpaid_confirmed"
 
 
+def test_soft_name_same_incomplete_arabic():
+    from adapters.upload_analysis.intake_lifecycle import _soft_name_same, _same_tenant_identity, _clear_identity_switch
+
+    assert _soft_name_same("نور محمد", "نور محمد يونس محمد")
+    assert not _soft_name_same("ماجد غالب عبدالله", "مختار محرم غالب اسماعيل")
+    # Bilingual same person — phone/contract required (no transliteration engine).
+    a = {"tenant": "NOOR MOHAMMED YOUNOS MOHAMMED", "phone": "0577521700", "contract": "10198816953"}
+    b = {"tenant": "نور محمد", "phone": "0577521700", "contract": "10198816953"}
+    assert _same_tenant_identity(a, b)
+    assert not _clear_identity_switch(a, b)
+
+
+def test_clear_switch_requires_diverging_phone_or_contract():
+    from adapters.upload_analysis.intake_lifecycle import _clear_identity_switch
+
+    prev = {"tenant": "أ", "phone": "0501111111", "contract": "111"}
+    cur = {"tenant": "ب", "phone": "0502222222", "contract": "222"}
+    assert _clear_identity_switch(prev, cur)
+    # Name-only flip without phone/contract evidence — not a departure.
+    weak = {"tenant": "أ", "phone": "", "contract": ""}
+    weak2 = {"tenant": "ب", "phone": "", "contract": ""}
+    assert not _clear_identity_switch(weak, weak2)
+
+
 def test_phone_normalization():
     info = normalize_saudi_phone("531695119")
     assert info["phone"] == "0531695119"
