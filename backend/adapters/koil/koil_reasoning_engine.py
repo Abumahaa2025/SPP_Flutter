@@ -225,45 +225,68 @@ def run_koil_reasoning(knowledge: dict, lang: Lang = "ar") -> dict:
     if not risks:
         risks.append(_risk("low", "لا مخاطر حرجة مكتشفة في هذه الدفعة" if ar else "No critical risks in this batch", [], "risk_none"))
 
-    for lt in sorted(late.get("tenants") or [], key=lambda x: (-x.get("consecutive_late", 0), -x.get("total_unpaid", 0)))[:8]:
-        unit = lt.get("unit")
-        tenant = lt.get("tenant")
-        phone = lt.get("phone")
-        consec = lt.get("consecutive_late") or lt.get("late_month_count") or 0
-        pri = "critical" if consec >= 4 else ("high" if consec >= 2 else "medium")
-        if phone:
-            recs.append(
-                _rec(
-                    pri,
-                    f"تواصل مع {tenant} — الوحدة {unit} ({phone})" if ar else f"Contact {tenant} — unit {unit}",
-                    f"متأخر {consec} أشهر · {lt.get('total_unpaid'):,.0f} ر.س" if ar else f"{consec} late months",
-                    [f"phone={phone}", f"unit={unit}"],
-                    f"rec_contact_{unit}",
-                    "whatsapp:remind",
-                )
+    lq = knowledge.get("ledger_quality") or {}
+    # Until Monthly Ledger has zero unclear months — no collection outreach.
+    collection_ok = bool(lq.get("collection_recs_allowed", False)) if lq else False
+    unknown_n = int(lq.get("unknown_month_count") or 0)
+
+    if not collection_ok:
+        recs.append(
+            _rec(
+                "high",
+                "أكمل مراجعة حالات السداد غير الواضحة قبل أي تحصيل"
+                if ar
+                else "Review unclear payment months before any collection",
+                (
+                    f"يوجد {unknown_n} شهرًا بحالة غير مؤكدة في دفتر الدفعات — كويل لن يوصي بالتحصيل الآن"
+                    if ar
+                    else f"{unknown_n} unclear payment months — no collection recommendations"
+                ),
+                [f"unknown_months={unknown_n}"],
+                "rec_ledger_review",
+                "import:review",
             )
-        else:
-            recs.append(
-                _rec(
-                    pri,
-                    f"أضف رقم جوال — {tenant} · الوحدة {unit}" if ar else f"Add phone for {tenant} — unit {unit}",
-                    "لا يمكن التواصل تلقائيًا بدون جوال" if ar else "Cannot automate outreach without phone",
-                    [f"unit={unit}"],
-                    f"rec_addphone_{unit}",
-                    "edit:tenant",
+        )
+    else:
+        for lt in sorted(late.get("tenants") or [], key=lambda x: (-x.get("consecutive_late", 0), -x.get("total_unpaid", 0)))[:8]:
+            unit = lt.get("unit")
+            tenant = lt.get("tenant")
+            phone = lt.get("phone")
+            consec = lt.get("consecutive_late") or lt.get("late_month_count") or 0
+            pri = "critical" if consec >= 4 else ("high" if consec >= 2 else "medium")
+            if phone:
+                recs.append(
+                    _rec(
+                        pri,
+                        f"تواصل مع {tenant} — الوحدة {unit} ({phone})" if ar else f"Contact {tenant} — unit {unit}",
+                        f"متأخر مؤكد {consec} أشهر · {lt.get('total_unpaid'):,.0f} ر.س" if ar else f"{consec} confirmed late months",
+                        [f"phone={phone}", f"unit={unit}"],
+                        f"rec_contact_{unit}",
+                        "whatsapp:remind",
+                    )
                 )
-            )
-        if not lt.get("contract"):
-            recs.append(
-                _rec(
-                    "medium",
-                    f"راجع/rقم العقد — {tenant} · الوحدة {unit}" if ar else f"Review contract — unit {unit}",
-                    "بيانات العقد ناقصة للمتأخر" if ar else "Missing contract on late tenant",
-                    [f"unit={unit}"],
-                    f"rec_contract_{unit}",
-                    "page:contracts",
+            else:
+                recs.append(
+                    _rec(
+                        pri,
+                        f"أضف رقم جوال — {tenant} · الوحدة {unit}" if ar else f"Add phone for {tenant} — unit {unit}",
+                        "لا يمكن التواصل تلقائيًا بدون جوال" if ar else "Cannot automate outreach without phone",
+                        [f"unit={unit}"],
+                        f"rec_addphone_{unit}",
+                        "edit:tenant",
+                    )
                 )
-            )
+            if not lt.get("contract"):
+                recs.append(
+                    _rec(
+                        "medium",
+                        f"راجع رقم العقد — {tenant} · الوحدة {unit}" if ar else f"Review contract — unit {unit}",
+                        "بيانات العقد ناقصة للمتأخر المؤكد" if ar else "Missing contract on confirmed late tenant",
+                        [f"unit={unit}"],
+                        f"rec_contract_{unit}",
+                        "page:contracts",
+                    )
+                )
 
     if units.get("needs_review_count"):
         recs.append(

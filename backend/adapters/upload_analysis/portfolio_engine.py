@@ -228,6 +228,9 @@ def analyze_upload_portfolio(
         late_tenant_count=late_tenant_count,
         lang=lang,
     )
+    # Metrics follow confirmed-only late board (never unknowns as arrears).
+    total_unpaid = float(late_payments["summary"]["total_unpaid"])
+    late_tenant_count = int(late_payments["summary"]["late_tenant_count"])
     late_items = build_late_section_items(
         late_by_month=late_by_month,
         late_tenants_detailed=late_list,
