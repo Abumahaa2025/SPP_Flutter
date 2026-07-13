@@ -1,6 +1,5 @@
 """Run SPP benchmark levels 1–3 against portfolio + Koil engines."""
 
-from __future__ import annotations
 
 import sys
 from pathlib import Path
