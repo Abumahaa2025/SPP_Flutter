@@ -1,7 +1,5 @@
 """Deep property statement intake — classify, parse, link months, lifecycle."""
 
-from _future_ import annotations
-
 import re
 from typing import Dict, List, Tuple
 
