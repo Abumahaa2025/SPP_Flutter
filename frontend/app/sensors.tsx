@@ -3,6 +3,7 @@ import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
+import { useLocalSearchParams } from 'expo-router';
 
 import { ScreenScaffold } from '@/src/components/ScreenScaffold';
 import { StoryScreenHeader } from '@/src/components/StoryScreenHeader';
@@ -25,8 +26,17 @@ const iconOf: Record<string, keyof typeof Feather.glyphMap> = {
 
 type Filter = 'all' | 'attention' | 'nominal';
 
+function utilityTypes(utility?: string | string[]): Set<string> | null {
+  const u = Array.isArray(utility) ? utility[0] : utility;
+  if (u === 'electricity') return new Set(['energy']);
+  if (u === 'water') return new Set(['humidity', 'leak']);
+  return null;
+}
+
 export default function Sensors() {
   const { t } = useI18n();
+  const params = useLocalSearchParams<{ utility?: string }>();
+  const utilityFilter = utilityTypes(params.utility);
   const [sensors, setSensors] = useState<SensorT[]>([]);
   const [props, setProps] = useState<PropertyT[]>([]);
   const [filter, setFilter] = useState<Filter>('all');
@@ -43,10 +53,14 @@ export default function Sensors() {
   }, [props]);
 
   const filtered = useMemo(() => {
-    if (filter === 'attention') return sensors.filter((s) => s.status !== 'nominal');
-    if (filter === 'nominal') return sensors.filter((s) => s.status === 'nominal');
-    return sensors;
-  }, [sensors, filter]);
+    let list = sensors;
+    if (utilityFilter) {
+      list = list.filter((s) => utilityFilter.has(String(s.kind || '').toLowerCase()));
+    }
+    if (filter === 'attention') return list.filter((s) => s.status !== 'nominal');
+    if (filter === 'nominal') return list.filter((s) => s.status === 'nominal');
+    return list;
+  }, [sensors, filter, utilityFilter]);
 
   return (
     <ScreenScaffold testID="sensors-screen">
