@@ -258,7 +258,77 @@ function groupSections(
     if (g) g.sections = [...g.sections, cmpSec];
   }
 
-  return groups.filter((g) => g.sections.length > 0 || (g.late && analysis.late_payments));
+  const eng = analysis.executive_brief?.engines;
+  const movesG = groups.find((x) => x.id === 'moves');
+  if (movesG && movesG.sections.length === 0 && eng?.lifecycle) {
+    movesG.sections = [
+      {
+        key: 'lifecycle_engines',
+        title: ar ? 'حركة المستأجرين' : 'Tenant movement',
+        items: [
+          {
+            label: ar ? 'المغادرون' : 'Departed',
+            value: String(eng.lifecycle.departed_count ?? 0),
+          },
+          {
+            label: ar ? 'الداخلون' : 'Arrived',
+            value: String(eng.lifecycle.newcomers_count ?? 0),
+          },
+          { label: ar ? 'خرج' : 'Left', value: eng.lifecycle.who_left || '—' },
+          { label: ar ? 'دخل' : 'Entered', value: eng.lifecycle.who_entered || '—' },
+        ],
+      },
+    ];
+  }
+  const maintG = groups.find((x) => x.id === 'maint');
+  if (maintG && maintG.sections.length === 0 && (eng?.maintenance?.count || 0) > 0) {
+    maintG.sections = [
+      {
+        key: 'maint_engines',
+        title: ar ? 'الصيانة' : 'Maintenance',
+        items: [
+          {
+            label: ar ? 'السجلات' : 'Rows',
+            value: String(eng?.maintenance?.count ?? 0),
+          },
+          {
+            label: ar ? 'الإجمالي' : 'Total',
+            value: `${(eng?.maintenance?.total ?? 0).toLocaleString()}`,
+          },
+        ],
+      },
+    ];
+  }
+  const contractG = groups.find((x) => x.id === 'contracts');
+  if (contractG && contractG.sections.length === 0 && eng?.contracts) {
+    contractG.sections = [
+      {
+        key: 'contracts_engines',
+        title: ar ? 'العقود' : 'Contracts',
+        items: [
+          {
+            label: ar ? 'منتهية / قريبة' : 'Expired / soon',
+            value: `${eng.contracts.expired ?? 0} / ${eng.contracts.expiring_soon ?? 0}`,
+          },
+          {
+            label: ar ? 'فجوات جوال / عقد' : 'Phone / contract gaps',
+            value: `${eng.contracts.missing_phone ?? 0} / ${eng.contracts.missing_contract ?? 0}`,
+          },
+        ],
+      },
+    ];
+  }
+
+  return groups.filter((g) => {
+    if (g.sections.length > 0) return true;
+    if (g.late && analysis.late_payments) return true;
+    if (g.id === 'maint' && (m.total_expenses || 0) > 0) return true;
+    if (g.id === 'contracts') return true;
+    if (g.id === 'moves') return true;
+    if (g.id === 'quality') return true;
+    if (g.id === 'collection') return true;
+    return false;
+  });
 }
 
 /** Decision-first executive report — details stay folded. */
@@ -348,23 +418,52 @@ export function UploadExecutiveReport({ analysis, delay = 0 }: Props) {
 
         <View style={styles.briefBlock}>
           <Text style={[styles.statusLabel, isRTL && styles.rtl]}>{ar ? 'ماذا حدث؟' : 'What happened?'}</Text>
-          <Text style={[styles.storyLine, isRTL && styles.rtl]}>
-            {brief.what_happened || brief.story?.[0] || brief.property_status}
-          </Text>
+          {(brief.story?.length
+            ? brief.story
+            : [brief.what_happened || brief.property_status]
+          ).map((line) => (
+            <Text key={line} style={[styles.storyLine, isRTL && styles.rtl]}>
+              • {line}
+            </Text>
+          ))}
         </View>
 
-        <View style={styles.briefBlock}>
-          <Text style={[styles.statusLabel, isRTL && styles.rtl]}>{ar ? 'ماذا تغيّر؟' : 'What changed?'}</Text>
-          <Text style={[styles.storyLine, isRTL && styles.rtl]}>
-            {brief.what_changed || (ar ? 'لا تغيّر مؤكد.' : 'No confirmed change.')}
-          </Text>
-          <Text style={[styles.metaLine, isRTL && styles.rtl]}>
-            {(ar ? 'خرج: ' : 'Left: ') + (brief.who_left || '—')}
-          </Text>
-          <Text style={[styles.metaLine, isRTL && styles.rtl]}>
-            {(ar ? 'دخل: ' : 'Entered: ') + (brief.who_entered || '—')}
-          </Text>
-        </View>
+        {brief.engines ? (
+          <View style={styles.enginesBox}>
+            <Text style={[styles.statusLabel, isRTL && styles.rtl]}>
+              {ar ? 'ملخص التشغيل' : 'Operations summary'}
+            </Text>
+            <Text style={[styles.metaLine, isRTL && styles.rtl]}>
+              {ar
+                ? `تحصيل ${brief.engines.collection?.rate_pct ?? '—'}% · متأخرون ${brief.engines.late?.tenant_count ?? 0} · حركة ${brief.engines.lifecycle?.confirmed_moves ?? brief.engines.lifecycle?.departed_count ?? 0}`
+                : `Collection ${brief.engines.collection?.rate_pct ?? '—'}% · late ${brief.engines.late?.tenant_count ?? 0}`}
+            </Text>
+            <Text style={[styles.metaLine, isRTL && styles.rtl]}>
+              {ar
+                ? `صيانة ${brief.engines.maintenance?.count ?? 0} · ${(brief.engines.maintenance?.total ?? 0).toLocaleString()} ر.س · عقود ${brief.engines.contracts?.expired ?? 0}/${brief.engines.contracts?.expiring_soon ?? 0} · بطاقات ${brief.engines.tenant_cards?.count ?? 0}`
+                : `Maint ${brief.engines.maintenance?.count ?? 0} · contracts ${brief.engines.contracts?.expired ?? 0}`}
+            </Text>
+            <Text style={[styles.metaLine, isRTL && styles.rtl]}>
+              {(ar ? 'خرج: ' : 'Left: ') + (brief.engines.lifecycle?.who_left || brief.who_left || '—')}
+            </Text>
+            <Text style={[styles.metaLine, isRTL && styles.rtl]}>
+              {(ar ? 'دخل: ' : 'Entered: ') + (brief.engines.lifecycle?.who_entered || brief.who_entered || '—')}
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.briefBlock}>
+            <Text style={[styles.statusLabel, isRTL && styles.rtl]}>{ar ? 'ماذا تغيّر؟' : 'What changed?'}</Text>
+            <Text style={[styles.storyLine, isRTL && styles.rtl]}>
+              {brief.what_changed || (ar ? 'لا تغيّر مؤكد.' : 'No confirmed change.')}
+            </Text>
+            <Text style={[styles.metaLine, isRTL && styles.rtl]}>
+              {(ar ? 'خرج: ' : 'Left: ') + (brief.who_left || '—')}
+            </Text>
+            <Text style={[styles.metaLine, isRTL && styles.rtl]}>
+              {(ar ? 'دخل: ' : 'Entered: ') + (brief.who_entered || '—')}
+            </Text>
+          </View>
+        )}
 
         <View style={styles.briefBlock}>
           <Text style={[styles.statusLabel, isRTL && styles.rtl]}>{ar ? 'ما الأخطر؟' : 'Biggest risk?'}</Text>
@@ -513,6 +612,15 @@ const styles = StyleSheet.create({
     padding: 12,
     borderRadius: radius.md,
     backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    gap: 4,
+  },
+  enginesBox: {
+    marginBottom: 16,
+    padding: 12,
+    borderRadius: radius.md,
+    backgroundColor: 'rgba(255,255,255,0.03)',
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.border,
     gap: 4,
