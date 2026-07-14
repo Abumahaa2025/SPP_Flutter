@@ -24,17 +24,18 @@ type HubLink = {
   tone?: 'gold' | 'emerald';
 };
 
+/** Daily operations only — Spec §3 / §5.5. Reports & connections live under More. */
 const LINKS: HubLink[] = [
   { key: 'properties', icon: 'home', labelKey: 'op.owner.properties', hintKey: 'op.owner.properties.hint', route: '/portfolio', tone: 'gold' },
   { key: 'units', icon: 'grid', labelKey: 'op.owner.units', hintKey: 'op.owner.units.hint', route: '/portfolio' },
-  { key: 'tenants', icon: 'users', labelKey: 'op.owner.tenants', hintKey: 'op.owner.tenants.hint', route: '/tenants' },
   { key: 'contracts', icon: 'file-text', labelKey: 'op.owner.contracts', hintKey: 'op.owner.contracts.hint', route: '/contracts', tone: 'gold' },
+  { key: 'tenants', icon: 'users', labelKey: 'op.owner.tenants', hintKey: 'op.owner.tenants.hint', route: '/tenants' },
   { key: 'payments', icon: 'dollar-sign', labelKey: 'op.owner.payments', hintKey: 'op.owner.payments.hint', route: '/operational/payments', tone: 'emerald' },
+  { key: 'electricity', icon: 'zap', labelKey: 'op.owner.electricity', hintKey: 'op.owner.electricity.hint', route: '/sensors', tone: 'gold' },
+  { key: 'water', icon: 'droplet', labelKey: 'op.owner.water', hintKey: 'op.owner.water.hint', route: '/sensors', tone: 'emerald' },
   { key: 'maintenance', icon: 'tool', labelKey: 'op.owner.maintenance', hintKey: 'op.owner.maintenance.hint', route: '/maintenance', tone: 'emerald' },
-  { key: 'reports', icon: 'bar-chart-2', labelKey: 'op.owner.reports', hintKey: 'op.owner.reports.hint', route: '/reports' },
-  { key: 'portfolio', icon: 'layers', labelKey: 'op.owner.portfolio', hintKey: 'op.owner.portfolio.hint', route: '/portfolio', tone: 'gold' },
+  { key: 'wallet', icon: 'credit-card', labelKey: 'op.owner.wallet', hintKey: 'op.owner.wallet.hint', route: '/wallet', tone: 'gold' },
   { key: 'portals', icon: 'link', labelKey: 'opsv2.portals.title', hintKey: 'opsv2.portals.sub', route: '/operational/portals', tone: 'emerald' },
-  { key: 'services', icon: 'zap', labelKey: 'op.owner.services', hintKey: 'op.owner.services.hint', route: '/operational/services', tone: 'gold' },
 ];
 
 function fmtEvent(t: (k: any) => string, key: string, params?: Record<string, string>) {

@@ -127,6 +127,8 @@ export const WORKSPACE_NAV: WorkspaceNavGroup[] = [
     icon: 'trending-up',
     tone: 'gold',
     items: [
+      { key: 'wallet', labelKey: 'op.owner.wallet', descKey: 'op.owner.wallet.hint', icon: 'credit-card', route: '/wallet', tone: 'gold' },
+      { key: 'payments', labelKey: 'op.owner.payments', descKey: 'op.owner.payments.hint', icon: 'dollar-sign', route: '/operational/payments', tone: 'emerald' },
       { key: 'revenue', labelKey: 'ws.finance.revenue', descKey: 'ws.finance.revenue.desc', icon: 'trending-up', route: '/portfolio' },
       { key: 'expenses', labelKey: 'ws.finance.expenses', descKey: 'ws.finance.expenses.desc', icon: 'minus-circle', route: '/reports' },
       { key: 'reports', labelKey: 'ws.finance.reports', descKey: 'ws.finance.reports.desc', icon: 'bar-chart-2', route: '/reports', sourceApp: 'koil' },
@@ -183,6 +185,7 @@ export const WORKSPACE_NAV: WorkspaceNavGroup[] = [
     tone: 'emerald',
     defaultOpen: false,
     items: [
+      { key: 'hub', labelKey: 'ws.group.integrations', descKey: 'ws.group.integrations.hint', icon: 'link', route: '/operational/services', tone: 'emerald' },
       { key: 'sheets', labelKey: 'ws.integrations.sheets', descKey: 'ws.integrations.sheets.desc', icon: 'database', route: '/setup/sheets', tone: 'emerald' },
       { key: 'green', labelKey: 'ws.integrations.greenApi', descKey: 'ws.integrations.greenApi.desc', icon: 'message-circle', route: '/setup/greenApi', tone: 'emerald' },
       { key: 'ha', labelKey: 'ws.integrations.homeAssistant', descKey: 'ws.integrations.homeAssistant.desc', icon: 'home', route: '/setup/homeAssistant', tone: 'emerald' },

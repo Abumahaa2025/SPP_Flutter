@@ -13,7 +13,6 @@ import { useI18n } from '@/src/i18n';
 import { storage } from '@/src/utils/storage';
 import { useNotificationPrefs } from '@/src/hooks/usePreferences';
 import { useDemoMode } from '@/src/hooks/useDemoMode';
-import { useConnections } from '@/src/hooks/useConnections';
 import { signOutSession } from '@/src/services/beta-auth';
 
 export default function Settings() {
@@ -21,7 +20,6 @@ export default function Settings() {
   const router = useRouter();
   const { prefs, update, countEnabled } = useNotificationPrefs();
   const { demoMode, setDemoMode } = useDemoMode();
-  const { connections } = useConnections();
   const [pendingRTL, setPendingRTL] = useState(false);
 
   // Language change — RTL requires a native reload to fully mirror the layout.
@@ -145,31 +143,16 @@ export default function Settings() {
         <ReadRow icon="wind" label={t('settings.reduceMotion')} value={t('settings.reduceMotion.value')} dir={dir} />
       </Section>
 
-      {/* Connected services */}
+      {/* Connections live on their own screen — Spec §5.18 / §5.19 */}
       <Section title={t('settings.section.services')} delay={240} dir={dir}>
-        <ServiceRow icon="database" label={t('settings.services.sheets')} hint={t('settings.services.sheets.hint')}
-                    connected={connections.sheets.connected} summary={connections.sheets.summary}
-                    onPress={() => openSetup('/setup/sheets')} testID="svc-sheets" dir={dir} t={t} />
-        <Divider />
-        <ServiceRow icon="mail" label={t('settings.services.email')} hint={t('settings.services.email.hint')}
-                    connected={connections.email.connected} summary={connections.email.summary}
-                    onPress={() => openSetup('/setup/email')} testID="svc-email" dir={dir} t={t} />
-        <Divider />
-        <ServiceRow icon="message-circle" label={t('settings.services.whatsapp')} hint={t('settings.services.whatsapp.hint')}
-                    connected={connections.whatsapp.connected} summary={connections.whatsapp.summary}
-                    onPress={() => openSetup('/setup/whatsapp')} testID="svc-wa" dir={dir} t={t} />
-        <Divider />
-        <ServiceRow icon="cpu" label={t('settings.services.greenApi')} hint={t('settings.services.greenApi.hint')}
-                    connected={connections.greenApi.connected} summary={connections.greenApi.summary}
-                    onPress={() => openSetup('/setup/greenApi')} testID="svc-green" dir={dir} t={t} />
-        <Divider />
-        <ServiceRow icon="home" label={t('settings.services.homeAssistant')} hint={t('settings.services.homeAssistant.hint')}
-                    connected={connections.homeAssistant.connected} summary={connections.homeAssistant.summary}
-                    onPress={() => openSetup('/setup/homeAssistant')} testID="svc-ha" dir={dir} t={t} />
-        <Divider />
-        <ServiceRow icon="cpu" label={t('settings.services.openai')} hint={t('settings.services.openai.hint')}
-                    connected statusLabel={t('settings.services.status.active')}
-                    onPress={() => Haptics.selectionAsync()} testID="svc-oai" dir={dir} t={t} />
+        <NavRow
+          icon="link"
+          label={t('settings.services.openHub')}
+          hint={t('settings.services.openHub.hint')}
+          onPress={() => openSetup('/operational/services')}
+          testID="svc-hub"
+          dir={dir}
+        />
       </Section>
 
       {/* Backup & data */}

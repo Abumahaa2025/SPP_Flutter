@@ -18,22 +18,24 @@ type MoreItem = {
   tone?: 'gold' | 'emerald';
 };
 
-const RARE_ITEMS: MoreItem[] = [
+/** Spec §3 / §5.20 — non-daily tools first. */
+const TOOL_ITEMS: MoreItem[] = [
+  { key: 'reports', labelKey: 'more.reports', hintKey: 'more.reports.hint', icon: 'bar-chart-2', route: '/reports', tone: 'gold' },
+  { key: 'integrations', labelKey: 'more.integrations', hintKey: 'more.integrations.hint', icon: 'link', route: '/operational/services', tone: 'emerald' },
   { key: 'settings', labelKey: 'more.settings', hintKey: 'more.settings.hint', icon: 'settings', route: '/settings' },
+  { key: 'help', labelKey: 'more.help', hintKey: 'more.help.hint', icon: 'help-circle', route: '/support' },
+  { key: 'about', labelKey: 'more.about', hintKey: 'more.about.hint', icon: 'info', route: '/about' },
+];
+
+/** Kept accessible — not removed; setup/import paths stay reachable. */
+const RARE_ITEMS: MoreItem[] = [
   { key: 'propertyOs', labelKey: 'more.propertyOs', hintKey: 'more.propertyOs.hint', icon: 'compass', route: '/setup/property-os', tone: 'gold' },
   { key: 'upload', labelKey: 'nav.upload', hintKey: 'upload.sub', icon: 'upload-cloud', route: '/upload', tone: 'gold' },
-  { key: 'sheets', labelKey: 'more.sheets', hintKey: 'more.sheets.hint', icon: 'database', route: '/setup/sheets', tone: 'emerald' },
-  { key: 'greenApi', labelKey: 'more.greenApi', hintKey: 'more.greenApi.hint', icon: 'message-circle', route: '/setup/greenApi', tone: 'emerald' },
-  { key: 'homeAssistant', labelKey: 'more.homeAssistant', hintKey: 'more.homeAssistant.hint', icon: 'home', route: '/setup/homeAssistant', tone: 'emerald' },
-  { key: 'whatsapp', labelKey: 'op.services.whatsapp.title', hintKey: 'op.services.whatsapp.benefit', icon: 'message-circle', route: '/setup/whatsapp', tone: 'emerald' },
-  { key: 'email', labelKey: 'op.services.email.title', hintKey: 'op.services.email.benefit', icon: 'mail', route: '/setup/email' },
-  { key: 'integrations', labelKey: 'more.integrations', hintKey: 'more.integrations.hint', icon: 'link', route: '/operational/services' },
 ];
 
 const ACCOUNT_ITEMS: MoreItem[] = [
   { key: 'profile', labelKey: 'more.profile', hintKey: 'more.profile.hint', icon: 'user', route: '/profile' },
   { key: 'billing', labelKey: 'more.billing', hintKey: 'more.billing.hint', icon: 'credit-card', route: '/billing', tone: 'gold' },
-  { key: 'help', labelKey: 'more.help', hintKey: 'more.help.hint', icon: 'help-circle', route: '/support' },
 ];
 
 function Section({ title, items, delayBase }: { title: string; items: MoreItem[]; delayBase: number }) {
@@ -74,14 +76,15 @@ function Section({ title, items, delayBase }: { title: string; items: MoreItem[]
   );
 }
 
-/** More screen — settings, integrations, and account. */
+/** More screen — Spec: reports, connections, settings, help, about (+ kept setup tools). */
 export function MoreMenu() {
   const { t } = useI18n();
 
   return (
     <View testID="more-menu">
-      <Section title={t('more.section.rare')} items={RARE_ITEMS} delayBase={60} />
-      <Section title={t('more.section.account')} items={ACCOUNT_ITEMS} delayBase={280} />
+      <Section title={t('more.section.tools')} items={TOOL_ITEMS} delayBase={40} />
+      <Section title={t('more.section.rare')} items={RARE_ITEMS} delayBase={220} />
+      <Section title={t('more.section.account')} items={ACCOUNT_ITEMS} delayBase={320} />
     </View>
   );
 }
