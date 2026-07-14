@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import { View, Text, StyleSheet, Pressable, Alert } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
@@ -8,6 +8,7 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import { GlassCard } from '@/src/components/GlassCard';
 import { colors, spacing, typography, radius } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
+import { signOutSession } from '@/src/services/beta-auth';
 
 type MoreItem = {
   key: string;
@@ -78,13 +79,52 @@ function Section({ title, items, delayBase }: { title: string; items: MoreItem[]
 
 /** More screen — Spec: reports, connections, settings, help, about (+ kept setup tools). */
 export function MoreMenu() {
-  const { t } = useI18n();
+  const { t, isRTL } = useI18n();
+  const router = useRouter();
+
+  const signOut = () => {
+    Haptics.selectionAsync();
+    Alert.alert(
+      t('settings.action.signout'),
+      t('settings.action.signout.hint'),
+      [
+        { text: t('common.cancel'), style: 'cancel' },
+        {
+          text: t('settings.action.signout'),
+          style: 'destructive',
+          onPress: async () => {
+            await signOutSession();
+            router.replace('/beta-login' as never);
+          },
+        },
+      ],
+    );
+  };
 
   return (
     <View testID="more-menu">
       <Section title={t('more.section.tools')} items={TOOL_ITEMS} delayBase={40} />
       <Section title={t('more.section.rare')} items={RARE_ITEMS} delayBase={220} />
       <Section title={t('more.section.account')} items={ACCOUNT_ITEMS} delayBase={320} />
+      <Animated.View entering={FadeInDown.duration(480).delay(420)}>
+        <Pressable
+          testID="more-logout"
+          onPress={signOut}
+          style={({ pressed }) => [pressed && { opacity: 0.85 }]}
+        >
+          <GlassCard padding={16} radiusToken="md" style={styles.rowCard}>
+            <View style={[styles.row, isRTL && styles.rowRtl]}>
+              <View style={[styles.iconWrap, { borderColor: `${colors.gold}44` }]}>
+                <Feather name="log-out" size={18} color={colors.gold} />
+              </View>
+              <View style={styles.rowText}>
+                <Text style={[styles.rowLabel, isRTL && styles.rtl]}>{t('more.logout')}</Text>
+                <Text style={[styles.rowHint, isRTL && styles.rtl]}>{t('more.logout.hint')}</Text>
+              </View>
+            </View>
+          </GlassCard>
+        </Pressable>
+      </Animated.View>
     </View>
   );
 }

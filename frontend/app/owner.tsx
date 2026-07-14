@@ -12,8 +12,9 @@ import { usePropertyOS } from '@/src/hooks/usePropertyOS';
 import { JourneyGuide } from '@/src/components/JourneyGuide';
 import { useOperational } from '@/src/hooks/useOperational';
 import { useNotificationPrefs } from '@/src/hooks/usePreferences';
-import { colors, spacing, typography } from '@/src/theme';
+import { colors, spacing, typography, radius } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
+import { ownerOpsUrgentCount, resolveOwnerOpsRoute } from '@/src/utils/owner-ops-urgency';
 
 type HubLink = {
   key: string;
@@ -88,25 +89,38 @@ export default function Owner() {
       ) : null}
 
       <View style={styles.grid}>
-        {LINKS.map((link, i) => (
-          <Animated.View key={link.key} entering={FadeInDown.duration(450).delay(40 + i * 30)} style={styles.tileWrap}>
-            <Pressable
-              testID={`owner-${link.key}`}
-              onPress={() => { Haptics.selectionAsync(); router.push(link.route as any); }}
-              style={({ pressed }) => [pressed && { opacity: 0.88 }]}
-            >
-              <GlassCard padding={14} radiusToken="md" edge={link.tone === 'gold' ? 'gold' : link.tone === 'emerald' ? 'emerald' : 'neutral'}>
-                <View style={[styles.tileRow, isRTL && styles.rowRtl]}>
-                  <Feather name={link.icon} size={16} color={link.tone === 'emerald' ? colors.emerald : colors.gold} />
-                  <View style={styles.tileText}>
-                    <Text style={[styles.tileLabel, isRTL && styles.rtl]}>{t(link.labelKey as any)}</Text>
-                    <Text style={[styles.tileHint, isRTL && styles.rtl]}>{t(link.hintKey as any)}</Text>
+        {LINKS.map((link, i) => {
+          const urgent = ownerOpsUrgentCount(link.key, state);
+          return (
+            <Animated.View key={link.key} entering={FadeInDown.duration(450).delay(40 + i * 30)} style={styles.tileWrap}>
+              <Pressable
+                testID={`owner-${link.key}`}
+                onPress={() => {
+                  Haptics.selectionAsync();
+                  router.push(resolveOwnerOpsRoute(link.key, state, link.route) as any);
+                }}
+                style={({ pressed }) => [pressed && { opacity: 0.88 }]}
+              >
+                <GlassCard padding={14} radiusToken="md" edge={link.tone === 'gold' ? 'gold' : link.tone === 'emerald' ? 'emerald' : 'neutral'}>
+                  <View style={[styles.tileRow, isRTL && styles.rowRtl]}>
+                    <Feather name={link.icon} size={16} color={link.tone === 'emerald' ? colors.emerald : colors.gold} />
+                    <View style={styles.tileText}>
+                      <View style={[styles.tileLabelRow, isRTL && styles.rowRtl]}>
+                        <Text style={[styles.tileLabel, isRTL && styles.rtl]}>{t(link.labelKey as any)}</Text>
+                        {urgent > 0 ? (
+                          <View style={styles.badge} testID={`owner-badge-${link.key}`}>
+                            <Text style={styles.badgeText}>{urgent > 99 ? '99+' : String(urgent)}</Text>
+                          </View>
+                        ) : null}
+                      </View>
+                      <Text style={[styles.tileHint, isRTL && styles.rtl]}>{t(link.hintKey as any)}</Text>
+                    </View>
                   </View>
-                </View>
-              </GlassCard>
-            </Pressable>
-          </Animated.View>
-        ))}
+                </GlassCard>
+              </Pressable>
+            </Animated.View>
+          );
+        })}
       </View>
 
       {state.technicianPortalToken ? (
@@ -154,7 +168,13 @@ const styles = StyleSheet.create({
   tileWrap: { width: '48%' },
   tileRow: { flexDirection: 'row', gap: 10, alignItems: 'flex-start' },
   tileText: { flex: 1, gap: 3 },
-  tileLabel: { color: colors.text, fontSize: 13, fontWeight: typography.weight.semibold, lineHeight: 18 },
+  tileLabelRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' },
+  tileLabel: { color: colors.text, fontSize: 13, fontWeight: typography.weight.semibold, lineHeight: 18, flexShrink: 1 },
+  badge: {
+    minWidth: 18, height: 18, paddingHorizontal: 5, borderRadius: radius.sm,
+    backgroundColor: colors.gold, alignItems: 'center', justifyContent: 'center',
+  },
+  badgeText: { color: colors.bg, fontSize: 10, fontWeight: typography.weight.semibold },
   tileHint: { color: colors.textMuted, fontSize: 11, lineHeight: 16, flexShrink: 1 },
   techLink: { marginTop: spacing.md, paddingVertical: 8 },
   techLinkText: { color: colors.emerald, fontSize: typography.small },
