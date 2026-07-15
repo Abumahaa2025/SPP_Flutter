@@ -11,6 +11,7 @@ import { storage } from "@/src/utils/storage";
 import { SplashIntro } from "@/src/components/SplashIntro";
 import { WorkspaceProvider } from "@/src/context/WorkspaceContext";
 import { WorkspaceChrome } from "@/src/components/WorkspaceChrome";
+import { isPathAllowedForPersona, personaHomeRoute } from "@/src/utils/role-scope";
 
 LogBox.ignoreAllLogs(true);
 
@@ -61,18 +62,39 @@ export default function RootLayout() {
       const betaMode = process.env.EXPO_PUBLIC_BETA_MODE === 'true';
       const betaAuthed = await storage.getItem<boolean>('spp.betaAuthed', false);
       const onboarded = await storage.getItem<boolean>('spp.onboarded', false);
+      const persona = await storage.getItem<string>('spp.betaPersona', '');
 
       let target = '/';
       if (betaMode && !betaAuthed) {
         target = '/beta-login';
       } else if (!onboarded) {
         target = '/onboarding';
+      } else if (persona === 'technician') {
+        target = '/maintenance';
+      } else if (persona === 'tenant') {
+        target = '/notifications';
       }
 
       if (pathname !== target) router.replace(target as any);
       setRouted(true);
     })();
   }, [langReady, loaded, error, routed, pathname, router]);
+
+  // Spec §13 — continuous persona allowlist (tenant / technician).
+  useEffect(() => {
+    if (!routed || !introDone) return;
+    let alive = true;
+    (async () => {
+      const betaAuthed = await storage.getItem<boolean>('spp.betaAuthed', false);
+      if (!betaAuthed) return;
+      const persona = await storage.getItem<string>('spp.betaPersona', '');
+      if (!persona || persona === 'owner') return;
+      if (!isPathAllowedForPersona(persona, pathname || '/')) {
+        if (alive) router.replace(personaHomeRoute(persona) as any);
+      }
+    })();
+    return () => { alive = false; };
+  }, [pathname, routed, introDone, router]);
 
   // Fade the SPP intro out once everything is ready + min hold has passed.
   const readyForHandoff = langReady && (loaded || error) && minHoldElapsed && routed;

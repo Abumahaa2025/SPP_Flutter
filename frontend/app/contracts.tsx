@@ -18,6 +18,7 @@ import { colors, spacing, typography, radius } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
 
 import { formatDate } from '@/src/utils/locale';
+import { AgentPermissionGate } from '@/src/components/AgentPermissionGate';
 
 const statusMeta = (s: string, daysLeft: number, t: (k: any) => string) => {
   if (s === 'expiring' && daysLeft < 0) return { color: colors.danger, key: 'contracts.status.expiredAgo' };
@@ -76,6 +77,7 @@ export default function Contracts() {
   }, [contracts]);
 
   return (
+    <AgentPermissionGate perm="contracts">
     <ScreenScaffold testID="contracts-screen">
       <StoryScreenHeader question={t('page.q.contracts')} hint={t('contracts.sub')} showBack testID="contracts-header" />
       <SetupProgressBar compact testID="contracts-setup-progress" />
@@ -154,6 +156,7 @@ export default function Contracts() {
         );
       })}
     </ScreenScaffold>
+    </AgentPermissionGate>
   );
 }
 

@@ -46,7 +46,8 @@ export function WorkspaceChrome({ enabled = true }: Props) {
 
 
 
-  if (!enabled || HIDE_CHROME.has(pathname)) return null;
+  // Portals are isolated shells — no owner chrome.
+  if (!enabled || HIDE_CHROME.has(pathname) || pathname.startsWith('/portal')) return null;
 
 
 

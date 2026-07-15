@@ -17,6 +17,8 @@ import { useOperational } from '@/src/hooks/useOperational';
 import { useNotificationPrefs } from '@/src/hooks/usePreferences';
 import { colors, spacing, typography, radius } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
+import { phaseRoute } from '@/src/hooks/usePropertyOS';
+import { ActionButton } from '@/src/components/ActionButton';
 
 type Props = {
   briefing: Briefing | null;
@@ -42,7 +44,7 @@ export function HomeCommandCenter({ briefing, notifications }: Props) {
   const { t, isRTL } = useI18n();
   const router = useRouter();
   const { countEnabled } = useNotificationPrefs();
-  const { state: osState, isFullyReady, ready } = usePropertyOS(countEnabled);
+  const { state: osState, isFullyReady, ready, nextPhase } = usePropertyOS(countEnabled);
   const { openTickets, pendingActions, recentEvents } = useOperational();
   const { acknowledge } = useAttentionPulse();
 
@@ -133,8 +135,43 @@ export function HomeCommandCenter({ briefing, notifications }: Props) {
     router.push('/brain');
   };
 
+  const incomplete = ready && !dailyMode && !isFullyReady;
+
   return (
     <View testID="home-command-center">
+      {incomplete ? (
+        <Animated.View entering={FadeInDown.duration(450)} style={styles.incompleteWrap} testID="home-incomplete-cta">
+          <GlassCard padding={16} radiusToken="md" edge="gold">
+            <Text style={[styles.incompleteTitle, isRTL && styles.rtl]}>
+              {t('home.incomplete.title' as any)}
+            </Text>
+            <Text style={[styles.incompleteBody, isRTL && styles.rtl]}>
+              {!osState.property
+                ? t('journey.home.nextSetup' as any)
+                : t('pos.progress.nextLine' as any).replace(
+                  '{next}',
+                  nextPhase
+                    ? t(
+                      (nextPhase === 'alerts' || nextPhase === 'smartEmployee'
+                        ? 'pos.phase.operations'
+                        : `pos.phase.${nextPhase}`) as any,
+                    )
+                    : t('pos.phase.operations' as any),
+                )}
+            </Text>
+            <ActionButton
+              testID="home-incomplete-action"
+              label={t('pos.progress.continue')}
+              onPress={() => {
+                Haptics.selectionAsync();
+                router.push((nextPhase ? phaseRoute(nextPhase) : '/setup/property-os') as any);
+              }}
+              style={{ marginTop: 12 }}
+            />
+          </GlassCard>
+        </Animated.View>
+      ) : null}
+
       <Animated.View entering={FadeInDown.duration(550).delay(20)}>
         <Pressable onPress={goAssistant} testID="home-assistant-hero">
           <GlassCard padding={0} radiusToken="lg" edge="gold">
@@ -206,6 +243,11 @@ export function HomeCommandCenter({ briefing, notifications }: Props) {
 }
 
 const styles = StyleSheet.create({
+  incompleteWrap: { marginBottom: spacing.md },
+  incompleteTitle: {
+    color: colors.text, fontSize: typography.body, fontWeight: typography.weight.semibold,
+  },
+  incompleteBody: { color: colors.textDim, fontSize: typography.small, lineHeight: 20, marginTop: 6 },
   assistantGrad: { borderRadius: radius.lg, padding: 22 },
   assistantRow: { flexDirection: 'row', gap: 16, alignItems: 'flex-start' },
   rowRtl: { flexDirection: 'row-reverse' },

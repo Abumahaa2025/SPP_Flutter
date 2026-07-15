@@ -166,10 +166,13 @@ export default function Home() {
               />
             </>
           ) : (
-            <HomeCommandCenter
-              briefing={briefing}
-              notifications={notifications}
-            />
+            <>
+              <SetupProgressBar testID="home-setup-progress-live" />
+              <HomeCommandCenter
+                briefing={briefing}
+                notifications={notifications}
+              />
+            </>
           )}
 
           <Animated.View entering={FadeIn.duration(700).delay(900)} style={styles.footer}>

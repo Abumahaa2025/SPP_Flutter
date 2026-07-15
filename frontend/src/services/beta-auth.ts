@@ -45,7 +45,7 @@ export function normalizeEmail(raw: string): string {
 
 export function resolvePostLoginRoute(persona: Persona, onboarded: boolean): string {
   if (!onboarded) return '/onboarding';
-  if (persona === 'tenant') return '/tenants';
+  if (persona === 'tenant') return '/notifications';
   if (persona === 'technician') return '/maintenance';
   return '/';
 }
@@ -205,8 +205,11 @@ export async function finalizeSession(opts: {
   persona: Persona;
   displayEmail: string;
   displayName?: string;
+  /** Spec §2 — demo portfolio only for explicit demo credentials, never real accounts. */
+  useDemoData?: boolean;
 }): Promise<FinalizeSessionResult> {
   const alreadyOnboarded = await storage.getItem<boolean>('spp.onboarded', false);
+  const useDemo = Boolean(opts.useDemoData);
 
   // Save local session first — navigation must never wait on Render cold start.
   const authedOk = await storage.setItem('spp.betaAuthed', true);
@@ -215,7 +218,7 @@ export async function finalizeSession(opts: {
   if (opts.displayName?.trim()) {
     await storage.setItem('spp.ownerName', opts.displayName.trim());
   }
-  await storage.setItem('spp.demoMode', true);
+  await storage.setItem('spp.demoMode', useDemo);
   if (!alreadyOnboarded) {
     await storage.setItem('spp.onboarded', false);
   }
@@ -224,11 +227,16 @@ export async function finalizeSession(opts: {
 
   let backendSynced = false;
   let backendError: string | undefined;
-  try {
-    await syncBackendPersona(opts.persona);
+  if (useDemo) {
+    try {
+      await syncBackendPersona(opts.persona);
+      backendSynced = true;
+    } catch (e) {
+      backendError = formatErr(e);
+    }
+  } else {
+    // Real account — local session only; never pull demo credentials into the API.
     backendSynced = true;
-  } catch (e) {
-    backendError = formatErr(e);
   }
 
   return { sessionSaved, backendSynced, backendError };
@@ -240,4 +248,5 @@ export async function signOutSession(): Promise<void> {
   await storage.removeItem('spp.betaPersona');
   await storage.removeItem('spp.betaEmail');
   await storage.removeItem(ACTIVE_ACCOUNT_KEY);
+  await storage.removeItem('spp.activeAgentId');
 }

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 
 import { View, StyleSheet, Pressable, Platform, Text } from 'react-native';
 
@@ -16,6 +16,8 @@ import { colors, radius, spacing, typography } from '../theme';
 
 import { useI18n } from '../i18n';
 import { resolveActiveTab } from '@/src/utils/nav-active';
+import { tabPathForPersona } from '@/src/utils/role-scope';
+import { storage } from '@/src/utils/storage';
 
 
 
@@ -55,6 +57,12 @@ export function GlassTabBar() {
 
   const active = resolveActiveTab(pathname);
 
+  const [persona, setPersona] = useState('');
+
+  useEffect(() => {
+    storage.getItem<string>('spp.betaPersona', '').then((p) => setPersona(p || ''));
+  }, [pathname]);
+
 
 
   return (
@@ -87,7 +95,7 @@ export function GlassTabBar() {
 
                     Haptics.selectionAsync();
 
-                    router.replace(tab.path as any);
+                    router.replace(tabPathForPersona(tab.key, tab.path, persona) as any);
 
                   }}
 

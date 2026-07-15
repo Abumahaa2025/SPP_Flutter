@@ -110,6 +110,7 @@ export const opsV2En = {
 
   'opsv2.agent.title': 'Property agent portal',
   'opsv2.agent.invalid': 'Invalid or inactive link.',
+  'opsv2.agent.denied': 'This action is outside your agent permissions.',
   'opsv2.agent.welcome': 'Welcome, {name}',
 
   'maint.progress': 'Progress',
@@ -270,6 +271,7 @@ export const opsV2Ar = {
 
   'opsv2.agent.title': 'بوابة الوكيل العقاري',
   'opsv2.agent.invalid': 'الرابط غير صالح أو غير مفعّل.',
+  'opsv2.agent.denied': 'هذا الإجراء خارج صلاحيات الوكيل.',
   'opsv2.agent.welcome': 'مرحبًا، {name}',
 
   'maint.progress': 'نسبة الإنجاز',

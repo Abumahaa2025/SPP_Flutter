@@ -7,6 +7,7 @@ import { StoryScreenHeader } from '@/src/components/StoryScreenHeader';
 import { GlassCard } from '@/src/components/GlassCard';
 import { AliveEmpty } from '@/src/components/AliveEmpty';
 import { usePortalAccess } from '@/src/hooks/usePortalAccess';
+import { setActiveAgentSession } from '@/src/components/AgentPermissionGate';
 import { colors, spacing, typography } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
 
@@ -19,7 +20,12 @@ export default function AgentPortalScreen() {
   const agent = agents.find((a) => a.id === params.id && a.portalToken === params.t && a.linkActive);
 
   useEffect(() => {
-    if (agent) void logLogin(agent.id, 'agent', agent.name);
+    if (agent) {
+      void logLogin(agent.id, 'agent', agent.name);
+      void setActiveAgentSession(agent.id);
+    } else {
+      void setActiveAgentSession(null);
+    }
   }, [agent?.id]);
 
   if (!agent) {

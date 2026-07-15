@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, Switch, I18nManager, Alert, DevSettings } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import Animated, { FadeInDown } from 'react-native-reanimated';
@@ -21,6 +21,14 @@ export default function Settings() {
   const { prefs, update, countEnabled } = useNotificationPrefs();
   const { demoMode, setDemoMode } = useDemoMode();
   const [pendingRTL, setPendingRTL] = useState(false);
+  const [allowDemoToggle, setAllowDemoToggle] = useState(false);
+
+  useEffect(() => {
+    storage.getItem<string>('spp.betaEmail', '').then((email) => {
+      const isDemoCred = (email || '').toLowerCase().endsWith('@spp.beta');
+      setAllowDemoToggle(isDemoCred || demoMode);
+    });
+  }, [demoMode]);
 
   // Language change — RTL requires a native reload to fully mirror the layout.
   const changeLang = async (l: 'en' | 'ar') => {
@@ -162,21 +170,25 @@ export default function Settings() {
         <Divider />
         <NavRow icon="download" label={t('settings.importExport')} hint={t('settings.importExport.hint')}
                 onPress={() => openSetup('/setup/import')} testID="s-import" dir={dir} />
-        <Divider />
-        <ToggleRow
-          icon="database"
-          label={t('settings.demoMode')}
-          hint={t('settings.demoMode.hint')}
-          value={demoMode}
-          onChange={(v) => { void setDemoMode(v); }}
-          dir={dir}
-        />
-        <View style={styles.countRow}>
-          <View style={[styles.countDot, { backgroundColor: demoMode ? colors.gold : colors.emerald }]} />
-          <Text style={styles.countText}>
-            {demoMode ? t('settings.demoMode.on') : t('settings.demoMode.off')}
-          </Text>
-        </View>
+        {allowDemoToggle ? (
+          <>
+            <Divider />
+            <ToggleRow
+              icon="database"
+              label={t('settings.demoMode')}
+              hint={t('settings.demoMode.hint')}
+              value={demoMode}
+              onChange={(v) => { void setDemoMode(v); }}
+              dir={dir}
+            />
+            <View style={styles.countRow}>
+              <View style={[styles.countDot, { backgroundColor: demoMode ? colors.gold : colors.emerald }]} />
+              <Text style={styles.countText}>
+                {demoMode ? t('settings.demoMode.on') : t('settings.demoMode.off')}
+              </Text>
+            </View>
+          </>
+        ) : null}
       </Section>
 
       {/* Brain */}

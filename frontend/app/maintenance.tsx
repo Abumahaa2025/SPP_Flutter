@@ -18,6 +18,7 @@ import { api, type DecisionT, type PropertyT } from '@/src/api/client';
 import { colors, spacing, typography } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
 import { formatDate } from '@/src/utils/locale';
+import { AgentPermissionGate } from '@/src/components/AgentPermissionGate';
 
 const daysOpen = (createdAt: string) => {
   const created = new Date(createdAt).getTime();
@@ -45,6 +46,7 @@ export default function Maintenance() {
   }, [props]);
 
   return (
+    <AgentPermissionGate perm="maintenance">
     <ScreenScaffold testID="maintenance-screen">
       <StoryScreenHeader question={t('page.q.maintenance')} hint={t('maintenance.sub')} showBack testID="maintenance-header" />
 
@@ -136,6 +138,7 @@ export default function Maintenance() {
         )}
       </View>
     </ScreenScaffold>
+    </AgentPermissionGate>
   );
 }
 

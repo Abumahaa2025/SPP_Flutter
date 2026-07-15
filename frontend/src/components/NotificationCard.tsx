@@ -1,26 +1,72 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 
 import { GlassCard } from '@/src/components/GlassCard';
+import { ActionButton } from '@/src/components/ActionButton';
 import type { FormattedNotification } from '@/src/utils/format-notification';
-import { colors, spacing, typography, radius } from '@/src/theme';
+import { colors, spacing, typography } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
 import { formatTime } from '@/src/utils/locale';
+import { storage } from '@/src/utils/storage';
 
 type Props = {
   formatted: FormattedNotification;
   at: string;
   priority: string;
+  notifId?: string;
   testID?: string;
+  onDismissed?: () => void;
 };
 
-export function NotificationCard({ formatted, at, priority, testID }: Props) {
+const DISMISS_KEY = 'spp.notif.dismissed';
+
+/** Spec §5.17 — process / defer / dismiss with source action. */
+export function NotificationCard({ formatted, at, priority, notifId, testID, onDismissed }: Props) {
   const { t, isRTL } = useI18n();
   const router = useRouter();
   const accent = priority === 'critical' || priority === 'high' ? colors.gold : colors.emerald;
+  const [status, setStatus] = useState<'idle' | 'loading' | 'success' | 'error'>('idle');
+
+  const openSource = async () => {
+    setStatus('loading');
+    try {
+      Haptics.selectionAsync();
+      router.push(formatted.actionRoute as any);
+      setStatus('success');
+      setTimeout(() => setStatus('idle'), 1200);
+    } catch {
+      setStatus('error');
+    }
+  };
+
+  const defer = async () => {
+    Haptics.selectionAsync();
+    if (!notifId) return;
+    const raw = await storage.getItem<string>(DISMISS_KEY, '[]');
+    let list: string[] = [];
+    try { list = JSON.parse(raw || '[]'); } catch { list = []; }
+    const until = Date.now() + 4 * 60 * 60 * 1000;
+    list = [...list.filter((x) => !x.startsWith(`${notifId}:`)), `${notifId}:snooze:${until}`];
+    await storage.setItem(DISMISS_KEY, JSON.stringify(list));
+    onDismissed?.();
+  };
+
+  const dismiss = async () => {
+    Haptics.selectionAsync();
+    if (!notifId) {
+      onDismissed?.();
+      return;
+    }
+    const raw = await storage.getItem<string>(DISMISS_KEY, '[]');
+    let list: string[] = [];
+    try { list = JSON.parse(raw || '[]'); } catch { list = []; }
+    list = [...list.filter((x) => !x.startsWith(`${notifId}:`)), `${notifId}:dismiss`];
+    await storage.setItem(DISMISS_KEY, JSON.stringify(list));
+    onDismissed?.();
+  };
 
   return (
     <GlassCard
@@ -41,17 +87,26 @@ export function NotificationCard({ formatted, at, priority, testID }: Props) {
       <Text style={[styles.recLabel, isRTL && styles.rtl]}>{t('notif.recommendedAction')}</Text>
       <Text style={[styles.recBody, isRTL && styles.rtl]}>{formatted.recommendation}</Text>
 
-      <Pressable
+      <ActionButton
         testID={`${testID}-action`}
-        onPress={() => {
-          Haptics.selectionAsync();
-          router.push(formatted.actionRoute as any);
-        }}
-        style={[styles.cta, isRTL && styles.rtlRow]}
-      >
-        <Text style={styles.ctaText}>{t(formatted.actionLabelKey as 'notif.action.review')}</Text>
-        <Feather name={isRTL ? 'chevron-left' : 'chevron-right'} size={14} color={colors.gold} />
-      </Pressable>
+        label={t(formatted.actionLabelKey as 'notif.action.review')}
+        loadingLabel={t('notif.action.loading' as any)}
+        successLabel={t('notif.action.opened' as any)}
+        errorLabel={t('notif.action.retry' as any)}
+        status={status}
+        onPress={openSource}
+        onRetry={openSource}
+        style={{ marginTop: spacing.md }}
+      />
+
+      <View style={[styles.secondary, isRTL && styles.rtlRow]}>
+        <Pressable testID={`${testID}-defer`} onPress={defer} hitSlop={8}>
+          <Text style={styles.secondaryText}>{t('notif.action.defer' as any)}</Text>
+        </Pressable>
+        <Pressable testID={`${testID}-dismiss`} onPress={dismiss} hitSlop={8}>
+          <Text style={styles.secondaryText}>{t('notif.action.dismiss' as any)}</Text>
+        </Pressable>
+      </View>
     </GlassCard>
   );
 }
@@ -78,14 +133,10 @@ const styles = StyleSheet.create({
   recBody: {
     color: colors.textDim, fontSize: 14, lineHeight: 21, marginTop: 6,
   },
+  secondary: {
+    flexDirection: 'row', justifyContent: 'space-between', marginTop: spacing.md,
+    paddingTop: spacing.sm, borderTopWidth: StyleSheet.hairlineWidth, borderTopColor: colors.border,
+  },
+  secondaryText: { color: colors.textMuted, fontSize: 13 },
   rtl: { writingDirection: 'rtl', textAlign: 'right' },
-  cta: {
-    marginTop: spacing.md, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
-    paddingVertical: 12, paddingHorizontal: 14, borderRadius: radius.md,
-    borderWidth: StyleSheet.hairlineWidth, borderColor: colors.goldEdge,
-    backgroundColor: colors.goldSoft,
-  },
-  ctaText: {
-    color: colors.gold, fontSize: 13, fontWeight: typography.weight.semibold,
-  },
 });

@@ -16,6 +16,7 @@ import { useNotificationPrefs } from '@/src/hooks/usePreferences';
 import { api, type TenantT, type PropertyT } from '@/src/api/client';
 import { colors, spacing, typography } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
+import { AgentPermissionGate } from '@/src/components/AgentPermissionGate';
 
 export default function Tenants() {
   const { t } = useI18n();
@@ -33,6 +34,7 @@ export default function Tenants() {
   const propMap = useMemo(() => new Map(props.map((p) => [p.id, p])), [props]);
 
   return (
+    <AgentPermissionGate perm="tenants">
     <ScreenScaffold testID="tenants-screen">
       <StoryScreenHeader question={t('page.q.tenants')} hint={t('tenants.sub')} showBack testID="tenants-header" />
       <SetupProgressBar compact testID="tenants-setup-progress" />
@@ -108,6 +110,7 @@ export default function Tenants() {
         );
       })}
     </ScreenScaffold>
+    </AgentPermissionGate>
   );
 }
 

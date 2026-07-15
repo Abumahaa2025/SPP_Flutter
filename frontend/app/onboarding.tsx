@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View, Text, StyleSheet, Pressable, ScrollView,
   KeyboardAvoidingView, Platform,
@@ -35,7 +35,12 @@ export default function Onboarding() {
   const [step, setStep] = useState(0);
   const [ownerName, setOwnerName] = useState('');
   const [loadDemoOnFinish, setLoadDemoOnFinish] = useState(false);
+  const [betaAuthed, setBetaAuthed] = useState(false);
   const scrollRef = useRef<ScrollView>(null);
+
+  useEffect(() => {
+    storage.getItem<boolean>('spp.betaAuthed', false).then((v) => setBetaAuthed(Boolean(v)));
+  }, []);
 
   const scrollToInput = () => {
     setTimeout(() => scrollRef.current?.scrollTo({ y: 160, animated: true }), 100);
@@ -46,12 +51,16 @@ export default function Onboarding() {
 
   const finish = async (target: '/' | '/setup/property-os' | '/upload') => {
     const betaAuthed = await storage.getItem<boolean>('spp.betaAuthed', false);
+    const demoMode = await storage.getItem<boolean>('spp.demoMode', false);
+    // Spec §2 — demo only when user explicitly chose it and session is not a real portfolio.
     if (!betaAuthed && loadDemoOnFinish) {
       try { await api.loadDemo(); await storage.setItem('spp.demoMode', true); } catch { /* empty ok */ }
+    } else if (betaAuthed && !demoMode) {
+      await storage.setItem('spp.demoMode', false);
     }
     await storage.setItem('spp.onboarded', true);
     const persona = await storage.getItem<string>('spp.betaPersona', '');
-    if (persona === 'tenant') router.replace('/tenants');
+    if (persona === 'tenant') router.replace('/notifications');
     else if (persona === 'technician') router.replace('/maintenance');
     else router.replace(target as any);
   };
@@ -65,12 +74,16 @@ export default function Onboarding() {
       setStep((s) => s + 1);
       return;
     }
-    await finish('/');
+    // Spec §4 — owner continues into property setup, not an empty home.
+    await finish('/setup/property-os');
   };
 
   const skip = async () => {
     await storage.setItem('spp.onboarded', true);
-    router.replace('/');
+    const persona = await storage.getItem<string>('spp.betaPersona', '');
+    if (persona === 'technician') router.replace('/maintenance' as any);
+    else if (persona === 'tenant') router.replace('/notifications' as any);
+    else router.replace('/setup/property-os' as any);
   };
 
   const ctaLabel =
@@ -180,12 +193,15 @@ export default function Onboarding() {
                   <Text style={[styles.hint, isRTL && styles.rtl]}>{t('onboarding.startEmptyHint')}</Text>
                 </Pressable>
               </GlassCard>
-              <GlassCard padding={18} radiusToken="md" edge={loadDemoOnFinish ? 'gold' : 'neutral'}>
-                <Pressable onPress={() => setLoadDemoOnFinish(true)}>
-                  <Text style={[styles.choiceTitle, isRTL && styles.rtl]}>{t('onboarding.loadDemo')}</Text>
-                  <Text style={[styles.hint, isRTL && styles.rtl]}>{t('onboarding.loadDemoHint')}</Text>
-                </Pressable>
-              </GlassCard>
+              {/* Spec §2 — no sample portfolio for real authenticated accounts. */}
+              {!betaAuthed ? (
+                <GlassCard padding={18} radiusToken="md" edge={loadDemoOnFinish ? 'gold' : 'neutral'}>
+                  <Pressable onPress={() => setLoadDemoOnFinish(true)}>
+                    <Text style={[styles.choiceTitle, isRTL && styles.rtl]}>{t('onboarding.loadDemo')}</Text>
+                    <Text style={[styles.hint, isRTL && styles.rtl]}>{t('onboarding.loadDemoHint')}</Text>
+                  </Pressable>
+                </GlassCard>
+              ) : null}
             </Animated.View>
           ) : null}
 

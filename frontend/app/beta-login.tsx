@@ -65,11 +65,16 @@ export default function BetaLogin() {
     setScreen(next);
   };
 
-  const finishAppEntry = async (persona: Persona, displayEmail: string, displayName?: string) => {
+  const finishAppEntry = async (
+    persona: Persona,
+    displayEmail: string,
+    displayName?: string,
+    useDemoData = false,
+  ) => {
     setBusy(true);
     setError('');
     try {
-      const result = await finalizeSession({ persona, displayEmail, displayName });
+      const result = await finalizeSession({ persona, displayEmail, displayName, useDemoData });
 
       if (!result.sessionSaved) {
         throw new Error(t('auth.error.session' as never));
@@ -138,7 +143,7 @@ export default function BetaLogin() {
 
       if ('demoPersona' in result && result.demoPersona) {
         const emails = { owner: 'demo.owner@spp.beta', tenant: 'demo.tenant@spp.beta', technician: 'demo.tech@spp.beta' } as const;
-        await finishAppEntry(result.demoPersona, emails[result.demoPersona]);
+        await finishAppEntry(result.demoPersona, emails[result.demoPersona], undefined, true);
         return;
       }
 

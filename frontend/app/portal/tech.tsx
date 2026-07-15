@@ -71,11 +71,12 @@ export default function TechPortalScreen() {
     if (tech) void logLogin(tech.id);
   }, [tech?.id]);
 
+  // Spec §13 — technician sees assigned tasks only (legacy shared token: none until personal link).
   const myTickets = useMemo(() => {
     if (tech) return ticketsForTechnician(tech.id);
-    if (legacyValid) return tickets.filter((tk) => tk.status !== 'closed');
+    if (legacyValid) return [];
     return [];
-  }, [tech, legacyValid, tickets, ticketsForTechnician]);
+  }, [tech, legacyValid, ticketsForTechnician]);
 
   const { newTasks, activeTasks, doneTasks } = useMemo(() => ({
     newTasks: myTickets.filter((tk) => tk.status === 'assigned' || tk.status === 'open'),
