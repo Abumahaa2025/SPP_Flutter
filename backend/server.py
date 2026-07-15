@@ -906,6 +906,18 @@ async def beta_info():
     }
 
 
+@api_router.get("/build-info")
+async def build_info():
+    """Additive deploy fingerprint — Render injects RENDER_GIT_* env vars. Safe for UI clients to ignore."""
+    return {
+        "app": "SPP",
+        "git_commit": (os.getenv("RENDER_GIT_COMMIT") or os.getenv("SPP_GIT_COMMIT") or "")[:40] or None,
+        "git_branch": os.getenv("RENDER_GIT_BRANCH") or os.getenv("SPP_GIT_BRANCH") or None,
+        "service": os.getenv("RENDER_SERVICE_NAME") or None,
+        "beta": beta_mode_enabled(),
+    }
+
+
 @api_router.post("/beta/login")
 async def beta_login(req: BetaLoginRequest):
     """Beta tester login — loads fictional portfolio, never Google Sheets."""
