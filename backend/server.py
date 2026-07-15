@@ -1065,18 +1065,20 @@ async def upload_apply_analysis(req: UploadApplyRequest):
                 "commit": result.get("result"),
             }
         except Exception as exc:
-            logger.warning("GAS apply failed: %s", exc)
-            raise HTTPException(
-                502,
-                {"ok": False, "error": str(exc), "analysis_id": req.analysis_id, "gas": True},
-            ) from exc
+            # Match analyze_upload_with_gas_fallback: if GAS cannot commit, materialise
+            # the Python Property Knowledge session so beta / local Apply still updates portfolio.
+            logger.warning("GAS apply failed, falling back to local apply: %s", exc)
 
-    # No GAS: materialise Property Knowledge session into beta memory portfolio.
+    # No GAS (or GAS commit failed): materialise Property Knowledge session into beta memory.
     commit = build_local_apply_commit(req.analysis_id)
     if not commit.get("tenants") and not commit.get("properties"):
         raise HTTPException(
             404,
-            {"ok": False, "error": "analysis session expired — أعد التحليل ثم اعتمد", "analysis_id": req.analysis_id},
+            {
+                "ok": False,
+                "error": "analysis session expired — أعد التحليل ثم اعتمد",
+                "analysis_id": req.analysis_id,
+            },
         )
     _memory_db["properties"] = list(commit.get("properties") or [])
     _memory_db["tenants"] = list(commit.get("tenants") or [])

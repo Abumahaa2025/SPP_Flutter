@@ -30,10 +30,21 @@ type ActiveRow = {
 };
 
 function activeRows(analysis: PortfolioAnalysis): ActiveRow[] {
-  const lc = (analysis.property_knowledge as { lifecycle?: { active?: ActiveRow[] } } | null)
-    ?.lifecycle?.active;
-  if (lc?.length) return lc;
-  const cards = analysis.property_knowledge?.tenants || [];
+  const pk = analysis.property_knowledge;
+  const lc = pk?.lifecycle?.active;
+  const cards = pk?.tenants || [];
+  const phoneByUnit = new Map(
+    cards
+      .filter((t) => t.unit)
+      .map((t) => [String(t.unit), (t.phone || '').trim()] as const),
+  );
+
+  if (lc?.length) {
+    return lc.map((row) => ({
+      ...row,
+      phone: (row.phone || '').trim() || phoneByUnit.get(String(row.unit || '')) || '',
+    }));
+  }
   if (cards.length) {
     return cards.map((t) => ({
       tenant: t.tenant,

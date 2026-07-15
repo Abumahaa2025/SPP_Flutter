@@ -468,6 +468,11 @@ def build_local_apply_commit(analysis_id: str) -> Dict[str, Any]:
     lc = pk.get("lifecycle") or {}
     active = list(lc.get("active") or [])
     tenants_pk = list(pk.get("tenants") or [])
+    phone_by_unit = {
+        str(t.get("unit") or "").strip(): (t.get("phone") or "").strip()
+        for t in tenants_pk
+        if (t.get("unit") or t.get("phone"))
+    }
     rows = active or [
         {
             "tenant": t.get("tenant") or t.get("name"),
@@ -501,6 +506,7 @@ def build_local_apply_commit(analysis_id: str) -> Dict[str, Any]:
     for i, row in enumerate(rows):
         tid = f"ten_imp_{i + 1}"
         unit = str(row.get("unit") or i + 1)
+        phone = (row.get("phone") or "").strip() or phone_by_unit.get(unit, "")
         tenants.append(
             {
                 "id": tid,
@@ -510,7 +516,7 @@ def build_local_apply_commit(analysis_id: str) -> Dict[str, Any]:
                 "since": "",
                 "rent": float(row.get("rent") or 0),
                 "reliability": 0.8,
-                "phone": row.get("phone") or "",
+                "phone": phone,
                 "source": "property_knowledge",
             }
         )
