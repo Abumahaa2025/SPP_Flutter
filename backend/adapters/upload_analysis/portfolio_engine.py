@@ -393,8 +393,10 @@ def analyze_upload_portfolio(
 
     return {
         "analysis_id": str(uuid.uuid4()),
-        "success_message": executive_brief.get("property_status")
-        or koil_reasoning.get("brief")
+        # Regression / Koil brief contract: success_message must be Koil-signed
+        # ("كويل · …" / "Koil · …"). property_status stays on executive_brief for UI.
+        "success_message": koil_reasoning.get("brief")
+        or executive_brief.get("property_status")
         or labels["success"].format(months=month_count),
         "prompt_message": labels["prompt"],
         "what_now_message": labels["what_now"],

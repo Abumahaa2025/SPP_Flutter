@@ -163,6 +163,17 @@ def run_koil_reasoning(knowledge: dict, lang: Lang = "ar") -> dict:
             )
         )
 
+    for row in contracts.get("missing_phone") or []:
+        why.append(
+            _fact(
+                f"الوحدة {row.get('unit')} ({row.get('tenant')}): الجوال ناقص"
+                if ar
+                else f"Unit {row.get('unit')}: missing phone",
+                [f"unit={row.get('unit')}", "phone=missing"],
+                f"why_nophone_{row.get('unit')}",
+            )
+        )
+
     if quality.get("parse_errors"):
         why.append(
             _fact(
@@ -202,6 +213,24 @@ def run_koil_reasoning(knowledge: dict, lang: Lang = "ar") -> dict:
                 )
             )
 
+    # Incomplete uploads often have occupancy rows without phones before late ledger exists.
+    seen_phone_risk = {r.get("id") for r in risks}
+    for row in contracts.get("missing_phone") or []:
+        rid = f"risk_nophone_{row.get('unit')}"
+        if rid in seen_phone_risk:
+            continue
+        risks.append(
+            _risk(
+                "high",
+                f"جوال ناقص: {row.get('tenant')} — الوحدة {row.get('unit')}"
+                if ar
+                else f"Missing phone: {row.get('tenant')} — unit {row.get('unit')}",
+                [f"unit={row.get('unit')}", "phone=missing"],
+                rid,
+            )
+        )
+        seen_phone_risk.add(rid)
+
     if units.get("needs_review_count"):
         risks.append(
             _risk(
@@ -223,7 +252,14 @@ def run_koil_reasoning(knowledge: dict, lang: Lang = "ar") -> dict:
         )
 
     if not risks:
-        risks.append(_risk("low", "لا مخاطر حرجة مكتشفة في هذه الدفعة" if ar else "No critical risks in this batch", [], "risk_none"))
+        risks.append(
+            _risk(
+                "low",
+                "لا مخاطر حرجة مكتشفة في هذه الدفعة" if ar else "No critical risks in this batch",
+                ["status=no_critical_risks"],
+                "risk_none",
+            )
+        )
 
     lq = knowledge.get("ledger_quality") or {}
     # Until Monthly Ledger has zero unclear months — no collection outreach.

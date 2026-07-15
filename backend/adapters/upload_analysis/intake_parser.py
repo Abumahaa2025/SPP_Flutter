@@ -499,9 +499,10 @@ def parse_rent_roll_text(text: str, file_meta: dict) -> dict:
                 extra_cells = next(csv.reader(io.StringIO(lines[hi + extra]), delimiter=delim), [])
                 if not extra_cells:
                     continue
-                # Stop merging once a data row starts (numeric first cell / known tenant-like)
+                # Stop merging once a data row starts (numeric unit id — never treat as header labels).
+                # Previously int(first) < 200 false-positive merged units 201+ into the header block.
                 first = (extra_cells[0] or "").strip()
-                if first.isdigit() and int(first) < 200:
+                if first.isdigit():
                     break
                 extra_map = _map_columns(extra_cells)
                 for key, idx in extra_map.items():

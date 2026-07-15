@@ -36,7 +36,11 @@ from benchmarks.regression_tests.loader import (  # noqa: E402
 
 def _analyze(manifest: dict, files_meta: List[dict]) -> dict:
     lang = manifest.get("lang") or "ar"
-    ctx = beta_dataset("owner")
+    # Level-3 client variants must not inherit the demo owner portfolio.
+    if manifest.get("use_beta_seed", True):
+        ctx = beta_dataset("owner")
+    else:
+        ctx = {"properties": [], "units": [], "tenants": [], "contracts": [], "payments": []}
     return analyze_upload_portfolio(files_meta, ctx, lang=lang)
 
 

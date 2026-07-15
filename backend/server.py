@@ -958,14 +958,18 @@ async def verdicts():
 @api_router.post("/chat")
 async def chat(req: ChatRequest):
     """Non-streaming chat endpoint — Unified Brain."""
-    from emergentintegrations.llm.chat import UserMessage
-    if not EMERGENT_LLM_KEY:
-        raise HTTPException(500, "AI key not configured")
     now = _iso(datetime.now(timezone.utc))
     user_msg = {"id": str(uuid.uuid4()), "session_id": req.session_id, "role": "user", "text": req.text, "at": now}
     try:
+        from emergentintegrations.llm.chat import UserMessage  # type: ignore
+        if not EMERGENT_LLM_KEY:
+            raise HTTPException(500, "AI key not configured")
         chat_obj = get_llm_chat(session_id=req.session_id)
         reply = await chat_obj.send_message(UserMessage(text=req.text))
+    except HTTPException:
+        raise
+    except ModuleNotFoundError:
+        reply = "I couldn't reach the Brain just now. Try again in a moment."
     except Exception as e:
         msg = str(e).lower()
         if "budget" in msg or "quota" in msg:
@@ -977,7 +981,10 @@ async def chat(req: ChatRequest):
         else:
             reply = "I couldn't reach the Brain just now. Try again in a moment."
     msg = {"id": str(uuid.uuid4()), "session_id": req.session_id, "role": "assistant", "text": reply, "at": now}
-    if _mongo_available:
+    if _use_memory_store():
+        bucket = _memory_db.setdefault("chat_messages", [])
+        bucket.extend([dict(user_msg), dict(msg)])
+    elif _mongo_available:
         try:
             await _get_db().chat_messages.insert_many([dict(user_msg), dict(msg)])
         except Exception as exc:

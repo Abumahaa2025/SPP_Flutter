@@ -1,23 +1,40 @@
-"""SPP Backend Regression Tests — Phase 3 refinement pass.
+"""SPP Backend Regression Tests — local ASGI + seeded portfolio.
 
-Covers: /api/briefing (with new `narrative`), /api/reports, /api/knowledge,
-/api/guides, /api/owner, /api/properties, /api/tenants, /api/contracts,
-/api/decisions, /api/sensors, /api/notifications, /api/timeline, /api/chat.
+Uses FastAPI TestClient with in-memory seed so results do not depend on a
+remote host that returns 404 or an empty beta portfolio.
 """
+from __future__ import annotations
+
 import os
 import uuid
-import pytest
-import requests
 
-BASE_URL = os.environ.get("EXPO_PUBLIC_BACKEND_URL", "https://smart-real-estate-ai-2.preview.emergentagent.com").rstrip("/")
-API = f"{BASE_URL}/api"
+# Configure before importing server — memory store needs beta mode without Mongo.
+os.environ.setdefault("SPP_BETA_MODE", "true")
+os.environ.setdefault("SPP_DEMO_MODE", "true")
+os.environ.setdefault("SPP_DATA_SOURCE", "mongo")
+# Avoid GAS hybrid overriding memory seed during tests.
+os.environ.pop("GAS_WEB_APP_URL", None)
+os.environ.pop("GAS_DEPLOYMENT_URL", None)
+
+import pytest
+from fastapi.testclient import TestClient
+
+import server as spp_server
+
+API = "/api"
 
 
 @pytest.fixture(scope="module")
 def api_client():
-    s = requests.Session()
-    s.headers.update({"Content-Type": "application/json"})
-    return s
+    """Seed Alexander Vale demo portfolio into memory store."""
+    spp_server._mongo_available = False
+    spp_server._memory_insert_all(spp_server._seed_dataset())
+    # Optional: AI key stub so chat does not 500 on missing key.
+    if not spp_server.EMERGENT_LLM_KEY:
+        spp_server.EMERGENT_LLM_KEY = "test-local-key"
+
+    with TestClient(spp_server.app) as client:
+        yield client
 
 
 # ---------------- health ----------------
@@ -158,7 +175,6 @@ class TestVerdicts:
         r = api_client.get(f"{API}/verdicts")
         assert r.status_code == 200
         data = r.json()
-        # Must be a dict with exactly 13 keyed verdicts
         assert isinstance(data, dict)
         assert set(data.keys()) == self.EXPECTED_KEYS, (
             f"missing/extra keys: {set(data.keys()) ^ self.EXPECTED_KEYS}"
@@ -170,7 +186,7 @@ class TestVerdicts:
         data = r.json()
         for key, verdict in data.items():
             if verdict is None:
-                continue  # some conditional verdicts may be None
+                continue
             for k in ("headline", "why", "action", "route"):
                 assert k in verdict, f"{key} missing {k}"
                 assert isinstance(verdict[k], str) and len(verdict[k]) > 0
@@ -202,9 +218,17 @@ class TestAncillary:
         assert len(r.json()) >= 1
 
 
-# ---------------- chat (GPT-5.2 or graceful top-up message) ----------------
+# ---------------- chat (graceful without live LLM) ----------------
 class TestChat:
-    def test_chat_endpoint(self, api_client):
+    def test_chat_endpoint(self, api_client, monkeypatch):
+        async def fake_send(self, msg):  # noqa: ARG001
+            return "Local regression reply."
+
+        class FakeChat:
+            async def send_message(self, msg):  # noqa: ARG002
+                return "Local regression reply."
+
+        monkeypatch.setattr(spp_server, "get_llm_chat", lambda session_id, system_message=None: FakeChat())
         sid = f"TEST_{uuid.uuid4()}"
         r = api_client.post(f"{API}/chat", json={"session_id": sid, "text": "Hello"}, timeout=60)
         assert r.status_code == 200, f"chat failed: {r.status_code} {r.text}"
@@ -212,7 +236,12 @@ class TestChat:
         assert "reply" in data and isinstance(data["reply"], str) and len(data["reply"]) > 0
         assert "at" in data
 
-    def test_chat_history_persistence(self, api_client):
+    def test_chat_history_persistence(self, api_client, monkeypatch):
+        class FakeChat:
+            async def send_message(self, msg):  # noqa: ARG002
+                return "Local regression reply."
+
+        monkeypatch.setattr(spp_server, "get_llm_chat", lambda session_id, system_message=None: FakeChat())
         sid = f"TEST_{uuid.uuid4()}"
         api_client.post(f"{API}/chat", json={"session_id": sid, "text": "test-persist"}, timeout=60)
         r = api_client.get(f"{API}/chat/{sid}")

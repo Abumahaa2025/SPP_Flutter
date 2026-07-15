@@ -117,6 +117,11 @@ def build_briefing(
         f"إيراد سنوي {fmt_money_ar(portfolio_value)} ريال · {len(tenants)} مستأجر."
     )
 
+    # Executive voice stays short (test contract + UI): 2–6 lines, always keep the snapshot last.
+    if len(lines) > 6:
+        snap = lines[-1]
+        lines = lines[:-1][:5] + [snap]
+
     return {
         "salutation": salutation_ar(),
         "owner_name": _owner_first_name(settings),
