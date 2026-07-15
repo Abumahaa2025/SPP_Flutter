@@ -1,4 +1,4 @@
-# Beta APK built on GitHub — does NOT use EAS monthly quota.
+# Standalone SPP Beta APK — embeds JS bundle (NOT Metro/Emergent debug shell).
 name: Expo Beta APK (branch)
 
 on:
@@ -11,15 +11,41 @@ on:
       note:
         description: 'Build note (optional)'
         required: false
-        default: 'Beta 10'
+        default: 'Standalone SPP release APK'
+      commit_sha:
+        description: 'Short commit for APK filename (optional)'
+        required: false
+        default: ''
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    env:
+      CI: true
+      NODE_ENV: production
+      EXPO_PUBLIC_BETA_MODE: 'true'
+      EXPO_PUBLIC_BACKEND_URL: https://spp-beta-api.onrender.com
+      GRADLE_OPTS: -Dorg.gradle.daemon=false -Dorg.gradle.jvmargs=-Xmx4g
+    defaults:
+      run:
+        working-directory: frontend
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.inputs.branch }}
+
+      - name: Enable swap (prevents OOM during native build)
+        working-directory: ${{ github.workspace }}
+        run: |
+          sudo swapoff -a || true
+          sudo fallocate -l 8G /swapfile || sudo dd if=/dev/zero of=/swapfile bs=1M count=8192
+          sudo chmod 600 /swapfile
+          sudo mkswap /swapfile
+          sudo swapon /swapfile
+          free -h
 
       - uses: actions/setup-node@v4
         with:
@@ -35,40 +61,86 @@ jobs:
       - uses: android-actions/setup-android@v3
 
       - name: Install dependencies
-        working-directory: frontend
         run: npm ci
 
-      - name: Prebuild Android
-        working-directory: frontend
-        run: npx expo prebuild --platform android --no-install
+      - name: Resolve APK identity
+        id: meta
+        run: |
+          VERSION=$(node -p "require('./app.json').expo.version")
+          PKG=$(node -p "require('./app.json').expo.android.package")
+          SHORT="${{ github.event.inputs.commit_sha }}"
+          if [ -z "$SHORT" ]; then SHORT=$(git rev-parse --short=7 HEAD); fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "package=$PKG" >> "$GITHUB_OUTPUT"
+          echo "short=$SHORT" >> "$GITHUB_OUTPUT"
+          echo "apk_name=spp-beta-${SHORT}.apk" >> "$GITHUB_OUTPUT"
+          echo "Resolved package=$PKG version=$VERSION short=$SHORT"
+
+      - name: Prebuild Android (clean native project)
+        run: npx expo prebuild --platform android --clean --no-install
         env:
           EXPO_PUBLIC_BETA_MODE: 'true'
           EXPO_PUBLIC_BACKEND_URL: https://spp-beta-api.onrender.com
 
-      - name: Assemble debug APK
-        working-directory: frontend/android
-        run: chmod +x gradlew && ./gradlew assembleDebug --no-daemon
+      - name: Patch release to use debug keystore (beta CI)
+        run: node ./scripts/patch-android-release-signing.mjs
 
-      - name: Package APK
-        working-directory: frontend
+      - name: Assert Android package + MainActivity
         run: |
-          VERSION=$(node -p "require('./app.json').expo.version")
+          MANIFEST=android/app/src/main/AndroidManifest.xml
+          GRADLE=android/app/build.gradle
+          test -f "$MANIFEST"
+          test -f "$GRADLE"
+          grep -q 'android:name=".MainActivity"' "$MANIFEST"
+          grep -Eq 'applicationId\s+"ai\.spp\.beta"|namespace\s+"ai\.spp\.beta"' "$GRADLE" \
+            || grep -q 'ai.spp.beta' "$GRADLE"
+          if grep -qi 'emergent' "$MANIFEST"; then
+            echo "::error::AndroidManifest mentions Emergent"
+            exit 1
+          fi
+          echo "Native identity OK — MainActivity + ai.spp.beta"
+
+      - name: Assemble Release APK (embeds JS bundle)
+        working-directory: frontend/android
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:assembleRelease --no-daemon --stacktrace
+
+      - name: Package named artifact
+        id: pack
+        run: |
+          SRC="android/app/build/outputs/apk/release/app-release.apk"
+          test -f "$SRC"
           mkdir -p dist
-          cp android/app/build/outputs/apk/debug/app-debug.apk "dist/spp-beta-${VERSION}.apk"
+          NAME="${{ steps.meta.outputs.apk_name }}"
+          cp "$SRC" "dist/${NAME}"
+          cp "$SRC" dist/spp-beta.apk
           ls -la dist/
+          echo "apk_path=frontend/dist/${NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Verify standalone SPP APK (bundle + package)
+        run: |
+          node ./scripts/verify-spp-apk.mjs "dist/${{ steps.meta.outputs.apk_name }}" ai.spp.beta
+          # Extra: fail if no hermes/js bundle entry
+          unzip -Z1 "dist/${{ steps.meta.outputs.apk_name }}" | grep -E 'index\.android\.bundle|\.hbc$|android\.bundle' \
+            || { echo "::error::APK missing embedded JS bundle"; exit 1; }
 
       - uses: actions/upload-artifact@v4
         with:
-          name: spp-beta-apk
-          path: frontend/dist/*.apk
+          name: ${{ steps.meta.outputs.apk_name }}
+          path: |
+            frontend/dist/${{ steps.meta.outputs.apk_name }}
+            frontend/dist/spp-beta.apk
           retention-days: 90
+          if-no-files-found: error
 
       - name: Build summary
-        working-directory: frontend
         run: |
-          VERSION=$(node -p "require('./app.json').expo.version")
-          echo "## Beta APK (GitHub CI)" >> "$GITHUB_STEP_SUMMARY"
+          echo "## Standalone SPP APK" >> "$GITHUB_STEP_SUMMARY"
           echo "- Branch: \`${{ github.event.inputs.branch }}\`" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Version: \`${VERSION}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Commit short: \`${{ steps.meta.outputs.short }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- applicationId: \`${{ steps.meta.outputs.package }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Version: \`${{ steps.meta.outputs.version }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Artifact: **${{ steps.meta.outputs.apk_name }}**" >> "$GITHUB_STEP_SUMMARY"
           echo "- Note: ${{ github.event.inputs.note }}" >> "$GITHUB_STEP_SUMMARY"
-          echo "- Download: **Actions → this run → Artifacts → spp-beta-apk**" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Verified: embedded JS bundle + MainActivity + no Emergent shell" >> "$GITHUB_STEP_SUMMARY"

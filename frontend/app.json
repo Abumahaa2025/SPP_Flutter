@@ -36,7 +36,7 @@
           "image": "./assets/images/splash-image.png",
           "imageWidth": 200,
           "resizeMode": "contain",
-          "backgroundColor": "#000000"
+          "backgroundColor": "#050A12"
         }
       ]
     ],
@@ -44,7 +44,9 @@
       "typedRoutes": true
     },
     "updates": {
-      "url": "https://u.expo.dev/405761ee-fac3-4b25-9784-23f7441535e3"
+      "url": "https://u.expo.dev/405761ee-fac3-4b25-9784-23f7441535e3",
+      "checkAutomatically": "NEVER",
+      "fallbackToCacheTimeout": 0
     },
     "runtimeVersion": {
       "policy": "appVersion"
