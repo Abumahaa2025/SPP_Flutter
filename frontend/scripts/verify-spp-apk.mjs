@@ -55,19 +55,34 @@ if (aapt) {
   console.warn('aapt not found — skipping package dump (bundle checks still run)');
 }
 
-// Prefer unzip listing without extra deps
+// Prefer unzip listing without extra deps (CI has unzip; Windows uses tar / PowerShell)
 let names = [];
 try {
-  // Node 20+ / use powershell-free: adm-zip may not be installed — fall back to unzip -l
   const unzip = spawnSync('unzip', ['-Z1', apk], { encoding: 'utf8' });
   if (unzip.status === 0) {
     names = unzip.stdout.split(/\r?\n/).filter(Boolean);
   } else {
-    // Windows: use tar (can list zip)
     const tar = spawnSync('tar', ['-tf', apk], { encoding: 'utf8' });
     if (tar.status === 0) names = tar.stdout.split(/\r?\n/).filter(Boolean);
   }
 } catch { /* ignore */ }
+
+if (!names.length && process.platform === 'win32') {
+  try {
+    const ps = spawnSync(
+      'powershell',
+      [
+        '-NoProfile',
+        '-Command',
+        `Add-Type -AssemblyName System.IO.Compression.FileSystem; `
+        + `$z=[IO.Compression.ZipFile]::OpenRead('${apk.replace(/'/g, "''")}'); `
+        + `$z.Entries | ForEach-Object { $_.FullName }; $z.Dispose()`,
+      ],
+      { encoding: 'utf8', maxBuffer: 20_000_000 },
+    );
+    if (ps.status === 0) names = ps.stdout.split(/\r?\n/).filter(Boolean);
+  } catch { /* ignore */ }
+}
 
 if (!names.length) {
   errors.push('could not list APK entries');
