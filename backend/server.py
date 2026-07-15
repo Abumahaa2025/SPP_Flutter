@@ -46,6 +46,7 @@ from adapters.upload_analysis import analyze_upload_portfolio
 from adapters.gas_import_bridge import (
     analyze_upload_with_gas_fallback,
     apply_gas_import,
+    build_local_apply_commit,
     create_gas_owner_pdf,
     gas_import_available,
 )
@@ -1045,7 +1046,7 @@ async def upload_portfolio_analysis(req: UploadPortfolioRequest):
 @api_router.post("/upload/apply-analysis")
 async def upload_apply_analysis(req: UploadApplyRequest):
     """Commit import to portfolio — GAS commitSmartPropertyImportBatch when configured."""
-    global _last_applied_analysis
+    global _last_applied_analysis, _portfolio_cache, _portfolio_cache_at
     files_dump = [f.model_dump() for f in req.files] if req.files else None
 
     if gas_import_available():
@@ -1070,8 +1071,35 @@ async def upload_apply_analysis(req: UploadApplyRequest):
                 {"ok": False, "error": str(exc), "analysis_id": req.analysis_id, "gas": True},
             ) from exc
 
+    # No GAS: materialise Property Knowledge session into beta memory portfolio.
+    commit = build_local_apply_commit(req.analysis_id)
+    if not commit.get("tenants") and not commit.get("properties"):
+        raise HTTPException(
+            404,
+            {"ok": False, "error": "analysis session expired — أعد التحليل ثم اعتمد", "analysis_id": req.analysis_id},
+        )
+    _memory_db["properties"] = list(commit.get("properties") or [])
+    _memory_db["tenants"] = list(commit.get("tenants") or [])
+    _memory_db["contracts"] = list(commit.get("contracts") or [])
+    _memory_db["reports"] = list(commit.get("reports") or [])
+    _memory_db.setdefault("decisions", [])
+    _portfolio_cache = None
+    _portfolio_cache_at = 0.0
     _last_applied_analysis = req.analysis_id
-    return {"ok": True, "analysis_id": req.analysis_id, "applied_at": _iso(datetime.now(timezone.utc))}
+    return {
+        "ok": True,
+        "analysis_id": req.analysis_id,
+        "applied_at": _iso(datetime.now(timezone.utc)),
+        "gas": False,
+        "commit": {
+            "units": commit.get("units"),
+            "tenants": commit.get("tenant_count"),
+            "properties": len(commit.get("properties") or []),
+            "contracts": len(commit.get("contracts") or []),
+            "reports": len(commit.get("reports") or []),
+            "source": commit.get("source"),
+        },
+    }
 
 
 @api_router.post("/upload/create-pdf")

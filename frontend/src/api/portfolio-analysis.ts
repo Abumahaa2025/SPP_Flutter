@@ -23,6 +23,9 @@ export type PortfolioMetrics = {
   balance: number;
   files_analyzed: number;
   collection_rate_pct?: number;
+  months_linked?: number;
+  departed_count?: number;
+  newcomers_count?: number;
 };
 
 export type LatePaymentTenantEntry = {
@@ -116,8 +119,29 @@ export type TenantKnowledgeCard = {
   last_important_change?: string;
 };
 
+export type LifecycleActiveRow = {
+  tenant?: string;
+  unit?: string;
+  phone?: string;
+  rent?: number;
+};
+
 export type PropertyKnowledge = {
   tenants?: TenantKnowledgeCard[];
+  meta?: {
+    period_from?: string;
+    period_to?: string;
+    files_count?: number;
+    month_count?: number;
+    source?: string;
+  };
+  lifecycle?: {
+    active?: LifecycleActiveRow[];
+    departed?: LifecycleActiveRow[];
+    newcomers?: LifecycleActiveRow[];
+    tenant_changes?: { unit?: string; type?: string; confirmed?: boolean }[];
+    month_count?: number;
+  };
   ledger_quality?: {
     unknown_month_count?: number;
     collection_recs_allowed?: boolean;
@@ -146,6 +170,28 @@ export type ExecutiveBrief = {
     label?: string;
   };
   critical_cases?: string[];
+  engines?: {
+    collection?: { rate_pct?: number; collected?: number; expected?: number };
+    late?: { tenant_count?: number; total_unpaid?: number; critical_names?: string[] };
+    lifecycle?: {
+      departed_count?: number;
+      newcomers_count?: number;
+      confirmed_moves?: number;
+      who_left?: string;
+      who_entered?: string;
+      replacements?: string[];
+    };
+    maintenance?: { count?: number; total?: number };
+    contracts?: {
+      expired?: number;
+      expiring_soon?: number;
+      missing_phone?: number;
+      missing_contract?: number;
+    };
+    quality?: { warning_count?: number };
+    tenant_cards?: { count?: number };
+    ledger_quality?: { unknown_month_count?: number; collection_recs_allowed?: boolean };
+  };
   key_numbers: { label: string; value: string }[];
   needs_review: string[];
   confidence: number;

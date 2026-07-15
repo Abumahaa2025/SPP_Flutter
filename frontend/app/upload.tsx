@@ -29,11 +29,13 @@ import {
 } from '@/src/api/portfolio-analysis';
 import { UploadFilePreview } from '@/src/components/UploadFilePreview';
 import { UploadExecutiveReport } from '@/src/components/UploadExecutiveReport';
+import { UploadEnginePath } from '@/src/components/UploadEnginePath';
 import { UploadPortfolioPrompt } from '@/src/components/UploadPortfolioPrompt';
 import { UploadSmartDecisions } from '@/src/components/UploadSmartDecisions';
 import { UploadNextActions } from '@/src/components/UploadNextActions';
 import { PhaseSaveResult } from '@/src/components/PhaseSaveResult';
 import { storage } from '@/src/utils/storage';
+import { persistApplyFromAnalysis } from '@/src/utils/apply-analysis-to-os';
 import { UX_BUILD_STAMP } from '@/src/constants/build';
 import { apiUrl } from '@/src/constants/backend';
 
@@ -58,6 +60,7 @@ export default function UploadScreen() {
   const [previewReady, setPreviewReady] = useState(false);
   const [pickError, setPickError] = useState<string | null>(null);
   const [lastFileMeta, setLastFileMeta] = useState<UploadFileMeta[]>([]);
+  const [applyDone, setApplyDone] = useState(false);
 
   const pickFiles = useCallback(async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -91,6 +94,7 @@ export default function UploadScreen() {
       setResults([]);
       setPortfolioAnalysis(null);
       setPromptDone(false);
+      setApplyDone(false);
       setAnalysisSource(null);
       setAnalysisError(null);
       setStep(1);
@@ -120,6 +124,7 @@ export default function UploadScreen() {
     setResults([]);
     setPortfolioAnalysis(null);
     setPromptDone(false);
+    setApplyDone(false);
     setAnalysisSource(null);
     setAnalysisError(null);
     setPreview(null);
@@ -135,6 +140,7 @@ export default function UploadScreen() {
     setResults([]);
     setPortfolioAnalysis(null);
     setPromptDone(false);
+    setApplyDone(false);
     setAnalysisSource(null);
     setAnalysisError(null);
     setStep(2);
@@ -211,6 +217,7 @@ export default function UploadScreen() {
     setResults([]);
     setPortfolioAnalysis(null);
     setPromptDone(false);
+    setApplyDone(false);
     setAnalysisSource(null);
     setAnalysisError(null);
     setStep(1);
@@ -224,8 +231,26 @@ export default function UploadScreen() {
     if (!portfolioAnalysis) return;
     if (key === 'update') {
       try {
-        const applied = await applyPortfolioAnalysis(portfolioAnalysis.analysis_id, lastFileMeta);
-        if (!applied.ok) throw new Error('apply failed');
+        // Always materialise engines → local portfolio (proof of Apply).
+        const commit = await persistApplyFromAnalysis(portfolioAnalysis, lang);
+        // Best-effort server apply (GAS / ack); local commit is source of truth for beta UI.
+        try {
+          await applyPortfolioAnalysis(portfolioAnalysis.analysis_id, lastFileMeta);
+        } catch {
+          /* local apply already succeeded */
+        }
+        setApplyDone(true);
+        await storage.setItem(
+          'spp.lastApplyProof',
+          JSON.stringify({
+            ...commit,
+            applied_at: new Date().toISOString(),
+            files: lastFileMeta.map((f) => f.name),
+            source: 'property_knowledge',
+          }),
+        );
+        // Brief pause so the on-screen engine path can show Apply ✅ before leaving.
+        await new Promise((r) => setTimeout(r, 1600));
         router.push('/portfolio');
       } catch (err) {
         const msg = err instanceof Error ? err.message : 'apply failed';
@@ -236,6 +261,7 @@ export default function UploadScreen() {
       setPortfolioAnalysis(null);
       setResults([]);
       setFiles([]);
+      setApplyDone(false);
       setStep(1);
       return;
     }
@@ -262,14 +288,12 @@ export default function UploadScreen() {
         testID="upload-header"
       />
 
-      {__DEV__ ? (
-        <View style={styles.buildBar} testID="upload-build-stamp">
-          <Text style={styles.buildStamp}>{UX_BUILD_STAMP}</Text>
-          <Text style={styles.apiHint} numberOfLines={1}>
-            API: {apiUrl('/upload/portfolio-analysis').replace('https://', '')}
-          </Text>
-        </View>
-      ) : null}
+      <View style={styles.buildBar} testID="upload-build-stamp">
+        <Text style={styles.buildStamp}>{UX_BUILD_STAMP}</Text>
+        <Text style={styles.apiHint} numberOfLines={1}>
+          API: {apiUrl('/upload/portfolio-analysis').replace('https://', '')}
+        </Text>
+      </View>
 
       {analysisSource ? (
         <View style={[styles.sourceBadge, analysisSource === 'render' ? styles.sourceRender : styles.sourceFallback]}>
@@ -414,6 +438,7 @@ export default function UploadScreen() {
           <UploadFoundHeader />
           {portfolioAnalysis && analysisSource === 'render' ? (
             <>
+              <UploadEnginePath analysis={portfolioAnalysis} applied={applyDone} />
               <UploadExecutiveReport analysis={portfolioAnalysis} />
               {!promptDone ? (
                 <UploadPortfolioPrompt analysis={portfolioAnalysis} onChoice={onPromptChoice} />
@@ -429,23 +454,31 @@ export default function UploadScreen() {
               )}
             </>
           ) : null}
-          <View style={{ gap: spacing.lg, marginTop: spacing.lg }}>
-            {results.map((r, i) => (
-              <Animated.View key={r.id} entering={FadeInDown.duration(500).delay(120 + i * 100)}>
-                <UploadResultCard
-                  result={r}
-                  testID={`upload-result-${r.id}`}
-                  onApprove={() => router.push('/portfolio')}
-                  onAsk={() => router.push({ pathname: '/brain', params: { q: r.summary } } as any)}
-                />
-              </Animated.View>
-            ))}
-          </View>
+          {/* Heuristic local cards — hide when live engine analysis is on screen (proof clarity). */}
+          {analysisSource !== 'render' ? (
+            <View style={{ gap: spacing.lg, marginTop: spacing.lg }}>
+              {results.map((r, i) => (
+                <Animated.View key={r.id} entering={FadeInDown.duration(500).delay(120 + i * 100)}>
+                  <UploadResultCard
+                    result={r}
+                    testID={`upload-result-${r.id}`}
+                    onApprove={() => router.push('/portfolio')}
+                    onAsk={() => router.push({ pathname: '/brain', params: { q: r.summary } } as any)}
+                  />
+                </Animated.View>
+              ))}
+            </View>
+          ) : null}
           <View style={{ marginTop: spacing.xl }}>
             <PhaseSaveResult
               rows={[
                 { label: t('upload.selectedFiles'), value: files.map((f) => f.name).join(' · ') || '—' },
-                { label: t('upload.reportTitle'), value: `${results.length}` },
+                {
+                  label: t('upload.reportTitle'),
+                  value: portfolioAnalysis
+                    ? `${portfolioAnalysis.metrics?.units ?? '—'} · ${portfolioAnalysis.analysis_id.slice(0, 8)}`
+                    : `${results.length}`,
+                },
               ]}
               nextHint={t('upload.doneActions' as any)}
               actions={[

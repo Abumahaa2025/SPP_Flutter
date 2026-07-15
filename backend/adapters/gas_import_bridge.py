@@ -455,6 +455,103 @@ def apply_gas_import(
     }
 
 
+def get_import_session(analysis_id: str) -> Dict[str, Any]:
+    return dict(_import_sessions.get(analysis_id) or {})
+
+
+def build_local_apply_commit(analysis_id: str) -> Dict[str, Any]:
+    """Materialise Property Knowledge session into portfolio rows (no GAS)."""
+    session = _import_sessions.get(analysis_id) or {}
+    pk = session.get("property_knowledge") or {}
+    metrics = session.get("metrics") or {}
+    brief = session.get("executive_brief") or {}
+    lc = pk.get("lifecycle") or {}
+    active = list(lc.get("active") or [])
+    tenants_pk = list(pk.get("tenants") or [])
+    rows = active or [
+        {
+            "tenant": t.get("tenant") or t.get("name"),
+            "unit": t.get("unit"),
+            "phone": t.get("phone"),
+            "rent": t.get("rent"),
+        }
+        for t in tenants_pk
+    ]
+    prop_id = f"prop_imp_{analysis_id[:8]}"
+    meta = pk.get("meta") or {}
+    property_row = {
+        "id": prop_id,
+        "name": "العقار المستورد",
+        "address": "",
+        "city": "—",
+        "kind": "mixed",
+        "units": int(metrics.get("units") or len(rows) or 0),
+        "occupancy": float(metrics.get("occupancy_pct") or 0) / 100.0,
+        "monthly_revenue": float(metrics.get("collected") or 0) / max(1, int(metrics.get("months_linked") or 1)),
+        "health_score": 70,
+        "hero_image": "",
+        "tenant_ids": [],
+        "owner_id": "owner_imported",
+        "source": "upload_apply",
+        "period_from": meta.get("period_from"),
+        "period_to": meta.get("period_to"),
+    }
+    tenants: List[dict] = []
+    contracts: List[dict] = []
+    for i, row in enumerate(rows):
+        tid = f"ten_imp_{i + 1}"
+        unit = str(row.get("unit") or i + 1)
+        tenants.append(
+            {
+                "id": tid,
+                "name": row.get("tenant") or row.get("name") or "—",
+                "property_id": prop_id,
+                "unit": unit,
+                "since": "",
+                "rent": float(row.get("rent") or 0),
+                "reliability": 0.8,
+                "phone": row.get("phone") or "",
+                "source": "property_knowledge",
+            }
+        )
+        property_row["tenant_ids"].append(tid)
+        if i < 10:
+            contracts.append(
+                {
+                    "id": f"ct_imp_{i + 1}",
+                    "tenant_id": tid,
+                    "property_id": prop_id,
+                    "start": "",
+                    "end": "",
+                    "monthly_rent": float(row.get("rent") or 0),
+                    "status": "active",
+                    "source": "lifecycle_active",
+                }
+            )
+    report = {
+        "id": analysis_id,
+        "kind": "monthly",
+        "title": brief.get("title") or "التقرير التنفيذي",
+        "subtitle": brief.get("period") or "",
+        "highlight": (session.get("success_message") or brief.get("property_status") or "")[:160],
+        "created_at": "",
+        "pages": 1,
+        "accent": "gold",
+        "source": "executive_report",
+    }
+    return {
+        "ok": True,
+        "analysis_id": analysis_id,
+        "source": session.get("source") or "python",
+        "properties": [property_row],
+        "tenants": tenants,
+        "contracts": contracts,
+        "reports": [report],
+        "units": int(metrics.get("units") or len(rows)),
+        "tenant_count": len(tenants),
+    }
+
+
 def create_gas_owner_pdf(analysis_id: Optional[str] = None) -> Dict[str, Any]:
     gas = get_gas_client()
     params: Dict[str, Any] = {}
@@ -482,10 +579,16 @@ def analyze_upload_with_gas_fallback(
 
     payload = analyze_upload_portfolio(files, ctx, lang=lang)
     analysis_id = payload.get("analysis_id") or str(uuid.uuid4())
+    payload["analysis_id"] = analysis_id
     _import_sessions[analysis_id] = {
         "batch_id": analysis_id,
         "files_meta": _to_gas_files_meta(files),
         "source": "python",
         "lang": lang,
+        # Keep slim proof payload so Apply can materialise without re-running engines.
+        "property_knowledge": payload.get("property_knowledge"),
+        "metrics": payload.get("metrics"),
+        "success_message": payload.get("success_message"),
+        "executive_brief": payload.get("executive_brief"),
     }
     return payload

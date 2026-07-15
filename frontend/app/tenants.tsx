@@ -1,7 +1,7 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 
 import { ScreenScaffold } from '@/src/components/ScreenScaffold';
@@ -22,14 +22,17 @@ export default function Tenants() {
   const { t } = useI18n();
   const router = useRouter();
   const { countEnabled } = useNotificationPrefs();
-  const { state: osState } = usePropertyOS(countEnabled);
+  const { state: osState, reload: reloadOS } = usePropertyOS(countEnabled);
   const [tenants, setTenants] = useState<TenantT[]>([]);
   const [props, setProps] = useState<PropertyT[]>([]);
 
-  useEffect(() => {
-    api.tenants().then(setTenants).catch(() => {});
-    api.properties().then(setProps).catch(() => {});
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      void reloadOS();
+      api.tenants().then(setTenants).catch(() => {});
+      api.properties().then(setProps).catch(() => {});
+    }, [reloadOS]),
+  );
 
   const propMap = useMemo(() => new Map(props.map((p) => [p.id, p])), [props]);
 

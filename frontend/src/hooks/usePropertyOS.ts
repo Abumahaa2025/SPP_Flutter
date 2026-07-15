@@ -115,6 +115,15 @@ export function usePropertyOS(notifEnabledCount = 0) {
     storage.setItem(KEY, JSON.stringify(next));
   }, []);
 
+  /** Re-read after upload Apply (other screens write spp.propertyOS). */
+  const reload = useCallback(async () => {
+    const stored = await storage.getItem<string>(KEY, '');
+    if (!stored) return;
+    try {
+      setState({ ...DEFAULT, ...JSON.parse(stored) });
+    } catch { /* ignore */ }
+  }, []);
+
   const phases = useMemo(
     () => calcPhaseProgress(state, notifEnabledCount),
     [state, notifEnabledCount],
@@ -256,6 +265,7 @@ export function usePropertyOS(notifEnabledCount = 0) {
   return {
     state,
     ready,
+    reload,
     phases,
     overallPercent,
     nextPhase,

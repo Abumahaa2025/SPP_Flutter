@@ -1,9 +1,9 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { Image } from 'expo-image';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
 import { ScreenScaffold } from '@/src/components/ScreenScaffold';
@@ -27,13 +27,16 @@ export default function Portfolio() {
   const { t } = useI18n();
   const router = useRouter();
   const { countEnabled } = useNotificationPrefs();
-  const { state: osState } = usePropertyOS(countEnabled);
+  const { state: osState, reload: reloadOS } = usePropertyOS(countEnabled);
   const [props, setProps] = useState<PropertyT[] | null>(null);
   const [filter, setFilter] = useState<Filter>('all');
 
-  useEffect(() => {
-    api.properties().then(setProps).catch(() => setProps([]));
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      void reloadOS();
+      api.properties().then(setProps).catch(() => setProps([]));
+    }, [reloadOS]),
+  );
 
   const list = props ?? [];
   const filtered = useMemo(() => {

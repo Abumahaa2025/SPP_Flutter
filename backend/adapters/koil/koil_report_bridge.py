@@ -455,6 +455,40 @@ def build_executive_brief(
         "actions_today": actions,
         "arrears": arrears_block,
         "critical_cases": critical_names,
+        # Live engine snapshots for the in-app upload path (not a static UI stub).
+        "engines": {
+            "collection": {
+                "rate_pct": rate,
+                "collected": round(collected, 2),
+                "expected": round(expected, 2),
+            },
+            "late": {
+                "tenant_count": late_n,
+                "total_unpaid": round(unpaid, 2),
+                "critical_names": critical_names,
+            },
+            "lifecycle": {
+                "departed_count": int(metrics.get("departed_count") or len(lc.get("departed") or [])),
+                "newcomers_count": int(metrics.get("newcomers_count") or len(lc.get("newcomers") or [])),
+                "confirmed_moves": move_n,
+                "who_left": who_left,
+                "who_entered": who_entered,
+                "replacements": confirmed_replacements[:8],
+            },
+            "maintenance": {"count": maint_count, "total": round(maint_total, 2)},
+            "contracts": {
+                "expired": expired_n,
+                "expiring_soon": expiring_n,
+                "missing_phone": len(contracts.get("missing_phone") or []),
+                "missing_contract": len(contracts.get("missing_contract") or []),
+            },
+            "quality": {"warning_count": len(quality.get("warnings") or [])},
+            "tenant_cards": {"count": len(knowledge.get("tenants") or [])},
+            "ledger_quality": {
+                "unknown_month_count": unknown_n,
+                "collection_recs_allowed": collection_ok,
+            },
+        },
         "key_numbers": key_numbers,
         "needs_review": needs_review,
         "confidence": conf,

@@ -1,8 +1,9 @@
-import React, { useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { Feather } from '@expo/vector-icons';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
+import { useFocusEffect } from 'expo-router';
 
 import { ScreenScaffold } from '@/src/components/ScreenScaffold';
 import { StoryScreenHeader } from '@/src/components/StoryScreenHeader';
@@ -10,6 +11,7 @@ import { GlassCard } from '@/src/components/GlassCard';
 import { AliveEmpty } from '@/src/components/AliveEmpty';
 import { BrainVerdict } from '@/src/components/BrainVerdict';
 import { api, type ReportT } from '@/src/api/client';
+import { storage } from '@/src/utils/storage';
 import { colors, spacing, typography } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
 
@@ -23,7 +25,33 @@ const kindIcon: Record<string, keyof typeof Feather.glyphMap> = {
 export default function Reports() {
   const { t } = useI18n();
   const [items, setItems] = useState<ReportT[]>([]);
-  useEffect(() => { api.reports().then(setItems).catch(() => {}); }, []);
+  const [imported, setImported] = useState<ReportT[]>([]);
+
+  useFocusEffect(
+    useCallback(() => {
+      let alive = true;
+      (async () => {
+        try {
+          const raw = await storage.getItem<string>('spp.importedReports', '[]');
+          const local = JSON.parse(raw || '[]') as ReportT[];
+          if (alive) setImported(Array.isArray(local) ? local : []);
+        } catch {
+          if (alive) setImported([]);
+        }
+        try {
+          const remote = await api.reports();
+          if (alive) setItems(remote);
+        } catch {
+          if (alive) setItems([]);
+        }
+      })();
+      return () => {
+        alive = false;
+      };
+    }, []),
+  );
+
+  const merged = [...imported, ...items.filter((r) => !imported.some((i) => i.id === r.id))];
 
   return (
     <ScreenScaffold testID="reports-screen">
@@ -31,9 +59,9 @@ export default function Reports() {
 
       <BrainVerdict screen="reports" />
 
-      {items.length === 0 ? (
+      {merged.length === 0 ? (
         <AliveEmpty title={t('alive.reports.title')} body={t('alive.reports.body')} />
-      ) : items.map((r, i) => (
+      ) : merged.map((r, i) => (
         <Animated.View key={r.id} entering={FadeInDown.duration(600).delay(60 * i)}>
           <Pressable
             testID={`report-${r.id}`}
