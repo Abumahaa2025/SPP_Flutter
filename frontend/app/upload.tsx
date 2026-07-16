@@ -1,6 +1,6 @@
 import React, { useCallback, useState } from 'react';
 import {
-  View, Text, StyleSheet, Pressable, Platform, ActivityIndicator, Linking,
+  View, Text, StyleSheet, Pressable, Platform, ActivityIndicator,
 } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { useRouter } from 'expo-router';
@@ -22,20 +22,13 @@ import { OperationHint } from '@/src/components/OperationHint';
 import { JourneyGuide } from '@/src/components/JourneyGuide';
 import {
   fetchPortfolioAnalysis,
-  applyPortfolioAnalysis,
-  createPortfolioPdf,
   type PortfolioAnalysis,
   type UploadFileMeta,
 } from '@/src/api/portfolio-analysis';
 import { UploadFilePreview } from '@/src/components/UploadFilePreview';
-import { UploadExecutiveReport } from '@/src/components/UploadExecutiveReport';
-import { UploadEnginePath } from '@/src/components/UploadEnginePath';
-import { UploadPortfolioPrompt } from '@/src/components/UploadPortfolioPrompt';
-import { UploadSmartDecisions } from '@/src/components/UploadSmartDecisions';
-import { UploadNextActions } from '@/src/components/UploadNextActions';
+import { UploadResultsWizard } from '@/src/components/UploadResultsWizard';
 import { PhaseSaveResult } from '@/src/components/PhaseSaveResult';
 import { storage } from '@/src/utils/storage';
-import { persistApplyFromAnalysis } from '@/src/utils/apply-analysis-to-os';
 import { UX_BUILD_STAMP } from '@/src/constants/build';
 import { apiUrl } from '@/src/constants/backend';
 
@@ -49,7 +42,6 @@ export default function UploadScreen() {
   const [files, setFiles] = useState<Picked[]>([]);
   const [results, setResults] = useState<UploadResult[]>([]);
   const [portfolioAnalysis, setPortfolioAnalysis] = useState<PortfolioAnalysis | null>(null);
-  const [promptDone, setPromptDone] = useState(false);
   const [analysisSource, setAnalysisSource] = useState<'render' | 'fallback' | null>(null);
   const [analysisError, setAnalysisError] = useState<string | null>(null);
   const [step, setStep] = useState(1);
@@ -93,7 +85,6 @@ export default function UploadScreen() {
       setFiles((prev) => [...prev, ...next]);
       setResults([]);
       setPortfolioAnalysis(null);
-      setPromptDone(false);
       setApplyDone(false);
       setAnalysisSource(null);
       setAnalysisError(null);
@@ -123,7 +114,6 @@ export default function UploadScreen() {
     });
     setResults([]);
     setPortfolioAnalysis(null);
-    setPromptDone(false);
     setApplyDone(false);
     setAnalysisSource(null);
     setAnalysisError(null);
@@ -139,7 +129,6 @@ export default function UploadScreen() {
     setImportFailed(false);
     setResults([]);
     setPortfolioAnalysis(null);
-    setPromptDone(false);
     setApplyDone(false);
     setAnalysisSource(null);
     setAnalysisError(null);
@@ -216,7 +205,6 @@ export default function UploadScreen() {
     setFiles([]);
     setResults([]);
     setPortfolioAnalysis(null);
-    setPromptDone(false);
     setApplyDone(false);
     setAnalysisSource(null);
     setAnalysisError(null);
@@ -225,59 +213,6 @@ export default function UploadScreen() {
     setPreviewReady(false);
     setImportFailed(false);
     setPickError(null);
-  };
-
-  const onPromptChoice = async (key: 'update' | 'review' | 'cancel') => {
-    if (!portfolioAnalysis) return;
-    if (key === 'update') {
-      try {
-        // Always materialise engines → local portfolio (proof of Apply).
-        const commit = await persistApplyFromAnalysis(portfolioAnalysis, lang);
-        // Best-effort server apply (GAS / ack); local commit is source of truth for beta UI.
-        try {
-          await applyPortfolioAnalysis(portfolioAnalysis.analysis_id, lastFileMeta);
-        } catch {
-          /* local apply already succeeded */
-        }
-        setApplyDone(true);
-        await storage.setItem(
-          'spp.lastApplyProof',
-          JSON.stringify({
-            ...commit,
-            applied_at: new Date().toISOString(),
-            files: lastFileMeta.map((f) => f.name),
-            source: 'property_knowledge',
-          }),
-        );
-        // Brief pause so the on-screen engine path can show Apply ✅ before leaving.
-        await new Promise((r) => setTimeout(r, 1600));
-        router.push('/portfolio');
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : 'apply failed';
-        setAnalysisError(msg);
-      }
-      return;
-    } else if (key === 'cancel') {
-      setPortfolioAnalysis(null);
-      setResults([]);
-      setFiles([]);
-      setApplyDone(false);
-      setStep(1);
-      return;
-    }
-    setPromptDone(true);
-  };
-
-  const onNextAction = async (key: string) => {
-    if (key === 'create_pdf' && portfolioAnalysis) {
-      try {
-        const { url } = await createPortfolioPdf(portfolioAnalysis.analysis_id);
-        if (url) await Linking.openURL(url);
-      } catch { /* PDF requires GAS — silent fallback */ }
-      return;
-    }
-    const action = portfolioAnalysis?.next_actions.find((a) => a.key === key);
-    if (action) router.push(action.route as never);
   };
 
   return (
@@ -437,22 +372,14 @@ export default function UploadScreen() {
         <Animated.View entering={FadeInDown.duration(600)}>
           <UploadFoundHeader />
           {portfolioAnalysis && analysisSource === 'render' ? (
-            <>
-              <UploadEnginePath analysis={portfolioAnalysis} applied={applyDone} />
-              <UploadExecutiveReport analysis={portfolioAnalysis} />
-              {!promptDone ? (
-                <UploadPortfolioPrompt analysis={portfolioAnalysis} onChoice={onPromptChoice} />
-              ) : (
-                <>
-                  <UploadSmartDecisions decisions={portfolioAnalysis.smart_decisions} />
-                  <UploadNextActions
-                    actions={portfolioAnalysis.next_actions}
-                    message={portfolioAnalysis.what_now_message}
-                    onAction={onNextAction}
-                  />
-                </>
-              )}
-            </>
+            <UploadResultsWizard
+              analysis={portfolioAnalysis}
+              fileMeta={lastFileMeta}
+              lang={lang}
+              applied={applyDone}
+              onApplied={() => setApplyDone(true)}
+              onReset={resetUpload}
+            />
           ) : null}
           {/* Heuristic local cards — hide when live engine analysis is on screen (proof clarity). */}
           {analysisSource !== 'render' ? (
@@ -467,28 +394,26 @@ export default function UploadScreen() {
                   />
                 </Animated.View>
               ))}
+              <View style={{ marginTop: spacing.xl }}>
+                <PhaseSaveResult
+                  rows={[
+                    { label: t('upload.selectedFiles'), value: files.map((f) => f.name).join(' · ') || '—' },
+                    {
+                      label: t('upload.reportTitle'),
+                      value: `${results.length}`,
+                    },
+                  ]}
+                  nextHint={t('upload.doneActions' as any)}
+                  actions={[
+                    { label: t('upload.viewPortfolio' as any), onPress: () => router.push('/portfolio' as any), primary: true },
+                    { label: t('upload.uploadMore' as any), onPress: resetUpload },
+                    { label: t('result.goHome' as any), onPress: () => router.replace('/') },
+                  ]}
+                  testID="upload-done-actions"
+                />
+              </View>
             </View>
           ) : null}
-          <View style={{ marginTop: spacing.xl }}>
-            <PhaseSaveResult
-              rows={[
-                { label: t('upload.selectedFiles'), value: files.map((f) => f.name).join(' · ') || '—' },
-                {
-                  label: t('upload.reportTitle'),
-                  value: portfolioAnalysis
-                    ? `${portfolioAnalysis.metrics?.units ?? '—'} · ${portfolioAnalysis.analysis_id.slice(0, 8)}`
-                    : `${results.length}`,
-                },
-              ]}
-              nextHint={t('upload.doneActions' as any)}
-              actions={[
-                { label: t('upload.viewPortfolio' as any), onPress: () => router.push('/portfolio' as any), primary: true },
-                { label: t('upload.uploadMore' as any), onPress: resetUpload },
-                { label: t('result.goHome' as any), onPress: () => router.replace('/') },
-              ]}
-              testID="upload-done-actions"
-            />
-          </View>
         </Animated.View>
       ) : null}
     </ScreenScaffold>
