@@ -11,6 +11,7 @@ import { AliveEmpty } from '@/src/components/AliveEmpty';
 import { GuidedSetup } from '@/src/components/GuidedSetup';
 import { SetupProgressBar } from '@/src/components/SetupProgressBar';
 import { PortalShareCard } from '@/src/components/PortalShareCard';
+import { OperationalTenantCard } from '@/src/components/OperationalTenantCard';
 import { usePropertyOS } from '@/src/hooks/usePropertyOS';
 import { useNotificationPrefs } from '@/src/hooks/usePreferences';
 import { api, type TenantT, type PropertyT } from '@/src/api/client';
@@ -19,12 +20,13 @@ import { useI18n } from '@/src/i18n';
 import { AgentPermissionGate } from '@/src/components/AgentPermissionGate';
 
 export default function Tenants() {
-  const { t } = useI18n();
+  const { t, isRTL } = useI18n();
   const router = useRouter();
   const { countEnabled } = useNotificationPrefs();
   const { state: osState, reload: reloadOS } = usePropertyOS(countEnabled);
   const [tenants, setTenants] = useState<TenantT[]>([]);
   const [props, setProps] = useState<PropertyT[]>([]);
+  const [showPortals, setShowPortals] = useState(false);
 
   useFocusEffect(
     useCallback(() => {
@@ -45,13 +47,35 @@ export default function Tenants() {
 
       {osState.tenants.length > 0 ? (
         <View style={{ marginBottom: spacing.lg, gap: spacing.md }}>
-          <Text style={styles.localBadge}>{t('result.localData' as any)}</Text>
-          {osState.tenants.map((tn) => {
-            const unit = osState.units.find((u) => u.id === tn.unitId);
-            return (
-              <PortalShareCard key={tn.id} tenant={tn} unitNumber={unit?.number} testID={`os-tenant-${tn.id}`} />
-            );
-          })}
+          <Text style={[styles.localBadge, isRTL && styles.rtl]}>{t('result.localData' as any)}</Text>
+          {osState.tenants.map((tn, i) => (
+            <OperationalTenantCard
+              key={tn.id}
+              tenant={tn}
+              state={osState}
+              delay={40 * i}
+              testID={`os-tenant-card-${tn.id}`}
+            />
+          ))}
+          <Pressable
+            onPress={() => { Haptics.selectionAsync(); setShowPortals((v) => !v); }}
+            style={styles.portalToggle}
+            testID="tenants-portal-toggle"
+          >
+            <Text style={[styles.portalToggleText, isRTL && styles.rtl]}>
+              {showPortals
+                ? (isRTL ? 'إخفاء روابط البوابة' : 'Hide portal links')
+                : (isRTL ? 'عرض روابط البوابة' : 'Show portal links')}
+            </Text>
+          </Pressable>
+          {showPortals
+            ? osState.tenants.map((tn) => {
+                const unit = osState.units.find((u) => u.id === tn.unitId);
+                return (
+                  <PortalShareCard key={`portal-${tn.id}`} tenant={tn} unitNumber={unit?.number} testID={`os-tenant-${tn.id}`} />
+                );
+              })
+            : null}
         </View>
       ) : null}
 
@@ -122,6 +146,12 @@ const styles = StyleSheet.create({
     color: colors.gold, fontSize: 10, letterSpacing: 1.2, textTransform: 'uppercase',
     fontWeight: typography.weight.semibold,
   },
+  rtl: { writingDirection: 'rtl', textAlign: 'right' },
+  portalToggle: {
+    paddingVertical: 10,
+    alignItems: 'center',
+  },
+  portalToggleText: { color: colors.gold, fontSize: 12, fontWeight: typography.weight.medium },
   row: { flexDirection: 'row', alignItems: 'center', gap: 14 },
   avatar: {
     width: 44, height: 44, borderRadius: 22,
