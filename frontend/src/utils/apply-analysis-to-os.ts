@@ -120,12 +120,12 @@ function buildOperationalRows(analysis: PortfolioAnalysis): OpRow[] {
     });
   });
 
-  // 2) Lifecycle active — fill any unit/tenant/phone/rent the cards missed.
+  // 2) Lifecycle active — current occupancy wins over historical card names.
   active.forEach((a, i) => {
     const row = ensure(a.unit, cards.length + i);
-    if (!row.tenant) row.tenant = (a.tenant || '').trim();
-    if (!row.phone) row.phone = (a.phone || '').trim();
-    if (!row.rent) row.rent = num(a.rent);
+    if ((a.tenant || '').trim()) row.tenant = String(a.tenant).trim();
+    if ((a.phone || '').trim()) row.phone = String(a.phone).trim();
+    if (num(a.rent)) row.rent = num(a.rent);
   });
 
   // 3) late_payments — add late months (due/paid/remaining) not already captured, and
@@ -201,13 +201,15 @@ type IncomingRecords = {
 export function buildIncomingRecords(
   analysis: PortfolioAnalysis,
   lang: 'ar' | 'en',
+  /** Reuse existing property id on merge so units/tenants/contracts stay stable across Applies. */
+  existingPropertyId?: string | null,
 ): IncomingRecords {
   const m = analysis.metrics;
   const brief = analysis.executive_brief;
   const period = brief?.period || '';
-  const propId = `prop_imp_${analysis.analysis_id.slice(0, 8)}`;
+  // Stable property id — NEVER key off analysis_id (that would duplicate the whole OS on every Apply).
+  const propId = existingPropertyId || 'prop_imp_primary';
   const now = new Date().toISOString();
-  const aid = analysis.analysis_id.slice(0, 8);
 
   const rows = buildOperationalRows(analysis);
 
@@ -230,8 +232,9 @@ export function buildIncomingRecords(
 
   rows.forEach((row, i) => {
     const unitNum = row.unit || String(i + 1);
-    const unitId = `unit_imp_${propId}_${slug(unitNum)}`;
-    const tid = `ten_imp_${propId}_${slug(unitNum)}`;
+    // Stable ids by unit number — merge updates the same rows across consecutive Applies.
+    const unitId = `unit_imp_${slug(unitNum)}`;
+    const tid = `ten_imp_${slug(unitNum)}`;
     const rent = num(row.rent);
     const isShop = /محل|shop|تجاري/i.test(unitNum);
 
@@ -263,7 +266,8 @@ export function buildIncomingRecords(
       phone,
       email: '',
       unitId,
-      moveInDate: (row.contractStart || now.slice(0, 10)).slice(0, 10),
+      // Real date only — never invent today's date when Source has none.
+      moveInDate: (row.contractStart || '').slice(0, 10),
       portalToken: portal.token,
       portalUrl: portal.url,
       qrData: portal.qrData,
@@ -272,7 +276,7 @@ export function buildIncomingRecords(
 
     // WP-1: no 10-contract cap — one contract per operational row.
     contracts.push({
-      id: `ct_imp_${propId}_${slug(unitNum)}`,
+      id: `ct_imp_${slug(unitNum)}`,
       number: (row.contractNumber || `IMP-${unitNum}`).trim(),
       tenantId: tid,
       unitId,
@@ -284,11 +288,11 @@ export function buildIncomingRecords(
       specialTerms: lang === 'ar' ? 'من اعتماد الاستيراد' : 'From import apply',
     });
 
-    // Payment ledger + paid payments from real months.
+    // Payment ledger + paid payments from real months (stable ids by unit+month).
     row.months.forEach((mth, mi) => {
       const monthKey = mth.year && mth.month ? `${mth.year}-${String(mth.month).padStart(2, '0')}` : slug(mth.label) || `m${mi}`;
       ledger.push({
-        id: `ldg_${aid}_${slug(unitNum)}_${monthKey}`,
+        id: `ldg_${slug(unitNum)}_${monthKey}`,
         tenantId: tid,
         unitId,
         unit: unitNum,
@@ -309,7 +313,7 @@ export function buildIncomingRecords(
           ? new Date(Date.UTC(mth.year, mth.month - 1, 1)).toISOString()
           : now;
         payments.push({
-          id: `pay_${aid}_${slug(unitNum)}_${monthKey}`,
+          id: `pay_${slug(unitNum)}_${monthKey}`,
           unitId,
           tenantId: tid,
           amount: mth.paid,
@@ -416,19 +420,22 @@ function mergeById<T extends { id: string }>(
   entity: ImportChangeEntry['entity'],
   changeLog: ImportChangeEntry[],
   labelOf: (r: T) => string,
+  preserve?: (prev: T, next: T) => T,
 ): T[] {
   const map = new Map(existing.map((r) => [r.id, r] as const));
   incoming.forEach((rec) => {
-    if (map.has(rec.id)) {
-      const before = JSON.stringify(map.get(rec.id));
-      const after = JSON.stringify(rec);
+    const prev = map.get(rec.id);
+    const merged = prev && preserve ? preserve(prev, rec) : rec;
+    if (prev) {
+      const before = JSON.stringify(prev);
+      const after = JSON.stringify(merged);
       if (before !== after) {
-        changeLog.push({ type: 'updated', entity, id: rec.id, detail: labelOf(rec) });
+        changeLog.push({ type: 'updated', entity, id: rec.id, detail: labelOf(merged) });
       }
     } else {
-      changeLog.push({ type: 'added', entity, id: rec.id, detail: labelOf(rec) });
+      changeLog.push({ type: 'added', entity, id: rec.id, detail: labelOf(merged) });
     }
-    map.set(rec.id, rec);
+    map.set(rec.id, merged);
   });
   return [...map.values()];
 }
@@ -442,8 +449,6 @@ export async function persistApplyFromAnalysis(
   lang: 'ar' | 'en',
 ): Promise<ApplyCommit> {
   const now = new Date().toISOString();
-  const incoming = buildIncomingRecords(analysis, lang);
-  const report = buildReport(analysis, lang);
 
   // Read existing OS to merge (never overwrite prior operational data).
   let prevState: PropertyOSState | null = null;
@@ -454,27 +459,50 @@ export async function persistApplyFromAnalysis(
     prevState = null;
   }
 
+  const incoming = buildIncomingRecords(analysis, lang, prevState?.property?.id);
+  const report = buildReport(analysis, lang);
   const changeLog: ImportChangeEntry[] = [];
 
   if (!prevState?.property) {
     changeLog.push({ type: 'added', entity: 'property', id: incoming.property.id, detail: incoming.property.name });
-  } else if (prevState.property.id !== incoming.property.id) {
-    changeLog.push({ type: 'updated', entity: 'property', id: prevState.property.id, detail: incoming.property.name });
+  } else if (prevState.property.id === incoming.property.id) {
+    // same property — district/period may refresh
+    if (prevState.property.district !== incoming.property.district) {
+      changeLog.push({ type: 'updated', entity: 'property', id: prevState.property.id, detail: incoming.property.name });
+    }
   }
 
   const units = mergeById(prevState?.units ?? [], incoming.units, 'unit', changeLog, (u) => `#${u.number}`);
-  const tenants = mergeById(prevState?.tenants ?? [], incoming.tenants, 'tenant', changeLog, (t) => t.name);
+  const tenants = mergeById(
+    prevState?.tenants ?? [],
+    incoming.tenants,
+    'tenant',
+    changeLog,
+    (t) => t.name,
+    // Keep portal credentials stable across re-apply of the same tenant id.
+    (prev, next) => ({
+      ...next,
+      portalToken: prev.portalToken || next.portalToken,
+      portalUrl: prev.portalUrl || next.portalUrl,
+      qrData: prev.qrData || next.qrData,
+      whatsAppMessage: prev.whatsAppMessage || next.whatsAppMessage,
+    }),
+  );
   const contracts = mergeById(prevState?.contracts ?? [], incoming.contracts, 'contract', changeLog, (c) => c.number);
   const ledger = mergeById(prevState?.paymentLedger ?? [], incoming.ledger, 'ledger', changeLog, (l) => `${l.unit} · ${l.monthLabel}`);
   const payments = mergeById(prevState?.payments ?? [], incoming.payments, 'payment', changeLog, (p) => `${p.amount}`);
 
-  // Keep existing property identity if present; refresh unit count to the merged union.
+  // Keep existing property identity if present; refresh unit count / period district.
   const property: PropertyRecord = prevState?.property
-    ? { ...prevState.property, unitCount: Math.max(prevState.property.unitCount, units.length) }
+    ? {
+        ...prevState.property,
+        district: incoming.property.district || prevState.property.district,
+        unitCount: Math.max(prevState.property.unitCount, units.length),
+      }
     : incoming.property;
 
   const summary = analysis.summary;
-  const batchId = `batch_${analysis.analysis_id.slice(0, 8)}`;
+  const batchId = `batch_${analysis.analysis_id.slice(0, 8)}_${Date.now().toString(36)}`;
   const added = changeLog.filter((c) => c.type === 'added').length;
   const updated = changeLog.filter((c) => c.type === 'updated').length;
 
