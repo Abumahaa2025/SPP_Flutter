@@ -6,6 +6,7 @@ import * as Haptics from 'expo-haptics';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
 import { GlassCard } from '@/src/components/GlassCard';
+import { SectionTitle } from '@/src/components/SectionTitle';
 import { colors, spacing, typography, radius } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
 import { signOutSession } from '@/src/services/beta-auth';
@@ -39,13 +40,13 @@ const ACCOUNT_ITEMS: MoreItem[] = [
   { key: 'billing', labelKey: 'more.billing', hintKey: 'more.billing.hint', icon: 'credit-card', route: '/billing', tone: 'gold' },
 ];
 
-function Section({ title, items, delayBase }: { title: string; items: MoreItem[]; delayBase: number }) {
+function Section({ title, items, delayBase, count }: { title: string; items: MoreItem[]; delayBase: number; count?: number }) {
   const { t, isRTL } = useI18n();
   const router = useRouter();
 
   return (
     <View style={styles.section}>
-      <Text style={[styles.sectionTitle, isRTL && styles.rtl]}>{title}</Text>
+      <SectionTitle eyebrow={title} count={count ?? items.length} />
       {items.map((item, i) => {
         const accent = item.tone === 'gold' ? colors.gold : item.tone === 'emerald' ? colors.emerald : colors.textDim;
         return (
@@ -131,11 +132,6 @@ export function MoreMenu() {
 
 const styles = StyleSheet.create({
   section: { marginBottom: spacing.lg, gap: spacing.sm },
-  sectionTitle: {
-    color: colors.textMuted, fontSize: 11, letterSpacing: 1.4,
-    textTransform: 'uppercase', fontWeight: typography.weight.semibold,
-    marginBottom: spacing.xs, paddingHorizontal: 2,
-  },
   rowCard: { marginBottom: 0, minHeight: 72 },
   row: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 56 },
   rowRtl: { flexDirection: 'row-reverse' },

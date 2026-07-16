@@ -7,6 +7,7 @@ import * as Haptics from 'expo-haptics';
 import { ScreenScaffold } from '@/src/components/ScreenScaffold';
 import { StoryScreenHeader } from '@/src/components/StoryScreenHeader';
 import { GlassCard } from '@/src/components/GlassCard';
+import { SectionTitle } from '@/src/components/SectionTitle';
 import { colors, spacing, typography, radius } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
 import {
@@ -120,7 +121,7 @@ export default function Billing() {
       </Pressable>
 
       <View style={{ marginTop: spacing.sm }}>
-        <Text style={styles.section}>{t('billing.plans').toUpperCase()}</Text>
+        <SectionTitle eyebrow={t('billing.plans')} count={PLANS.length} testID="billing-plans-title" />
         {PLANS.map((p, i) => {
           const isCurrent = p.key === billing.plan;
           return (
@@ -168,7 +169,11 @@ export default function Billing() {
 
       {/* Invoice history */}
       <View style={{ marginTop: spacing.xl }}>
-        <Text style={styles.section}>{t('billing.invoices').toUpperCase()}</Text>
+        <SectionTitle
+          eyebrow={t('billing.invoices')}
+          count={billing.invoices.length}
+          testID="billing-invoices-title"
+        />
         <GlassCard padding={0} radiusToken="lg" style={{ marginTop: spacing.sm }}>
           {billing.invoices.length === 0 ? (
             <View style={styles.emptyInv}>
