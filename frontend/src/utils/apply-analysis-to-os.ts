@@ -274,14 +274,15 @@ export function buildIncomingRecords(
       whatsAppMessage: buildWhatsAppWelcome(name, portal.url, lang),
     });
 
-    // WP-1: no 10-contract cap — one contract per operational row.
+    // WP-1/WP-3: one contract per operational row — never invent IMP-* numbers.
     contracts.push({
       id: `ct_imp_${slug(unitNum)}`,
-      number: (row.contractNumber || `IMP-${unitNum}`).trim(),
+      number: (row.contractNumber || '').trim(),
       tenantId: tid,
       unitId,
-      startDate: (row.contractStart || '').slice(0, 10),
-      endDate: (row.contractEnd || '').slice(0, 10),
+      // Keep full payload labels (period or ISO). Never invent Apply/today as dates.
+      startDate: (row.contractStart || '').trim(),
+      endDate: (row.contractEnd || '').trim(),
       rentAmount: rent,
       paymentType: 'monthly',
       depositAmount: 0,

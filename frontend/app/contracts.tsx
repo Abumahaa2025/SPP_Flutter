@@ -1,7 +1,17 @@
-import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
-import Animated, { FadeInDown } from 'react-native-reanimated';
-import { useRouter } from 'expo-router';
+/**
+ * WP-3 — Professional contracts registry from PropertyOS (Apply) only.
+ */
+import React, { useCallback, useMemo, useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  Pressable,
+  TextInput,
+  Modal,
+  ScrollView,
+} from 'react-native';
+import { useFocusEffect } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 
 import { ScreenScaffold } from '@/src/components/ScreenScaffold';
@@ -10,180 +20,290 @@ import { GlassCard } from '@/src/components/GlassCard';
 import { AliveEmpty } from '@/src/components/AliveEmpty';
 import { SetupProgressBar } from '@/src/components/SetupProgressBar';
 import { GuidedSetup } from '@/src/components/GuidedSetup';
-import { LocalContractCard } from '@/src/components/LocalSetupCards';
+import { OperationalContractCard } from '@/src/components/OperationalContractCard';
+import { OperationalTenantCard } from '@/src/components/OperationalTenantCard';
 import { usePropertyOS } from '@/src/hooks/usePropertyOS';
 import { useNotificationPrefs } from '@/src/hooks/usePreferences';
-import { api, type ContractT, type PropertyT, type TenantT } from '@/src/api/client';
 import { colors, spacing, typography, radius } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
-
-import { formatDate } from '@/src/utils/locale';
 import { AgentPermissionGate } from '@/src/components/AgentPermissionGate';
+import {
+  buildOperationalContractViews,
+  filterContractViews,
+  sortContractViews,
+  type ContractFilterId,
+  type ContractSortId,
+  type OperationalContractView,
+} from '@/src/utils/operational-contracts';
+import { useRouter } from 'expo-router';
 
-const statusMeta = (s: string, daysLeft: number, t: (k: any) => string) => {
-  if (s === 'expiring' && daysLeft < 0) return { color: colors.danger, key: 'contracts.status.expiredAgo' };
-  if (s === 'expiring') return { color: colors.gold, key: 'contracts.status.expiring' };
-  if (s === 'renewed') return { color: colors.emerald, key: 'contracts.status.renewed' };
-  return { color: colors.emerald, key: 'contracts.status.active' };
-};
+const FILTERS: { id: ContractFilterId; ar: string; en: string }[] = [
+  { id: 'all', ar: 'الكل', en: 'All' },
+  { id: 'arrears', ar: 'متأخرات', en: 'Arrears' },
+  { id: 'incomplete', ar: 'بيانات ناقصة', en: 'Incomplete' },
+  { id: 'has_legal_date', ar: 'تاريخ متوفر', en: 'Has legal date' },
+  { id: 'needs_review', ar: 'يحتاج مراجعة', en: 'Needs review' },
+];
 
-const daysUntil = (dateStr: string) => {
-  const d = new Date(dateStr).getTime();
-  const now = Date.now();
-  return Math.round((d - now) / (1000 * 60 * 60 * 24));
-};
+const SORTS: { id: ContractSortId; ar: string; en: string }[] = [
+  { id: 'arrears', ar: 'المتأخرات', en: 'Arrears' },
+  { id: 'unit', ar: 'الوحدة', en: 'Unit' },
+  { id: 'tenant', ar: 'المستأجر', en: 'Tenant' },
+  { id: 'end_date', ar: 'تاريخ النهاية', en: 'End date' },
+];
 
-const expiryLabel = (dateStr: string, status: string, t: (k: any) => string) => {
-  const days = daysUntil(dateStr);
-  if (status === 'expiring' && days < 0) {
-    return t('contracts.expiredAgo').replace('{days}', String(Math.abs(days)));
-  }
-  if (status === 'expiring' && days === 0) return t('contracts.expiresToday');
-  if (status === 'expiring' && days > 0) {
-    return t('contracts.expiresIn').replace('{days}', String(days));
-  }
-  if (status === 'active') {
-    return t('contracts.activeUntil').replace('{date}', formatDate(dateStr));
-  }
-  return null;
-};
+function fmtMoney(n: number, ar: boolean) {
+  const s = Number(n || 0).toLocaleString();
+  return ar ? `${s} ر.س` : `${s} SAR`;
+}
 
 export default function Contracts() {
-  const { t } = useI18n();
+  const { t, isRTL, lang } = useI18n();
+  const ar = lang === 'ar' || !!isRTL;
   const router = useRouter();
   const { countEnabled } = useNotificationPrefs();
-  const { state: osState } = usePropertyOS(countEnabled);
-  const [contracts, setContracts] = useState<ContractT[]>([]);
-  const [tenants, setTenants] = useState<TenantT[]>([]);
-  const [props, setProps] = useState<PropertyT[]>([]);
+  const { state: osState, reload: reloadOS } = usePropertyOS(countEnabled);
 
-  useEffect(() => {
-    api.contracts().then(setContracts).catch(() => {});
-    api.tenants().then(setTenants).catch(() => {});
-    api.properties().then(setProps).catch(() => {});
-  }, []);
+  const [query, setQuery] = useState('');
+  const [filter, setFilter] = useState<ContractFilterId>('all');
+  const [sort, setSort] = useState<ContractSortId>('unit');
+  const [selected, setSelected] = useState<OperationalContractView | null>(null);
 
-  const tenantMap = useMemo(() => new Map(tenants.map((x) => [x.id, x])), [tenants]);
-  const propMap = useMemo(() => new Map(props.map((x) => [x.id, x])), [props]);
+  useFocusEffect(
+    useCallback(() => {
+      void reloadOS();
+    }, [reloadOS]),
+  );
 
-  const sorted = useMemo(() => {
-    const order = { expiring: 0, active: 1, renewed: 2 } as Record<string, number>;
-    return contracts.slice().sort((a, b) => {
-      const oa = order[a.status] ?? 9;
-      const ob = order[b.status] ?? 9;
-      if (oa !== ob) return oa - ob;
-      return new Date(a.end).getTime() - new Date(b.end).getTime();
-    });
-  }, [contracts]);
+  const allViews = useMemo(() => buildOperationalContractViews(osState, ar), [osState, ar]);
+  const visible = useMemo(
+    () => sortContractViews(filterContractViews(allViews, query, filter), sort),
+    [allViews, query, filter, sort],
+  );
 
   return (
     <AgentPermissionGate perm="contracts">
-    <ScreenScaffold testID="contracts-screen">
-      <StoryScreenHeader question={t('page.q.contracts')} hint={t('contracts.sub')} showBack testID="contracts-header" />
-      <SetupProgressBar compact testID="contracts-setup-progress" />
-      <GuidedSetup flowId="tenant" defaultOpen={sorted.length === 0 && osState.contracts.length === 0} testID="contracts-guided" />
+      <ScreenScaffold testID="contracts-screen">
+        <StoryScreenHeader question={t('page.q.contracts')} hint={t('contracts.sub')} showBack testID="contracts-header" />
+        <SetupProgressBar compact testID="contracts-setup-progress" />
+        <GuidedSetup flowId="tenant" defaultOpen={allViews.length === 0} testID="contracts-guided" />
 
-      {osState.contracts.length > 0 ? (
-        <View style={{ marginBottom: spacing.md }}>
-          <Text style={styles.localBadge}>{t('result.localData' as any)}</Text>
-          {osState.contracts.map((c) => {
-            const tenant = osState.tenants.find((x) => x.id === c.tenantId);
-            const unit = osState.units.find((u) => u.id === c.unitId);
-            return (
-              <LocalContractCard key={c.id} contract={c} tenant={tenant} unit={unit} />
-            );
-          })}
-        </View>
-      ) : null}
+        {allViews.length > 0 ? (
+          <View style={{ marginBottom: spacing.lg }}>
+            <Text style={[styles.localBadge, isRTL && styles.rtl]}>
+              {t('result.localData' as any)} · {allViews.length} {ar ? 'عقد' : 'contracts'}
+            </Text>
 
-      {sorted.length === 0 && osState.contracts.length === 0 ? (
-        <AliveEmpty
-          title={t('alive.contracts.title')}
-          body={t('alive.contracts.body')}
-          nextHint={t('pos.progress.nextLine' as any).replace('{next}', t('pos.phase.contracts' as any))}
-          actionLabel={t('pos.progress.continue')}
-          onAction={() => router.push('/setup/property-os?phase=contracts' as any)}
-        />
-      ) : sorted.map((c, i) => {
-        const days = daysUntil(c.end);
-        const meta = statusMeta(c.status, days, t);
-        const tn = tenantMap.get(c.tenant_id);
-        const prop = propMap.get(c.property_id);
-        const expiry = expiryLabel(c.end, c.status, t);
-        const statusText = meta.key === 'contracts.status.expiredAgo'
-          ? t('contracts.status.expiredAgo').replace('{days}', String(Math.abs(days)))
-          : t(meta.key as 'contracts.status.active');
-        return (
-          <Animated.View key={c.id} entering={FadeInDown.duration(600).delay(60 * i)}>
-            <Pressable
-              testID={`contract-${c.id}`}
-              onPress={() => { Haptics.selectionAsync(); if (prop) router.push(`/property/${prop.id}` as any); }}
-              style={{ marginBottom: spacing.md }}
-            >
-              <GlassCard padding={22} radiusToken="lg" edge={c.status === 'expiring' ? 'gold' : 'neutral'}>
-                <View style={styles.topRow}>
-                  <View style={[styles.pill, { borderColor: meta.color + '55', backgroundColor: meta.color + '18' }]}>
-                    <View style={[styles.pillDot, { backgroundColor: meta.color }]} />
-                    <Text style={[styles.pillText, { color: meta.color }]}>{statusText}</Text>
-                  </View>
-                  <View style={{ flex: 1 }} />
-                  {expiry ? (
-                    <Text style={styles.days}>{expiry}</Text>
-                  ) : null}
-                </View>
-                <Text style={styles.title}>{tn?.name ?? prop?.name ?? t('contracts.title')}</Text>
-                <Text style={styles.sub}>{prop?.name ?? ''} · {t('contracts.unit')} {tn?.unit ?? '—'}</Text>
-                <View style={styles.hair} />
-                <View style={styles.metaRow}>
-                  <View style={styles.metaCol}>
-                    <Text style={styles.metaLabel}>{t('contracts.meta.start').toUpperCase()}</Text>
-                    <Text style={styles.metaValue}>{new Date(c.start).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}</Text>
-                  </View>
-                  <View style={styles.metaSep} />
-                  <View style={styles.metaCol}>
-                    <Text style={styles.metaLabel}>{t('contracts.meta.end').toUpperCase()}</Text>
-                    <Text style={styles.metaValue}>{new Date(c.end).toLocaleDateString(undefined, { month: 'short', year: 'numeric' })}</Text>
-                  </View>
-                  <View style={styles.metaSep} />
-                  <View style={styles.metaCol}>
-                    <Text style={styles.metaLabel}>{t('contracts.meta.monthly').toUpperCase()}</Text>
-                    <Text style={styles.metaValue}>AED {(c.monthly_rent / 1000).toFixed(1)}K</Text>
-                  </View>
-                </View>
-              </GlassCard>
-            </Pressable>
-          </Animated.View>
-        );
-      })}
-    </ScreenScaffold>
+            <TextInput
+              testID="contracts-search"
+              value={query}
+              onChangeText={setQuery}
+              placeholder={ar ? 'بحث: الاسم، الجوال، الوحدة، رقم العقد' : 'Search: name, phone, unit, contract no.'}
+              placeholderTextColor={colors.textSubtle}
+              style={[styles.search, isRTL && styles.rtl]}
+            />
+
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
+              {FILTERS.map((f) => {
+                const on = filter === f.id;
+                return (
+                  <Pressable
+                    key={f.id}
+                    testID={`contracts-filter-${f.id}`}
+                    onPress={() => { Haptics.selectionAsync(); setFilter(f.id); }}
+                    style={[styles.chip, on && styles.chipOn]}
+                  >
+                    <Text style={[styles.chipText, on && styles.chipTextOn]}>{ar ? f.ar : f.en}</Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.chipScroll}>
+              {SORTS.map((s) => {
+                const on = sort === s.id;
+                return (
+                  <Pressable
+                    key={s.id}
+                    testID={`contracts-sort-${s.id}`}
+                    onPress={() => { Haptics.selectionAsync(); setSort(s.id); }}
+                    style={[styles.chip, on && styles.chipOnSort]}
+                  >
+                    <Text style={[styles.chipText, on && styles.chipTextOn]}>
+                      {(ar ? 'ترتيب: ' : 'Sort: ') + (ar ? s.ar : s.en)}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </ScrollView>
+
+            {visible.map((v, i) => (
+              <OperationalContractCard
+                key={v.id}
+                view={v}
+                ar={ar}
+                rtl={!!isRTL}
+                delay={30 * Math.min(i, 12)}
+                testID={`os-contract-${v.id}`}
+                onPress={() => setSelected(v)}
+              />
+            ))}
+            {visible.length === 0 ? (
+              <Text style={[styles.emptyFilter, isRTL && styles.rtl]}>
+                {ar ? 'لا نتائج لهذا البحث/الفلتر' : 'No results for this search/filter'}
+              </Text>
+            ) : null}
+          </View>
+        ) : (
+          <AliveEmpty
+            title={t('alive.contracts.title')}
+            body={t('alive.contracts.body')}
+            nextHint={t('pos.progress.nextLine' as any).replace('{next}', t('pos.phase.contracts' as any))}
+            actionLabel={t('pos.progress.continue')}
+            onAction={() => router.push('/setup/property-os?phase=contracts' as any)}
+          />
+        )}
+
+        <Modal visible={!!selected} animationType="slide" transparent onRequestClose={() => setSelected(null)}>
+          <View style={styles.modalBackdrop}>
+            <View style={styles.modalSheet}>
+              <View style={[styles.modalHead, isRTL && styles.rowRtl]}>
+                <Text style={[styles.modalTitle, isRTL && styles.rtl]}>
+                  {ar ? 'تفاصيل العقد' : 'Contract detail'}
+                </Text>
+                <Pressable onPress={() => setSelected(null)} testID="contracts-detail-close">
+                  <Text style={styles.close}>{ar ? 'إغلاق' : 'Close'}</Text>
+                </Pressable>
+              </View>
+              <ScrollView contentContainerStyle={{ paddingBottom: 40 }}>
+                {selected ? (
+                  <>
+                    <Text style={[styles.section, isRTL && styles.rtl]}>{ar ? 'بطاقة المستأجر' : 'Tenant card'}</Text>
+                    {selected.tenant ? (
+                      <OperationalTenantCard
+                        tenant={selected.tenant}
+                        state={osState}
+                        testID={`contract-detail-tenant-${selected.tenantId}`}
+                      />
+                    ) : (
+                      <Text style={styles.muted}>Requires Source Support</Text>
+                    )}
+
+                    <Text style={[styles.section, isRTL && styles.rtl]}>{ar ? 'دفتر الأشهر' : 'Month ledger'}</Text>
+                    <GlassCard padding={14} radiusToken="md">
+                      {selected.ledger.length === 0 ? (
+                        <Text style={[styles.muted, isRTL && styles.rtl]}>Requires Source Support</Text>
+                      ) : (
+                        selected.ledger.map((L) => (
+                          <View key={L.id} style={[styles.ledgerRow, isRTL && styles.rowRtl]}>
+                            <Text style={[styles.ledgerLabel, isRTL && styles.rtl]}>{L.monthLabel || L.monthKey}</Text>
+                            <Text style={styles.ledgerVal}>
+                              {fmtMoney(L.due, ar)} / {fmtMoney(L.paid, ar)} / {fmtMoney(L.remaining, ar)} · {L.statusLabel || L.status}
+                            </Text>
+                          </View>
+                        ))
+                      )}
+                    </GlassCard>
+
+                    <Text style={[styles.section, isRTL && styles.rtl]}>{ar ? 'بيانات الوحدة' : 'Unit data'}</Text>
+                    <GlassCard padding={14} radiusToken="md">
+                      {selected.unit ? (
+                        <>
+                          <Text style={[styles.unitLine, isRTL && styles.rtl]}>
+                            {ar ? 'رقم الوحدة' : 'Unit'}: {selected.unit.number}
+                          </Text>
+                          <Text style={[styles.unitLine, isRTL && styles.rtl]}>
+                            {ar ? 'الحالة' : 'Status'}: {selected.unit.status}
+                          </Text>
+                          <Text style={[styles.unitLine, isRTL && styles.rtl]}>
+                            {ar ? 'الإيجار' : 'Rent'}: {fmtMoney(selected.unit.rentAmount, ar)}
+                          </Text>
+                          <Text style={[styles.unitLine, isRTL && styles.rtl]}>
+                            {ar ? 'النوع' : 'Type'}: {selected.unit.type}
+                          </Text>
+                        </>
+                      ) : (
+                        <Text style={styles.muted}>Requires Source Support</Text>
+                      )}
+                    </GlassCard>
+                  </>
+                ) : null}
+              </ScrollView>
+            </View>
+          </View>
+        </Modal>
+      </ScreenScaffold>
     </AgentPermissionGate>
   );
 }
 
 const styles = StyleSheet.create({
   localBadge: {
-    color: colors.gold, fontSize: 10, letterSpacing: 1.2, textTransform: 'uppercase',
-    marginBottom: spacing.sm, fontWeight: typography.weight.semibold,
+    color: colors.gold,
+    fontSize: 10,
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    marginBottom: spacing.sm,
+    fontWeight: typography.weight.semibold,
   },
-  topRow: { flexDirection: 'row', alignItems: 'center' },
-  pill: {
-    flexDirection: 'row', alignItems: 'center', gap: 6,
-    paddingHorizontal: 10, paddingVertical: 5,
+  rtl: { writingDirection: 'rtl', textAlign: 'right' },
+  rowRtl: { flexDirection: 'row-reverse' },
+  search: {
+    backgroundColor: 'rgba(255,255,255,0.04)',
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    borderRadius: radius.md,
+    color: colors.text,
+    paddingHorizontal: 14,
+    paddingVertical: 12,
+    fontSize: 14,
+    marginBottom: spacing.sm,
+  },
+  chipScroll: { marginBottom: spacing.sm },
+  chip: {
+    paddingHorizontal: 12,
+    paddingVertical: 8,
     borderRadius: radius.pill,
     borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    marginRight: 8,
+    backgroundColor: 'rgba(255,255,255,0.03)',
   },
-  pillDot: { width: 5, height: 5, borderRadius: 3 },
-  pillText: { fontSize: 10, letterSpacing: 1.4, fontWeight: typography.weight.medium },
-  days: {
-    color: colors.gold, fontSize: 15, fontWeight: typography.weight.semibold,
-    letterSpacing: -0.2, fontVariant: ['tabular-nums'],
+  chipOn: { borderColor: colors.goldEdge, backgroundColor: colors.goldSoft },
+  chipOnSort: { borderColor: colors.emeraldEdge, backgroundColor: colors.emeraldSoft },
+  chipText: { color: colors.textMuted, fontSize: 12 },
+  chipTextOn: { color: colors.text, fontWeight: typography.weight.semibold },
+  emptyFilter: { color: colors.textMuted, fontSize: 13, marginTop: spacing.md },
+  modalBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.55)', justifyContent: 'flex-end' },
+  modalSheet: {
+    maxHeight: '88%',
+    backgroundColor: colors.bgElevated || '#141820',
+    borderTopLeftRadius: radius.lg,
+    borderTopRightRadius: radius.lg,
+    padding: spacing.md,
   },
-  title: { color: colors.text, fontSize: 17, fontWeight: typography.weight.semibold, letterSpacing: -0.3, marginTop: 14 },
-  sub: { color: colors.textMuted, fontSize: 13, marginTop: 4 },
-  hair: { height: StyleSheet.hairlineWidth, backgroundColor: colors.divider, marginTop: spacing.md },
-  metaRow: { flexDirection: 'row', marginTop: 14, alignItems: 'center', gap: 12 },
-  metaCol: { flex: 1 },
-  metaSep: { width: StyleSheet.hairlineWidth, height: 26, backgroundColor: colors.divider },
-  metaLabel: { color: colors.textMuted, fontSize: 9.5, letterSpacing: 1.4, fontWeight: typography.weight.medium },
-  metaValue: { color: colors.text, fontSize: 13, marginTop: 4, fontWeight: typography.weight.semibold, letterSpacing: -0.1, fontVariant: ['tabular-nums'] },
+  modalHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.sm },
+  modalTitle: { color: colors.text, fontSize: 16, fontWeight: typography.weight.semibold },
+  close: { color: colors.gold, fontSize: 14 },
+  section: {
+    color: colors.gold,
+    fontSize: 11,
+    letterSpacing: 1.1,
+    textTransform: 'uppercase',
+    marginTop: spacing.md,
+    marginBottom: spacing.sm,
+    fontWeight: typography.weight.semibold,
+  },
+  muted: { color: colors.textMuted, fontSize: 13 },
+  ledgerRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    gap: 10,
+    paddingVertical: 8,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.divider,
+  },
+  ledgerLabel: { color: colors.text, fontSize: 13, flex: 1 },
+  ledgerVal: { color: colors.textMuted, fontSize: 11, flexShrink: 1, textAlign: 'left' },
+  unitLine: { color: colors.text, fontSize: 13, marginBottom: 6 },
 });
