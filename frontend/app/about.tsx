@@ -4,8 +4,9 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import { ScreenScaffold } from '@/src/components/ScreenScaffold';
 import { StoryScreenHeader } from '@/src/components/StoryScreenHeader';
 import { GlassCard } from '@/src/components/GlassCard';
+import { SectionTitle } from '@/src/components/SectionTitle';
 import { BrandOrb, Wordmark } from '@/src/components/BrandOrb';
-import { colors, spacing, typography } from '@/src/theme';
+import { colors, spacing, typography, cardPadding } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
 
 export default function About() {
@@ -35,8 +36,8 @@ export default function About() {
       </Animated.View>
 
       <View style={{ marginTop: spacing.lg }}>
-        <GlassCard padding={22} radiusToken="lg">
-          <Text style={styles.section}>{t('about.platform').toUpperCase()}</Text>
+        <SectionTitle eyebrow={t('about.platform')} testID="about-platform-title" />
+        <GlassCard padding={cardPadding.standard} radiusToken="lg">
           {items.map((it, i) => (
             <View key={it.label}>
               <View style={[styles.row, isRTL && styles.rowRtl]}>
@@ -60,7 +61,6 @@ export default function About() {
 const styles = StyleSheet.create({
   tagline: { color: colors.textSubtle, fontSize: 10, letterSpacing: 2.5, fontWeight: typography.weight.medium },
   mission: { color: colors.textDim, fontSize: 14, lineHeight: 21, textAlign: 'center', marginTop: 12, maxWidth: 300 },
-  section: { color: colors.textMuted, fontSize: 10.5, letterSpacing: 2, textTransform: 'uppercase', fontWeight: typography.weight.medium, marginBottom: 12 },
   row: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12 },
   rowRtl: { flexDirection: 'row-reverse' },
   rowLabel: { color: colors.textDim, fontSize: 13.5 },

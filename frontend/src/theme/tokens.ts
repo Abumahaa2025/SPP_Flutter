@@ -66,6 +66,39 @@ export const radius = {
   pill: 999,
 } as const;
 
+/**
+ * Icon size scale — enforces one visual rhythm across every screen.
+ *
+ * Existing Beta 18 usage tends to be size 12/14/16/18 · this scale
+ * codifies those exact values so we stop guessing.
+ *   xs (11) · pill metadata / footer icons
+ *   sm (14) · card metadata / secondary CTAs
+ *   md (16) · standard action icons (already the Beta 18 default)
+ *   lg (18) · feature icons in header chips
+ *   xl (22) · hero / illustrative icons
+ */
+export const iconSize = {
+  xs: 11,
+  sm: 14,
+  md: 16,
+  lg: 18,
+  xl: 22,
+} as const;
+
+/**
+ * Card padding scale — matches the padding values already scattered
+ * across Beta 18 (18 · 20 · 22 · 26). Adopting this scale is optional
+ * and non-breaking; every existing `padding={20}` keeps working as-is.
+ *   compact (18) · list rows / dense tiles
+ *   standard (22) · default informational card
+ *   hero (28) · headline card at the top of a screen
+ */
+export const cardPadding = {
+  compact: 18,
+  standard: 22,
+  hero: 28,
+} as const;
+
 export const typography = {
   // Strict scale from design spec.
   display: 32,
@@ -140,5 +173,5 @@ export const motion = {
   breath: 2800,
 };
 
-export const theme = { colors, spacing, radius, typography, shadows, motion };
+export const theme = { colors, spacing, radius, typography, shadows, motion, iconSize, cardPadding };
 export default theme;
