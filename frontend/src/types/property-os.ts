@@ -101,12 +101,16 @@ export type PaymentRecord = {
   unitId: string;
   tenantId: string;
   amount: number;
+  /** Real payment timestamp only — never Apply/import time. */
   paidAt: string;
   method?: PaymentMethod;
+  /** Links to ledger month when payment is tied to a statement month. */
+  monthKey?: string;
 };
 
-/** Per-tenant, per-month operational ledger row (real due/paid/remaining from analysis). */
+/** Per-tenant, per-month operational ledger row (real due/paid/remaining from analysis months[]). */
 export type PaymentLedgerEntry = {
+  /** Stable: ldg_{tenantId}_{year}-{month} */
   id: string;
   tenantId: string;
   unitId: string;
@@ -119,13 +123,17 @@ export type PaymentLedgerEntry = {
   due: number;
   paid: number;
   remaining: number;
+  /** Original status from months[] in analysis payload. */
   status: string;
   statusLabel?: string;
-  source: 'tenant_card' | 'late_payments';
+  source: 'tenant_card' | 'late_payments' | 'registered_payment' | 'settlement';
+  lastUpdatedAt?: string;
+  importBatchId?: string;
+  conflictNote?: string;
 };
 
 export type ImportChangeEntry = {
-  type: 'added' | 'updated';
+  type: 'added' | 'updated' | 'conflict';
   entity: 'property' | 'unit' | 'tenant' | 'contract' | 'ledger' | 'payment';
   id: string;
   detail?: string;
@@ -152,7 +160,7 @@ export type ImportBatch = {
     ledgerEntries: number;
     payments: number;
   };
-  changeCounts: { added: number; updated: number };
+  changeCounts: { added: number; updated: number; conflicts?: number };
   dataStatus?: string;
   maintenance: ImportBatchMaintenance;
   changeLog: ImportChangeEntry[];

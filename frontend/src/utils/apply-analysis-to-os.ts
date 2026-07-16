@@ -38,6 +38,15 @@ function slug(v: string) {
   return String(v || '').trim().replace(/\s+/g, '_').replace(/[^\w\u0600-\u06FF-]/g, '') || 'x';
 }
 
+/** WP-4 stable ledger key: tenantId + year-month (never unit-only). */
+export function ledgerStableId(tenantId: string, monthKey: string) {
+  return `ldg_${tenantId}_${monthKey}`;
+}
+
+function ledgerMergeKey(e: Pick<PaymentLedgerEntry, 'tenantId' | 'monthKey'>) {
+  return `${e.tenantId}|${e.monthKey}`;
+}
+
 /** Rich operational row assembled from every real source in the payload. */
 type OpRow = {
   unit: string;
@@ -172,7 +181,7 @@ export type ApplyCommit = {
   ledger_entries?: number;
   payments?: number;
   import_batch_id?: string;
-  change_counts?: { added: number; updated: number };
+  change_counts?: { added: number; updated: number; conflicts?: number };
   summary?: {
     properties?: number;
     units?: number;
@@ -289,11 +298,11 @@ export function buildIncomingRecords(
       specialTerms: lang === 'ar' ? 'من اعتماد الاستيراد' : 'From import apply',
     });
 
-    // Payment ledger + paid payments from real months (stable ids by unit+month).
+    // Payment ledger from real months[] — WP-4: no synthesized PaymentRecord rows.
     row.months.forEach((mth, mi) => {
       const monthKey = mth.year && mth.month ? `${mth.year}-${String(mth.month).padStart(2, '0')}` : slug(mth.label) || `m${mi}`;
       ledger.push({
-        id: `ldg_${slug(unitNum)}_${monthKey}`,
+        id: ledgerStableId(tid, monthKey),
         tenantId: tid,
         unitId,
         unit: unitNum,
@@ -307,21 +316,8 @@ export function buildIncomingRecords(
         remaining: mth.remaining,
         status: mth.status,
         statusLabel: mth.statusLabel,
-        source: mth.source,
+        source: mth.source === 'late_payments' ? 'late_payments' : 'tenant_card',
       });
-      if (mth.paid > 0) {
-        const paidAt = mth.year && mth.month
-          ? new Date(Date.UTC(mth.year, mth.month - 1, 1)).toISOString()
-          : now;
-        payments.push({
-          id: `pay_${slug(unitNum)}_${monthKey}`,
-          unitId,
-          tenantId: tid,
-          amount: mth.paid,
-          paidAt,
-          method: 'transfer',
-        });
-      }
     });
   });
 
@@ -415,6 +411,56 @@ export function buildPropertyOSFromAnalysis(
   };
 }
 
+function mergePaymentLedger(
+  existing: PaymentLedgerEntry[],
+  incoming: PaymentLedgerEntry[],
+  changeLog: ImportChangeEntry[],
+  batchId: string,
+  now: string,
+  lang: 'ar' | 'en',
+): PaymentLedgerEntry[] {
+  const map = new Map<string, PaymentLedgerEntry>();
+  for (const e of existing) {
+    map.set(ledgerMergeKey(e), { ...e, id: ledgerStableId(e.tenantId, e.monthKey) });
+  }
+  for (const raw of incoming) {
+    const rec: PaymentLedgerEntry = {
+      ...raw,
+      id: ledgerStableId(raw.tenantId, raw.monthKey),
+      lastUpdatedAt: now,
+      importBatchId: batchId,
+    };
+    const key = ledgerMergeKey(rec);
+    const prev = map.get(key);
+    const label = `${rec.unit} · ${rec.monthLabel}`;
+    if (!prev) {
+      changeLog.push({ type: 'added', entity: 'ledger', id: rec.id, detail: label });
+      map.set(key, rec);
+      continue;
+    }
+    const amountsChanged =
+      Math.abs((prev.due || 0) - (rec.due || 0)) > 0.009 ||
+      Math.abs((prev.paid || 0) - (rec.paid || 0)) > 0.009 ||
+      Math.abs((prev.remaining || 0) - (rec.remaining || 0)) > 0.009;
+    const merged: PaymentLedgerEntry = {
+      ...rec,
+      conflictNote: amountsChanged
+        ? lang === 'ar'
+          ? `تعارض: مستحق ${prev.due}→${rec.due} · مدفوع ${prev.paid}→${rec.paid} · متبقي ${prev.remaining}→${rec.remaining}`
+          : `Conflict: due ${prev.due}→${rec.due} · paid ${prev.paid}→${rec.paid} · rem ${prev.remaining}→${rec.remaining}`
+        : prev.conflictNote,
+    };
+    if (amountsChanged) {
+      changeLog.push({ type: 'conflict', entity: 'ledger', id: merged.id, detail: label });
+      changeLog.push({ type: 'updated', entity: 'ledger', id: merged.id, detail: label });
+    } else if (JSON.stringify(prev) !== JSON.stringify(merged)) {
+      changeLog.push({ type: 'updated', entity: 'ledger', id: merged.id, detail: label });
+    }
+    map.set(key, merged);
+  }
+  return [...map.values()];
+}
+
 function mergeById<T extends { id: string }>(
   existing: T[],
   incoming: T[],
@@ -490,7 +536,15 @@ export async function persistApplyFromAnalysis(
     }),
   );
   const contracts = mergeById(prevState?.contracts ?? [], incoming.contracts, 'contract', changeLog, (c) => c.number);
-  const ledger = mergeById(prevState?.paymentLedger ?? [], incoming.ledger, 'ledger', changeLog, (l) => `${l.unit} · ${l.monthLabel}`);
+  const batchId = `batch_${analysis.analysis_id.slice(0, 8)}_${Date.now().toString(36)}`;
+  const ledger = mergePaymentLedger(
+    prevState?.paymentLedger ?? [],
+    incoming.ledger,
+    changeLog,
+    batchId,
+    now,
+    lang,
+  );
   const payments = mergeById(prevState?.payments ?? [], incoming.payments, 'payment', changeLog, (p) => `${p.amount}`);
 
   // Keep existing property identity if present; refresh unit count / period district.
@@ -503,9 +557,9 @@ export async function persistApplyFromAnalysis(
     : incoming.property;
 
   const summary = analysis.summary;
-  const batchId = `batch_${analysis.analysis_id.slice(0, 8)}_${Date.now().toString(36)}`;
   const added = changeLog.filter((c) => c.type === 'added').length;
   const updated = changeLog.filter((c) => c.type === 'updated').length;
+  const conflicts = changeLog.filter((c) => c.type === 'conflict').length;
 
   const batch: ImportBatch = {
     id: batchId,
@@ -521,7 +575,7 @@ export async function persistApplyFromAnalysis(
       ledgerEntries: incoming.ledger.length,
       payments: incoming.payments.length,
     },
-    changeCounts: { added, updated },
+    changeCounts: { added, updated, conflicts },
     dataStatus: summary?.data_status?.overall,
     maintenance: {
       count: num(summary?.maintenance?.count ?? summary?.maintenance_count),
@@ -587,7 +641,7 @@ export async function persistApplyFromAnalysis(
     ledger_entries: incoming.ledger.length,
     payments: incoming.payments.length,
     import_batch_id: batchId,
-    change_counts: { added, updated },
+    change_counts: { added, updated, conflicts },
     summary: summary
       ? {
           ...summary,
