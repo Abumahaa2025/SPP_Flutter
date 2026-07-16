@@ -1112,6 +1112,7 @@ async def upload_apply_analysis(req: UploadApplyRequest):
             "contracts": len(commit.get("contracts") or []),
             "reports": len(commit.get("reports") or []),
             "source": commit.get("source"),
+            "summary": commit.get("summary") or {},
         },
     }
 

@@ -65,6 +65,19 @@ export type ApplyCommit = {
   report_id: string;
   period?: string;
   success_message?: string;
+  summary?: {
+    properties?: number;
+    units?: number;
+    tenants?: number;
+    contracts?: number;
+    rents?: number;
+    collected?: number;
+    remaining?: number;
+    late_tenants?: number;
+    contracts_expired?: number;
+    contracts_expiring_soon?: number;
+    gaps?: number;
+  };
 };
 
 export function buildPropertyOSFromAnalysis(
@@ -153,6 +166,23 @@ export function buildPropertyOSFromAnalysis(
   // Ensure unitCount matches materialised units
   property.unitCount = Math.max(property.unitCount, units.length);
 
+  const summary = analysis.summary || {
+    properties: 1,
+    units: m.units || units.length,
+    tenants: tenants.length,
+    contracts: contracts.length,
+    rents: m.rents ?? m.total_revenue_annual ?? 0,
+    collected: m.collected ?? 0,
+    remaining: m.remaining ?? 0,
+    late_tenants: m.late_tenants ?? 0,
+    late_value: m.late_value ?? 0,
+    contracts_expired: m.contracts_expired ?? 0,
+    contracts_expiring_soon: m.contracts_expiring_soon ?? 0,
+    missing_phone: m.missing_phone ?? 0,
+    missing_contract: m.missing_contract ?? 0,
+    gaps: m.gaps ?? 0,
+  };
+
   const report: ReportT = {
     id: analysis.analysis_id,
     kind: 'monthly',
@@ -190,6 +220,13 @@ export function buildPropertyOSFromAnalysis(
       report_id: report.id,
       period,
       success_message: analysis.success_message,
+      summary: {
+        ...summary,
+        properties: summary.properties ?? 1,
+        units: units.length,
+        tenants: tenants.length,
+        contracts: contracts.length,
+      },
     },
   };
 }

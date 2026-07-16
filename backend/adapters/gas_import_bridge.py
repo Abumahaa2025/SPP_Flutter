@@ -21,6 +21,8 @@ from .koil import (
     run_koil_understanding,
     snapshot_from_gas_report,
 )
+from .koil.koil_report_bridge import build_executive_brief, build_unified_summary, enrich_metrics_for_summary
+from .koil.consistency_gate import apply_gate_to_reasoning, run_consistency_gate
 
 logger = logging.getLogger(__name__)
 
@@ -335,12 +337,68 @@ def map_gas_report_to_portfolio(
         )
 
     analysis_id = batch_id
+    metrics = {
+        "properties": int(stats.get("properties") or 1),
+        "units": unique_units,
+        "tenants": len(active),
+        "occupancy_pct": occupancy_pct,
+        "occupied_units": occupied,
+        "vacant_units": vacant,
+        "residential_units": apartment_count or max(0, unique_units - shop_count),
+        "commercial_units": shop_count,
+        "total_revenue_annual": round(expected),
+        "collected": round(collected),
+        "remaining": round(remaining),
+        "total_expenses": round(total_expenses),
+        "contracts_expired": int(stats.get("contractsExpired") or stats.get("expiredContracts") or 0),
+        "contracts_expiring_soon": int(stats.get("contractsExpiringSoon") or stats.get("expiringContracts") or 0),
+        "late_tenants": late_tenant_count,
+        "late_value": round(total_unpaid),
+        "maintenance_open": len(dr.get("maintenanceLog") or []),
+        "maintenance_done": max(0, month_count - 1),
+        "net_profit": round(net_profit),
+        "balance": round(net_profit * 0.4),
+        "files_analyzed": len(files),
+        "months_linked": month_count,
+        "departed_count": len(departed),
+        "newcomers_count": len(newcomers),
+        "collection_rate_pct": round(collected / expected * 100) if expected else 0,
+        "analysis_confidence_pct": confidence,
+    }
+    metrics = enrich_metrics_for_summary(metrics, property_knowledge)
+
+    consistency_gate = run_consistency_gate(
+        deep_stub_from_gas(report, files),
+        property_knowledge,
+        lang,
+    )
+    koil_reasoning = apply_gate_to_reasoning(koil_reasoning, consistency_gate, lang)
+    executive_brief = build_executive_brief(
+        property_knowledge,
+        koil_reasoning,
+        consistency_gate,
+        lang,
+        metrics=metrics,
+    )
+    summary = build_unified_summary(
+        metrics,
+        property_knowledge,
+        executive_brief,
+        consistency_gate,
+        executive_report,
+    )
+
     _import_sessions[analysis_id] = {
         "batch_id": batch_id,
         "files_meta": _to_gas_files_meta(files),
         "source": "gas",
         "lang": lang,
         "gas_mode": gas_payload.get("mode"),
+        "property_knowledge": property_knowledge,
+        "metrics": metrics,
+        "summary": summary,
+        "success_message": koil_reasoning.get("brief") or report.get("headline") or labels["success"].format(months=month_count),
+        "executive_brief": executive_brief,
     }
 
     return {
@@ -353,39 +411,15 @@ def map_gas_report_to_portfolio(
             {"key": "review", "label": labels["opt_review"]},
             {"key": "cancel", "label": labels["opt_cancel"]},
         ],
-        "metrics": {
-            "properties": int(stats.get("properties") or 1),
-            "units": unique_units,
-            "tenants": len(active),
-            "occupancy_pct": occupancy_pct,
-            "occupied_units": occupied,
-            "vacant_units": vacant,
-            "residential_units": apartment_count or max(0, unique_units - shop_count),
-            "commercial_units": shop_count,
-            "total_revenue_annual": round(expected),
-            "collected": round(collected),
-            "remaining": round(remaining),
-            "total_expenses": round(total_expenses),
-            "contracts_expired": 0,
-            "contracts_expiring_soon": 0,
-            "late_tenants": late_tenant_count,
-            "late_value": round(total_unpaid),
-            "maintenance_open": len(dr.get("maintenanceLog") or []),
-            "maintenance_done": max(0, month_count - 1),
-            "net_profit": round(net_profit),
-            "balance": round(net_profit * 0.4),
-            "files_analyzed": len(files),
-            "months_linked": month_count,
-            "departed_count": len(departed),
-            "newcomers_count": len(newcomers),
-            "collection_rate_pct": round(collected / expected * 100) if expected else 0,
-            "analysis_confidence_pct": confidence,
-        },
+        "metrics": metrics,
+        "summary": summary,
+        "executive_brief": executive_brief,
         "executive_report": executive_report,
         "late_payments": late_payments,
         "property_knowledge": property_knowledge,
         "koil_understanding": koil_understanding,
         "koil_reasoning": koil_reasoning,
+        "consistency_gate": consistency_gate,
         "month_comparison": month_cmp,
         "expense_by_type": [],
         "smart_decisions": smart_decisions[:8],
@@ -544,6 +578,17 @@ def build_local_apply_commit(analysis_id: str) -> Dict[str, Any]:
         "pages": 1,
         "accent": "gold",
         "source": "executive_report",
+        "summary": session.get("summary") or {},
+        "metrics": {
+            "units": int(metrics.get("units") or len(rows)),
+            "tenants": len(tenants),
+            "contracts": len(contracts),
+            "collected": metrics.get("collected"),
+            "remaining": metrics.get("remaining"),
+            "late_tenants": metrics.get("late_tenants"),
+            "rents": metrics.get("rents") or metrics.get("total_revenue_annual"),
+            "gaps": metrics.get("gaps"),
+        },
     }
     return {
         "ok": True,
@@ -555,6 +600,7 @@ def build_local_apply_commit(analysis_id: str) -> Dict[str, Any]:
         "reports": [report],
         "units": int(metrics.get("units") or len(rows)),
         "tenant_count": len(tenants),
+        "summary": session.get("summary") or {},
     }
 
 
@@ -594,6 +640,7 @@ def analyze_upload_with_gas_fallback(
         # Keep slim proof payload so Apply can materialise without re-running engines.
         "property_knowledge": payload.get("property_knowledge"),
         "metrics": payload.get("metrics"),
+        "summary": payload.get("summary"),
         "success_message": payload.get("success_message"),
         "executive_brief": payload.get("executive_brief"),
     }

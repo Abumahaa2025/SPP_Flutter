@@ -18,6 +18,8 @@ from adapters.koil.koil_report_bridge import (
     apply_koil_to_executive_report,
     apply_understanding_to_executive_report,
     build_executive_brief,
+    build_unified_summary,
+    enrich_metrics_for_summary,
     reasoning_to_smart_decisions,
 )
 from adapters.koil.consistency_gate import apply_gate_to_reasoning, run_consistency_gate
@@ -382,6 +384,7 @@ def analyze_upload_portfolio(
         "newcomers_count": len(newcomers),
         "collection_rate_pct": round(collected / expected * 100) if expected else 0,
     }
+    metrics = enrich_metrics_for_summary(metrics, property_knowledge)
 
     executive_brief = build_executive_brief(
         property_knowledge,
@@ -389,6 +392,13 @@ def analyze_upload_portfolio(
         consistency_gate,
         lang,
         metrics=metrics,
+    )
+    summary = build_unified_summary(
+        metrics,
+        property_knowledge,
+        executive_brief,
+        consistency_gate,
+        executive_report,
     )
 
     return {
@@ -406,6 +416,7 @@ def analyze_upload_portfolio(
             {"key": "cancel", "label": labels["opt_cancel"]},
         ],
         "metrics": metrics,
+        "summary": summary,
         "executive_brief": executive_brief,
         "executive_report": executive_report,
         "late_payments": late_payments,

@@ -26,6 +26,90 @@ export type PortfolioMetrics = {
   months_linked?: number;
   departed_count?: number;
   newcomers_count?: number;
+  /** Additive unified-summary fields (backend ≥ summary payload). */
+  contracts?: number;
+  contracts_count?: number;
+  rents?: number;
+  missing_phone?: number;
+  missing_contract?: number;
+  gaps?: number;
+};
+
+/** Unified owner summary — same numbers the analysis screen and Apply should share. */
+export type UnifiedPortfolioSummary = {
+  properties: number;
+  units: number;
+  tenants: number;
+  contracts: number;
+  rents: number;
+  collected: number;
+  remaining: number;
+  late_tenants: number;
+  late_value: number;
+  contracts_expired: number;
+  contracts_expiring_soon: number;
+  missing_phone: number;
+  missing_contract: number;
+  gaps: number;
+  occupancy_pct?: number;
+  collection_rate_pct?: number;
+  period?: string;
+  files_analyzed?: number;
+  months_linked?: number;
+  maintenance_count?: number;
+  maintenance_total?: number;
+  maintenance_open?: number;
+  paid_month_count?: number;
+  payment_month_rows?: number;
+  payments?: {
+    collected: number;
+    remaining: number;
+    expected: number;
+    collection_rate_pct: number;
+    months_linked: number;
+    paid_month_count: number;
+    payment_month_rows: number;
+    confirmed_late_month_count: number;
+  };
+  arrears?: {
+    late_tenants: number;
+    late_value: number;
+    confirmed_late_month_count: number;
+  };
+  maintenance?: {
+    count: number;
+    total: number;
+    open: number;
+  };
+  reports?: {
+    files_analyzed: number;
+    months_linked: number;
+    executive_ready: boolean;
+    section_count: number;
+    count: number;
+  };
+  gaps_detail?: {
+    total: number;
+    missing_phone: number;
+    missing_contract: number;
+    unknown_month_count: number;
+  };
+  data_status?: {
+    overall: 'confirmed' | 'needs_review' | 'incomplete' | 'conflicting' | string;
+    decision_status: string;
+    ledger_trust: string;
+    confirmed: number;
+    needs_review: number;
+    incomplete: number;
+    conflicting: number;
+    conflict_count: number;
+    unknown_month_count: number;
+    units_needs_review: number;
+    parse_errors: number;
+    files_without_content: number;
+    quality_warnings: number;
+    collection_recs_allowed: boolean;
+  };
 };
 
 export type LatePaymentTenantEntry = {
@@ -225,6 +309,8 @@ export type PortfolioAnalysis = {
   what_now_message: string;
   prompt_options: { key: string; label: string }[];
   metrics: PortfolioMetrics;
+  /** Additive unified numbers for summary screen — mirrors metrics + brief.engines. */
+  summary?: UnifiedPortfolioSummary | null;
   executive_brief?: ExecutiveBrief | null;
   executive_report: { title: string; year: number; sections: ReportSection[] };
   late_payments?: LatePaymentsReport | null;

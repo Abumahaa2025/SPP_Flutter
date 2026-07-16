@@ -416,21 +416,49 @@ def build_executive_brief(
     if critical_names:
         story_lines.append(("الحالات الحرجة: " if ar else "Critical cases: ") + " · ".join(critical_names))
 
+    props_n = int(metrics.get("properties") or 0)
+    tenants_n = int(metrics.get("tenants") or len(knowledge.get("tenants") or []) or 0)
+    contracts_n = int(
+        metrics.get("contracts")
+        or metrics.get("contracts_count")
+        or len(lc.get("active") or [])
+        or tenants_n
+        or 0
+    )
+    rents_n = float(metrics.get("rents") or expected or 0)
+    remaining_n = float(metrics.get("remaining") or max(0.0, expected - collected))
+    missing_phone_n = len(contracts.get("missing_phone") or [])
+    missing_contract_n = len(contracts.get("missing_contract") or [])
+    gaps_n = missing_phone_n + missing_contract_n + unknown_n
+
     key_numbers = [
+        {"label": "العقارات" if ar else "Properties", "value": str(props_n)},
+        {"label": "الوحدات" if ar else "Units", "value": str(total_units or "—")},
+        {"label": "المستأجرون" if ar else "Tenants", "value": str(tenants_n)},
+        {"label": "العقود" if ar else "Contracts", "value": str(contracts_n)},
         {
-            "label": "المتأخرون المؤكدون" if ar else "Confirmed late",
+            "label": "الإيجارات" if ar else "Rents",
+            "value": f"{rents_n:,.0f} ر.س" if ar else f"{rents_n:,.0f} SAR",
+        },
+        {
+            "label": "المحصل" if ar else "Collected",
+            "value": f"{collected:,.0f} ر.س" if ar else f"{collected:,.0f} SAR",
+        },
+        {
+            "label": "المتبقي" if ar else "Remaining",
+            "value": f"{remaining_n:,.0f} ر.س" if ar else f"{remaining_n:,.0f} SAR",
+        },
+        {
+            "label": "المتأخرون" if ar else "Late tenants",
             "value": str(late_n),
         },
         {
-            "label": "إجمالي المتأخرات" if ar else "Arrears total",
-            "value": f"{unpaid:,.0f} ر.س" if ar else f"{unpaid:,.0f} SAR",
+            "label": "عقود منتهية / قريبة" if ar else "Expired / expiring",
+            "value": f"{expired_n} / {expiring_n}",
         },
-        {"label": "التحصيل" if ar else "Collection", "value": f"{rate}%" if expected or rate else "—"},
-        {"label": "الإشغال" if ar else "Occupancy", "value": f"{occupancy}%"},
-        {"label": "الوحدات" if ar else "Units", "value": str(total_units or "—")},
         {
-            "label": "أشهر غير واضحة" if ar else "Unclear months",
-            "value": str(unknown_n),
+            "label": "النواقص" if ar else "Gaps",
+            "value": str(gaps_n),
         },
     ]
 
@@ -461,6 +489,7 @@ def build_executive_brief(
                 "rate_pct": rate,
                 "collected": round(collected, 2),
                 "expected": round(expected, 2),
+                "remaining": round(remaining_n, 2),
             },
             "late": {
                 "tenant_count": late_n,
@@ -477,16 +506,23 @@ def build_executive_brief(
             },
             "maintenance": {"count": maint_count, "total": round(maint_total, 2)},
             "contracts": {
+                "count": contracts_n,
                 "expired": expired_n,
                 "expiring_soon": expiring_n,
-                "missing_phone": len(contracts.get("missing_phone") or []),
-                "missing_contract": len(contracts.get("missing_contract") or []),
+                "missing_phone": missing_phone_n,
+                "missing_contract": missing_contract_n,
             },
             "quality": {"warning_count": len(quality.get("warnings") or [])},
             "tenant_cards": {"count": len(knowledge.get("tenants") or [])},
             "ledger_quality": {
                 "unknown_month_count": unknown_n,
                 "collection_recs_allowed": collection_ok,
+            },
+            "gaps": {
+                "missing_phone": missing_phone_n,
+                "missing_contract": missing_contract_n,
+                "unknown_month_count": unknown_n,
+                "total": gaps_n,
             },
         },
         "key_numbers": key_numbers,
@@ -499,7 +535,13 @@ def build_executive_brief(
         "top_risk": biggest_problem,
         "top_action": actions[0],
         "meta": {
+            "properties": props_n,
             "units": total_units,
+            "tenants": tenants_n,
+            "contracts": contracts_n,
+            "rents": round(rents_n, 2),
+            "collected": round(collected, 2),
+            "remaining": round(remaining_n, 2),
             "occupancy_pct": occupancy,
             "late_tenants": late_n,
             "late_total": unpaid,
@@ -507,9 +549,303 @@ def build_executive_brief(
             "maintenance_total": maint_total,
             "collection_rate_pct": rate,
             "contracts_expired": expired_n,
+            "contracts_expiring_soon": expiring_n,
+            "missing_phone": missing_phone_n,
+            "missing_contract": missing_contract_n,
+            "gaps": gaps_n,
             "unknown_month_count": unknown_n,
             "confirmed_moves": move_n,
         },
+    }
+
+
+def enrich_metrics_for_summary(
+    metrics: Optional[dict],
+    knowledge: Optional[dict] = None,
+) -> dict:
+    """Additive metrics fields for the unified owner summary screen (no UI contract break)."""
+    m = dict(metrics or {})
+    knowledge = knowledge or {}
+    lc = knowledge.get("lifecycle") or {}
+    contracts = knowledge.get("contracts") or {}
+    maint = knowledge.get("maintenance") or {}
+    active = list(lc.get("active") or [])
+    tenants_pk = list(knowledge.get("tenants") or [])
+
+    missing_phone = len(contracts.get("missing_phone") or [])
+    missing_contract = len(contracts.get("missing_contract") or [])
+    unknown_n = int((knowledge.get("ledger_quality") or {}).get("unknown_month_count") or 0)
+
+    if m.get("contracts") is None and m.get("contracts_count") is None:
+        m["contracts"] = len(active) or int(m.get("tenants") or len(tenants_pk) or 0)
+    m.setdefault("contracts_count", int(m.get("contracts") or 0))
+
+    if m.get("rents") is None:
+        m["rents"] = float(m.get("total_revenue_annual") or 0)
+
+    # Upload without prior portfolio still implies one property once units exist
+    # (matches Apply materialisation and GAS stats default).
+    if int(m.get("properties") or 0) == 0 and int(m.get("units") or 0) > 0:
+        m["properties"] = 1
+
+    if m.get("maintenance_count") is None and "count" in maint:
+        m["maintenance_count"] = int(maint.get("count") or 0)
+    if m.get("maintenance_total") is None and "total" in maint:
+        m["maintenance_total"] = float(maint.get("total") or 0)
+    if m.get("maintenance_open") is None and m.get("maintenance_count") is not None:
+        m["maintenance_open"] = int(m.get("maintenance_count") or 0)
+
+    # Recompute gaps only when knowledge carries gap sources; otherwise keep
+    # already-enriched metrics (build_unified_summary may re-enter without PK).
+    has_gap_source = bool(contracts) or "ledger_quality" in knowledge
+    if has_gap_source:
+        m["missing_phone"] = missing_phone
+        m["missing_contract"] = missing_contract
+        m["gaps"] = missing_phone + missing_contract + unknown_n
+    else:
+        m.setdefault("missing_phone", int(m.get("missing_phone") or 0))
+        m.setdefault("missing_contract", int(m.get("missing_contract") or 0))
+        if m.get("gaps") is None:
+            m["gaps"] = int(m["missing_phone"]) + int(m["missing_contract"])
+    return m
+
+
+def _first_present_int(*vals: object, default: int = 0) -> int:
+    for v in vals:
+        if v is not None:
+            try:
+                return int(v)
+            except (TypeError, ValueError):
+                continue
+    return default
+
+
+def _first_present_float(*vals: object, default: float = 0.0) -> float:
+    for v in vals:
+        if v is not None:
+            try:
+                return float(v)
+            except (TypeError, ValueError):
+                continue
+    return default
+
+
+def _derive_data_status(
+    *,
+    knowledge: dict,
+    brief: dict,
+    gate: Optional[dict],
+    gaps: int,
+) -> dict:
+    """Map real gate/ledger/quality signals — never invent demo statuses."""
+    gate = gate or {}
+    lq = knowledge.get("ledger_quality") or {}
+    quality = knowledge.get("quality") or {}
+    units_info = knowledge.get("units") or {}
+
+    conflict_count = _first_present_int(
+        gate.get("conflict_count"),
+        len(gate.get("conflicts") or []) if gate.get("conflicts") is not None else None,
+    )
+    decision_status = str(gate.get("decision_status") or brief.get("decision_status") or "ok")
+    unknown_months = _first_present_int(lq.get("unknown_month_count"))
+    parse_errors = len(quality.get("parse_errors") or [])
+    unread_files = len(quality.get("files_without_content") or [])
+    units_review = _first_present_int(units_info.get("needs_review_count"))
+    quality_warnings = len(quality.get("warnings") or [])
+    ledger_trust = str(lq.get("ledger_trust") or ("needs_review" if unknown_months else "ok"))
+
+    conflicting_n = conflict_count
+    if decision_status == "blocked_for_review" and conflicting_n == 0:
+        conflicting_n = 1
+    incomplete_n = unknown_months + parse_errors + unread_files + int(gaps or 0)
+    needs_review_n = units_review + quality_warnings + (1 if ledger_trust == "needs_review" else 0)
+    if brief.get("collection_recs_allowed") is False and unknown_months == 0:
+        needs_review_n += 1
+
+    confirmed_late = _first_present_int(lq.get("confirmed_late_month_count"))
+    paid_months = _first_present_int(lq.get("paid_month_count"))
+    confirmed_n = paid_months + confirmed_late
+
+    if conflicting_n > 0 or decision_status == "blocked_for_review":
+        overall = "conflicting"
+    elif incomplete_n > 0:
+        overall = "incomplete"
+    elif needs_review_n > 0:
+        overall = "needs_review"
+    else:
+        overall = "confirmed"
+
+    return {
+        "overall": overall,
+        "decision_status": decision_status,
+        "ledger_trust": ledger_trust,
+        "confirmed": confirmed_n,
+        "needs_review": needs_review_n,
+        "incomplete": incomplete_n,
+        "conflicting": conflicting_n,
+        "conflict_count": conflict_count,
+        "unknown_month_count": unknown_months,
+        "units_needs_review": units_review,
+        "parse_errors": parse_errors,
+        "files_without_content": unread_files,
+        "quality_warnings": quality_warnings,
+        "collection_recs_allowed": bool(
+            lq.get("collection_recs_allowed")
+            if lq.get("collection_recs_allowed") is not None
+            else brief.get("collection_recs_allowed", True)
+        ),
+    }
+
+
+def build_unified_summary(
+    metrics: Optional[dict] = None,
+    knowledge: Optional[dict] = None,
+    brief: Optional[dict] = None,
+    consistency_gate: Optional[dict] = None,
+    executive_report: Optional[dict] = None,
+) -> dict:
+    """Official unified summary contract — real analysis numbers only (no demo)."""
+    knowledge = knowledge or {}
+    m = enrich_metrics_for_summary(metrics, knowledge)
+    brief = brief or {}
+    eng = brief.get("engines") or {}
+    meta = brief.get("meta") or {}
+    lq = knowledge.get("ledger_quality") or {}
+    maint = knowledge.get("maintenance") or {}
+    report = executive_report or {}
+
+    properties = _first_present_int(m.get("properties"), meta.get("properties"))
+    units = _first_present_int(m.get("units"), meta.get("units"))
+    tenants = _first_present_int(m.get("tenants"), meta.get("tenants"))
+    contracts = _first_present_int(m.get("contracts"), m.get("contracts_count"), meta.get("contracts"))
+    rents = _first_present_float(m.get("rents"), meta.get("rents"), m.get("total_revenue_annual"))
+    collected = _first_present_float(
+        m.get("collected"), meta.get("collected"), (eng.get("collection") or {}).get("collected")
+    )
+    remaining = _first_present_float(
+        m.get("remaining"),
+        meta.get("remaining"),
+        (eng.get("collection") or {}).get("remaining"),
+        default=max(0.0, rents - collected),
+    )
+    late_tenants = _first_present_int(
+        m.get("late_tenants"), meta.get("late_tenants"), (eng.get("late") or {}).get("tenant_count")
+    )
+    late_value = _first_present_float(
+        m.get("late_value"), meta.get("late_total"), (eng.get("late") or {}).get("total_unpaid")
+    )
+    expired = _first_present_int(
+        m.get("contracts_expired"), meta.get("contracts_expired"), (eng.get("contracts") or {}).get("expired")
+    )
+    expiring = _first_present_int(
+        m.get("contracts_expiring_soon"),
+        meta.get("contracts_expiring_soon"),
+        (eng.get("contracts") or {}).get("expiring_soon"),
+    )
+    missing_phone = _first_present_int(
+        m.get("missing_phone"), meta.get("missing_phone"), (eng.get("gaps") or {}).get("missing_phone")
+    )
+    missing_contract = _first_present_int(
+        m.get("missing_contract"), meta.get("missing_contract"), (eng.get("gaps") or {}).get("missing_contract")
+    )
+    unknown_months = _first_present_int(
+        lq.get("unknown_month_count"), meta.get("unknown_month_count"), (eng.get("gaps") or {}).get("unknown_month_count")
+    )
+    gaps = _first_present_int(
+        m.get("gaps"),
+        meta.get("gaps"),
+        (eng.get("gaps") or {}).get("total"),
+        default=missing_phone + missing_contract + unknown_months,
+    )
+    paid_months = _first_present_int(lq.get("paid_month_count"))
+    payment_month_rows = _first_present_int(lq.get("total_month_rows"))
+    confirmed_late_months = _first_present_int(lq.get("confirmed_late_month_count"))
+    months_linked = _first_present_int(m.get("months_linked"))
+    files_analyzed = _first_present_int(m.get("files_analyzed"))
+    maintenance_count = _first_present_int(
+        m.get("maintenance_count"), meta.get("maintenance_count"), maint.get("count"), (eng.get("maintenance") or {}).get("count")
+    )
+    maintenance_total = _first_present_float(
+        m.get("maintenance_total"),
+        meta.get("maintenance_total"),
+        maint.get("total"),
+        (eng.get("maintenance") or {}).get("total"),
+        m.get("total_expenses"),
+    )
+    maintenance_open = _first_present_int(m.get("maintenance_open"), maintenance_count)
+    section_count = len(report.get("sections") or [])
+    occupancy = _first_present_float(m.get("occupancy_pct"), meta.get("occupancy_pct"))
+    collection_rate = _first_present_int(m.get("collection_rate_pct"), meta.get("collection_rate_pct"))
+    data_status = _derive_data_status(knowledge=knowledge, brief=brief, gate=consistency_gate, gaps=gaps)
+
+    payments = {
+        "collected": round(collected, 2),
+        "remaining": round(remaining, 2),
+        "expected": round(rents, 2),
+        "collection_rate_pct": collection_rate,
+        "months_linked": months_linked,
+        "paid_month_count": paid_months,
+        "payment_month_rows": payment_month_rows,
+        "confirmed_late_month_count": confirmed_late_months,
+    }
+    arrears = {
+        "late_tenants": late_tenants,
+        "late_value": round(late_value, 2),
+        "confirmed_late_month_count": confirmed_late_months,
+    }
+    maintenance = {
+        "count": maintenance_count,
+        "total": round(maintenance_total, 2),
+        "open": maintenance_open,
+    }
+    reports = {
+        "files_analyzed": files_analyzed,
+        "months_linked": months_linked,
+        "executive_ready": bool(brief.get("title") or section_count),
+        "section_count": section_count,
+        "count": 1 if (brief.get("title") or section_count) else 0,
+    }
+    gaps_detail = {
+        "total": gaps,
+        "missing_phone": missing_phone,
+        "missing_contract": missing_contract,
+        "unknown_month_count": unknown_months,
+    }
+
+    return {
+        # Flat core — stable contract for summary / Apply / future OS foundation
+        "properties": properties,
+        "units": units,
+        "tenants": tenants,
+        "contracts": contracts,
+        "rents": round(rents, 2),
+        "collected": round(collected, 2),
+        "remaining": round(remaining, 2),
+        "late_tenants": late_tenants,
+        "late_value": round(late_value, 2),
+        "contracts_expired": expired,
+        "contracts_expiring_soon": expiring,
+        "missing_phone": missing_phone,
+        "missing_contract": missing_contract,
+        "gaps": gaps,
+        "occupancy_pct": occupancy,
+        "collection_rate_pct": collection_rate,
+        "period": brief.get("period") or "",
+        "files_analyzed": files_analyzed,
+        "months_linked": months_linked,
+        "maintenance_count": maintenance_count,
+        "maintenance_total": round(maintenance_total, 2),
+        "maintenance_open": maintenance_open,
+        "paid_month_count": paid_months,
+        "payment_month_rows": payment_month_rows,
+        # Nested foundation blocks (same numbers — structured for OS builders)
+        "payments": payments,
+        "arrears": arrears,
+        "maintenance": maintenance,
+        "reports": reports,
+        "gaps_detail": gaps_detail,
+        "data_status": data_status,
     }
 
 
