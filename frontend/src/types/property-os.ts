@@ -105,6 +105,59 @@ export type PaymentRecord = {
   method?: PaymentMethod;
 };
 
+/** Per-tenant, per-month operational ledger row (real due/paid/remaining from analysis). */
+export type PaymentLedgerEntry = {
+  id: string;
+  tenantId: string;
+  unitId: string;
+  unit: string;
+  tenant: string;
+  monthKey: string;
+  monthLabel: string;
+  year?: number;
+  month?: number;
+  due: number;
+  paid: number;
+  remaining: number;
+  status: string;
+  statusLabel?: string;
+  source: 'tenant_card' | 'late_payments';
+};
+
+export type ImportChangeEntry = {
+  type: 'added' | 'updated';
+  entity: 'property' | 'unit' | 'tenant' | 'contract' | 'ledger' | 'payment';
+  id: string;
+  detail?: string;
+};
+
+export type ImportBatchMaintenance = {
+  count: number;
+  total: number;
+  /** Payload only carries aggregate maintenance — per-ticket records need Source support. */
+  note: string;
+};
+
+export type ImportBatch = {
+  id: string;
+  analysisId: string;
+  appliedAt: string;
+  source: string;
+  period?: string;
+  counts: {
+    properties: number;
+    units: number;
+    tenants: number;
+    contracts: number;
+    ledgerEntries: number;
+    payments: number;
+  };
+  changeCounts: { added: number; updated: number };
+  dataStatus?: string;
+  maintenance: ImportBatchMaintenance;
+  changeLog: ImportChangeEntry[];
+};
+
 export type PropertyOSState = {
   property: PropertyRecord | null;
   units: UnitRecord[];
@@ -116,6 +169,10 @@ export type PropertyOSState = {
   setupCompleted?: boolean;
   unitHistory?: UnitHistoryEntry[];
   payments?: PaymentRecord[];
+  /** WP-1: full per-month operational ledger materialised from analysis. */
+  paymentLedger?: PaymentLedgerEntry[];
+  lastImportAt?: string;
+  lastImportBatchId?: string;
   startedAt?: string;
 };
 
