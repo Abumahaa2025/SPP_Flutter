@@ -7,6 +7,7 @@ import { ScreenScaffold } from '@/src/components/ScreenScaffold';
 import { StoryScreenHeader } from '@/src/components/StoryScreenHeader';
 import { GlassCard } from '@/src/components/GlassCard';
 import { AliveEmpty } from '@/src/components/AliveEmpty';
+import { ActingAsBadge } from '@/src/components/ActingAsBadge';
 import { MaintenanceJourney } from '@/src/components/maintenance/MaintenanceJourney';
 import { MaintenanceTimeline } from '@/src/components/maintenance/MaintenanceTimeline';
 import { KeyboardAwareTextInput } from '@/src/components/KeyboardAwareTextInput';
@@ -62,6 +63,12 @@ export default function TenantPortalScreen() {
         question={`${t('opsv2.tenant.welcome' as any)}، ${tenant.name}`}
         hint={t('op.tenant.sub')}
         showBack
+      />
+
+      <ActingAsBadge
+        role="tenant"
+        displayName={tenant.name}
+        scope={`${t('op.tenant.unit')} ${unit?.number ?? '—'} · ${state.property?.name ?? ''}`}
       />
 
       <GlassCard padding={18} radiusToken="md" edge="gold">

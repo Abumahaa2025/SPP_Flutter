@@ -1,5 +1,6 @@
 import { Stack, useRouter, usePathname } from "expo-router";
 import * as SplashScreen from "expo-splash-screen";
+import * as Localization from "expo-localization";
 import { useEffect, useState } from "react";
 import { LogBox, View } from "react-native";
 import { SafeAreaProvider } from "react-native-safe-area-context";
@@ -16,6 +17,29 @@ import { isPathAllowedForPersona, personaHomeRoute } from "@/src/utils/role-scop
 LogBox.ignoreAllLogs(true);
 
 SplashScreen.preventAutoHideAsync();
+
+/**
+ * Detects the language SPP should start in when the user has NOT yet
+ * expressed an explicit preference (`spp.lang` unset).
+ *
+ * Rule (per user directive):
+ *   · If the device locale starts with `ar` (any Arabic script variant),
+ *     open in Arabic + RTL.
+ *   · Otherwise fall back to English.
+ *   · Any saved user preference always wins — this helper is only
+ *     consulted when there is no stored preference.
+ */
+function detectDeviceLang(): 'ar' | 'en' {
+  try {
+    const locales = Localization.getLocales?.() ?? [];
+    // Newer API returns a list; older API exposes .locale as a string.
+    const first = locales[0]?.languageTag ?? (Localization as any).locale ?? '';
+    if (typeof first === 'string' && first.toLowerCase().startsWith('ar')) return 'ar';
+  } catch {
+    /* fall through */
+  }
+  return 'en';
+}
 
 /**
  * Root layout — enforces the cold-start ritual:
@@ -35,10 +59,15 @@ export default function RootLayout() {
   const pathname = usePathname();
 
   // Restore language before rendering any screen.
+  //   1. Any explicit user preference (`spp.lang`) always wins — never override.
+  //   2. Otherwise, detect device locale via expo-localization (Arabic → RTL).
   useEffect(() => {
     (async () => {
-      const saved = await storage.getItem<'en' | 'ar'>('spp.lang', 'ar');
-      setLang(saved ?? 'ar');
+      const saved = await storage.getItem<'en' | 'ar' | null>('spp.lang', null);
+      const chosen: 'en' | 'ar' = saved === 'en' || saved === 'ar'
+        ? saved
+        : detectDeviceLang();
+      setLang(chosen);
       setLangReady(true);
     })();
   }, []);

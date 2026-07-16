@@ -113,6 +113,12 @@ export const opsV2En = {
   'opsv2.agent.denied': 'This action is outside your agent permissions.',
   'opsv2.agent.welcome': 'Welcome, {name}',
 
+  // Role badges — Batch 2 · portal role clarity
+  'role.badge.agent': 'Signed in as agent',
+  'role.badge.tech': 'Signed in as technician',
+  'role.badge.tenant': 'Signed in as tenant',
+  'role.badge.hint': 'You only see the data linked to your role. The owner never sees this view.',
+
   'maint.progress': 'Progress',
   'maint.eta': 'Expected arrival',
   'maint.minutes': 'min',
@@ -273,6 +279,12 @@ export const opsV2Ar = {
   'opsv2.agent.invalid': 'الرابط غير صالح أو غير مفعّل.',
   'opsv2.agent.denied': 'هذا الإجراء خارج صلاحيات الوكيل.',
   'opsv2.agent.welcome': 'مرحبًا، {name}',
+
+  // شارات الأدوار — وضوح الجلسة
+  'role.badge.agent': 'مسجَّل الدخول كوكيل',
+  'role.badge.tech': 'مسجَّل الدخول كفنّي',
+  'role.badge.tenant': 'مسجَّل الدخول كمستأجر',
+  'role.badge.hint': 'ترى فقط ما يخصّ دورك. المالك لا يرى هذه الشاشة.',
 
   'maint.progress': 'نسبة الإنجاز',
   'maint.eta': 'الوصول المتوقع',

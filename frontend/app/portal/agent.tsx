@@ -6,6 +6,7 @@ import { ScreenScaffold } from '@/src/components/ScreenScaffold';
 import { StoryScreenHeader } from '@/src/components/StoryScreenHeader';
 import { GlassCard } from '@/src/components/GlassCard';
 import { AliveEmpty } from '@/src/components/AliveEmpty';
+import { ActingAsBadge } from '@/src/components/ActingAsBadge';
 import { usePortalAccess } from '@/src/hooks/usePortalAccess';
 import { setActiveAgentSession } from '@/src/components/AgentPermissionGate';
 import { colors, spacing, typography } from '@/src/theme';
@@ -50,6 +51,8 @@ export default function AgentPortalScreen() {
         hint={agent.email}
         showBack
       />
+
+      <ActingAsBadge role="agent" displayName={agent.name} scope={agent.email} />
 
       <GlassCard padding={16} radiusToken="md" edge="gold">
         <Text style={[styles.section, isRTL && styles.rtl]}>{t('opsv2.portals.addAgent' as any)}</Text>

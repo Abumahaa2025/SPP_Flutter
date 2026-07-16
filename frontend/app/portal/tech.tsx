@@ -9,6 +9,7 @@ import { ScreenScaffold } from '@/src/components/ScreenScaffold';
 import { StoryScreenHeader } from '@/src/components/StoryScreenHeader';
 import { GlassCard } from '@/src/components/GlassCard';
 import { AliveEmpty } from '@/src/components/AliveEmpty';
+import { ActingAsBadge } from '@/src/components/ActingAsBadge';
 import { MaintenanceTimeline } from '@/src/components/maintenance/MaintenanceTimeline';
 import { KeyboardAwareTextInput } from '@/src/components/KeyboardAwareTextInput';
 import { usePropertyOS } from '@/src/hooks/usePropertyOS';
@@ -167,6 +168,14 @@ export default function TechPortalScreen() {
         hint={t('maint.techDashboard' as any)}
         showBack
       />
+
+      {tech ? (
+        <ActingAsBadge
+          role="tech"
+          displayName={tech.name}
+          scope={`${t('maint.techJobs' as any)}: ${tech.completedJobs ?? 0} · ${t('maint.techRating' as any)}: ${tech.avgRating ?? '—'}`}
+        />
+      ) : null}
 
       {tech ? (
         <GlassCard padding={14} radiusToken="md" edge="gold" style={{ marginBottom: spacing.md }}>
