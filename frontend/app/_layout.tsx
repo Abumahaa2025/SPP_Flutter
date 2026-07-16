@@ -84,6 +84,11 @@ export default function RootLayout() {
   }, [loaded, error, langReady]);
 
   // Cold-start routing: beta login → onboarding → home
+  //
+  // Deep-link allowlist (Batch 2 · role-portal fix):
+  // Portal QR links (/portal/agent, /portal/tech, /portal/tenant) and a
+  // handful of always-linkable info screens must survive cold start —
+  // otherwise a shared portal URL bounces the guest to the owner's home.
   useEffect(() => {
     if (routed) return;
     if (!langReady || !(loaded || error)) return;
@@ -92,6 +97,10 @@ export default function RootLayout() {
       const betaAuthed = await storage.getItem<boolean>('spp.betaAuthed', false);
       const onboarded = await storage.getItem<boolean>('spp.onboarded', false);
       const persona = await storage.getItem<string>('spp.betaPersona', '');
+
+      const isDeepLink =
+        pathname.startsWith('/portal/') ||
+        ['/support', '/about', '/billing', '/privacy', '/terms'].includes(pathname);
 
       let target = '/';
       if (betaMode && !betaAuthed) {
@@ -104,7 +113,7 @@ export default function RootLayout() {
         target = '/notifications';
       }
 
-      if (pathname !== target) router.replace(target as any);
+      if (!isDeepLink && pathname !== target) router.replace(target as any);
       setRouted(true);
     })();
   }, [langReady, loaded, error, routed, pathname, router]);
