@@ -27,11 +27,12 @@ type HubLink = {
 
 /** Daily operations only — Spec §3 / §5.5. Reports & connections live under More. */
 const LINKS: HubLink[] = [
-  { key: 'properties', icon: 'home', labelKey: 'op.owner.properties', hintKey: 'op.owner.properties.hint', route: '/portfolio', tone: 'gold' },
-  { key: 'units', icon: 'grid', labelKey: 'op.owner.units', hintKey: 'op.owner.units.hint', route: '/portfolio' },
+  { key: 'properties', icon: 'home', labelKey: 'op.owner.properties', hintKey: 'op.owner.properties.hint', route: '/operational/base?tab=properties', tone: 'gold' },
+  { key: 'units', icon: 'grid', labelKey: 'op.owner.units', hintKey: 'op.owner.units.hint', route: '/operational/base?tab=units' },
   { key: 'contracts', icon: 'file-text', labelKey: 'op.owner.contracts', hintKey: 'op.owner.contracts.hint', route: '/contracts', tone: 'gold' },
   { key: 'tenants', icon: 'users', labelKey: 'op.owner.tenants', hintKey: 'op.owner.tenants.hint', route: '/tenants' },
   { key: 'payments', icon: 'dollar-sign', labelKey: 'op.owner.payments', hintKey: 'op.owner.payments.hint', route: '/operational/payments', tone: 'emerald' },
+  { key: 'imports', icon: 'download', labelKey: 'op.owner.imports', hintKey: 'op.owner.imports.hint', route: '/operational/base?tab=imports', tone: 'gold' },
   { key: 'electricity', icon: 'zap', labelKey: 'op.owner.electricity', hintKey: 'op.owner.electricity.hint', route: '/sensors?utility=electricity', tone: 'gold' },
   { key: 'water', icon: 'droplet', labelKey: 'op.owner.water', hintKey: 'op.owner.water.hint', route: '/sensors?utility=water', tone: 'emerald' },
   { key: 'maintenance', icon: 'tool', labelKey: 'op.owner.maintenance', hintKey: 'op.owner.maintenance.hint', route: '/maintenance', tone: 'emerald' },
@@ -75,16 +76,38 @@ export default function Owner() {
 
       {state.property ? (
         <Animated.View entering={FadeInDown.duration(500)}>
-          <GlassCard padding={20} radiusToken="lg" edge="gold">
-            <Text style={[styles.propName, isRTL && styles.rtl]}>{state.property.name}</Text>
-            <Text style={[styles.propCity, isRTL && styles.rtl]}>{state.property.city}</Text>
-            <View style={[styles.kpiRow, isRTL && styles.rowRtl]}>
-              <Kpi label={t('op.owner.kpi.units')} value={String(state.units.length)} />
-              <Kpi label={t('op.owner.kpi.tenants')} value={String(state.tenants.length)} />
-              <Kpi label={t('op.owner.kpi.contracts')} value={String(state.contracts.length)} />
-              <Kpi label={t('op.owner.kpi.payments')} value={String(payments)} />
-            </View>
-          </GlassCard>
+          <Pressable
+            onPress={() => { Haptics.selectionAsync(); router.push('/operational/base?tab=properties' as any); }}
+            testID="owner-os-property-card"
+          >
+            <GlassCard padding={20} radiusToken="lg" edge="gold">
+              <Text style={[styles.propName, isRTL && styles.rtl]}>{state.property.name}</Text>
+              <Text style={[styles.propCity, isRTL && styles.rtl]}>
+                {!state.property.city || state.property.city === '—' ? 'Requires Source Support' : state.property.city}
+              </Text>
+              <View style={[styles.kpiRow, isRTL && styles.rowRtl]}>
+                <Pressable style={styles.kpi} onPress={() => router.push('/operational/base?tab=units' as any)} testID="owner-kpi-units">
+                  <Text style={styles.kpiValue}>{String(state.units.length)}</Text>
+                  <Text style={styles.kpiLabel}>{t('op.owner.kpi.units')}</Text>
+                </Pressable>
+                <Pressable style={styles.kpi} onPress={() => router.push('/tenants' as any)} testID="owner-kpi-tenants">
+                  <Text style={styles.kpiValue}>{String(state.tenants.length)}</Text>
+                  <Text style={styles.kpiLabel}>{t('op.owner.kpi.tenants')}</Text>
+                </Pressable>
+                <Pressable style={styles.kpi} onPress={() => router.push('/contracts' as any)} testID="owner-kpi-contracts">
+                  <Text style={styles.kpiValue}>{String(state.contracts.length)}</Text>
+                  <Text style={styles.kpiLabel}>{t('op.owner.kpi.contracts')}</Text>
+                </Pressable>
+                <Pressable style={styles.kpi} onPress={() => router.push('/operational/payments' as any)} testID="owner-kpi-payments">
+                  <Text style={styles.kpiValue}>{String(payments)}</Text>
+                  <Text style={styles.kpiLabel}>{t('op.owner.kpi.payments')}</Text>
+                </Pressable>
+              </View>
+              <Text style={[styles.opsHint, isRTL && styles.rtl]}>
+                {isRTL ? 'قاعدة التشغيل ←' : 'Open operations →'}
+              </Text>
+            </GlassCard>
+          </Pressable>
         </Animated.View>
       ) : null}
 
@@ -146,18 +169,10 @@ export default function Owner() {
   );
 }
 
-function Kpi({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.kpi}>
-      <Text style={styles.kpiValue}>{value}</Text>
-      <Text style={styles.kpiLabel}>{label}</Text>
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
   propName: { color: colors.text, fontSize: typography.cardTitle, fontWeight: typography.weight.semibold },
   propCity: { color: colors.textMuted, fontSize: typography.small, marginTop: 4 },
+  opsHint: { color: colors.gold, fontSize: 11, marginTop: spacing.sm },
   rtl: { writingDirection: 'rtl', textAlign: 'right' },
   rowRtl: { flexDirection: 'row-reverse' },
   kpiRow: { flexDirection: 'row', marginTop: spacing.lg, gap: 8 },

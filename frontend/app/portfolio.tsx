@@ -81,7 +81,15 @@ export default function Portfolio() {
         <>
           {hasLocal && osState.property ? (
             <View style={{ marginBottom: spacing.lg }}>
-              <LocalPropertyCard property={osState.property} units={osState.units} />
+              <Pressable
+                onPress={() => { Haptics.selectionAsync(); router.push('/operational/base?tab=properties' as any); }}
+                testID="portfolio-ops-entry"
+              >
+                <LocalPropertyCard property={osState.property} units={osState.units} />
+                <Text style={{ color: colors.gold, fontSize: 12, marginTop: 8 }}>
+                  {t('op.owner.title')} →
+                </Text>
+              </Pressable>
             </View>
           ) : null}
 
