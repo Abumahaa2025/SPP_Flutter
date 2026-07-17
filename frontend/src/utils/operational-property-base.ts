@@ -11,6 +11,7 @@ import type {
   UnitRecord,
 } from '@/src/types/property-os';
 import type { MaintenanceTicket } from '@/src/types/operational';
+import { arrearsFromPropertyOS, isArrearsLedgerEntry } from '@/src/utils/ops-truth';
 
 export type OpsDataStatus = 'confirmed' | 'needs_review' | 'incomplete' | 'conflicting';
 
@@ -122,19 +123,18 @@ export function computePortfolioKpis(
   const vacant = Math.max(0, state.units.length - occupied);
   const collected = ledger.reduce((s, l) => s + (Number(l.paid) || 0), 0);
   const remaining = ledger.reduce((s, l) => s + (Number(l.remaining) || 0), 0);
-  const lateByTenant = new Set(
-    ledger.filter((l) => (Number(l.remaining) || 0) > 0.009).map((l) => l.tenantId),
-  );
+  // Same SoT as executive arrears drill + payments ledger (ops-truth).
+  const arrears = arrearsFromPropertyOS(state);
   return {
     properties: state.property ? 1 : 0,
     units: state.units.length,
     occupied,
     vacant,
     contracts: state.contracts.length,
-    arrearsTotal: remaining,
+    arrearsTotal: arrears.totalUnpaid,
     collected,
     remaining,
-    lateTenants: lateByTenant.size,
+    lateTenants: arrears.lateTenantCount,
   };
 }
 
@@ -163,7 +163,7 @@ export function buildOperationalPropertyViews(
   const totalCollected = ledger.reduce((s, l) => s + (Number(l.paid) || 0), 0);
   const totalRemaining = ledger.reduce((s, l) => s + (Number(l.remaining) || 0), 0);
   const lateTenantCount = new Set(
-    ledger.filter((l) => (Number(l.remaining) || 0) > 0.009).map((l) => l.tenantId),
+    ledger.filter(isArrearsLedgerEntry).map((l) => l.tenantId),
   ).size;
 
   const city = (p.city || '').trim();

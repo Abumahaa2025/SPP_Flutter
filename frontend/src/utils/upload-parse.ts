@@ -1,7 +1,16 @@
 import type { UploadResult } from '@/src/components/UploadResultCard';
 import type { PickedFile } from './upload-analyze';
 
-export type ColumnField = 'unit' | 'tenant' | 'rent' | 'phone' | 'contract' | 'skip';
+export type ColumnField =
+  | 'unit'
+  | 'tenant'
+  | 'rent'
+  | 'phone'
+  | 'contract'
+  | 'contract_status'
+  | 'contract_end'
+  | 'arrears'
+  | 'skip';
 
 export type ColumnMapping = Record<string, ColumnField>;
 
@@ -26,6 +35,9 @@ export function buildResultsFromParsedData(
     rent: { ar: 'إيجار', en: 'Rent' },
     phone: { ar: 'جوال', en: 'Phone' },
     contract: { ar: 'عقد', en: 'Contract' },
+    contract_status: { ar: 'حالة العقد', en: 'Contract status' },
+    contract_end: { ar: 'تاريخ الانتهاء', en: 'End date' },
+    arrears: { ar: 'إجمالي المتأخرات', en: 'Total arrears' },
     skip: { ar: '—', en: '—' },
   };
 

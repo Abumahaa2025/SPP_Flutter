@@ -44,6 +44,7 @@ const FILTERS: { id: LedgerFilterId; ar: string; en: string }[] = [
   { id: 'paid', ar: 'مدفوع', en: 'Paid' },
   { id: 'partial', ar: 'جزئي', en: 'Partial' },
   { id: 'late', ar: 'متأخر', en: 'Late' },
+  { id: 'arrears', ar: 'متأخرات', en: 'Arrears' },
   { id: 'needs_review', ar: 'يحتاج مراجعة', en: 'Needs review' },
 ];
 
@@ -83,7 +84,9 @@ export default function PaymentsScreen() {
   const months = useMemo(() => uniqueLedgerMonths(allViews), [allViews]);
   const tenants = useMemo(() => uniqueLedgerTenants(allViews), [allViews]);
 
-  const effectiveFilter = filter === 'month' && !monthKey ? 'all' : filter === 'tenant' && !tenantId ? 'all' : filter;
+  // month/tenant are independent narrowing selectors now — status filter combines
+  // with them so "who paid vs who is late in month X" is answerable (Bug-5).
+  const effectiveFilter = filter === 'month' || filter === 'tenant' ? 'all' : filter;
 
   const visible = useMemo(
     () => sortLedgerViews(filterLedgerViews(allViews, query, effectiveFilter, monthKey, tenantId), sort),
@@ -97,9 +100,8 @@ export default function PaymentsScreen() {
 
   const applyKpiFilter = (kind: 'due' | 'paid' | 'remaining' | 'late') => {
     Haptics.selectionAsync();
-    if (kind === 'late') setFilter('late');
+    if (kind === 'late' || kind === 'remaining') setFilter('arrears');
     else if (kind === 'paid') setFilter('paid');
-    else if (kind === 'remaining') setFilter('late');
     else setFilter('all');
   };
 
@@ -141,7 +143,7 @@ export default function PaymentsScreen() {
             </Pressable>
           </View>
 
-          {filter !== 'all' ? (
+          {filter !== 'all' || monthKey || tenantId ? (
             <Text style={[styles.filterHint, isRTL && styles.rtl]}>
               {ar ? 'عرض مفلتر' : 'Filtered'}: {visibleTotals.rowCount} / {totals.rowCount}
             </Text>
@@ -164,8 +166,12 @@ export default function PaymentsScreen() {
                 onPress={() => {
                   Haptics.selectionAsync();
                   setFilter(f.id);
-                  if (f.id !== 'month') setMonthKey(undefined);
-                  if (f.id !== 'tenant') setTenantId(undefined);
+                  // Keep month/tenant narrowing so "who paid / who is late in
+                  // month X" works; "All" resets everything.
+                  if (f.id === 'all') {
+                    setMonthKey(undefined);
+                    setTenantId(undefined);
+                  }
                 }}
                 style={[styles.chip, filter === f.id && styles.chipOn]}
               >
@@ -174,19 +180,19 @@ export default function PaymentsScreen() {
             ))}
             <Pressable
               testID="ledger-filter-month"
-              onPress={() => { Haptics.selectionAsync(); setFilter('month'); setShowMonthPicker(true); }}
-              style={[styles.chip, filter === 'month' && styles.chipOn]}
+              onPress={() => { Haptics.selectionAsync(); setShowMonthPicker(true); }}
+              style={[styles.chip, !!monthKey && styles.chipOn]}
             >
-              <Text style={[styles.chipText, filter === 'month' && styles.chipTextOn]}>
+              <Text style={[styles.chipText, !!monthKey && styles.chipTextOn]}>
                 {monthKey ? months.find((m) => m.key === monthKey)?.label || monthKey : ar ? 'شهر' : 'Month'}
               </Text>
             </Pressable>
             <Pressable
               testID="ledger-filter-tenant"
-              onPress={() => { Haptics.selectionAsync(); setFilter('tenant'); setShowTenantPicker(true); }}
-              style={[styles.chip, filter === 'tenant' && styles.chipOn]}
+              onPress={() => { Haptics.selectionAsync(); setShowTenantPicker(true); }}
+              style={[styles.chip, !!tenantId && styles.chipOn]}
             >
-              <Text style={[styles.chipText, filter === 'tenant' && styles.chipTextOn]}>
+              <Text style={[styles.chipText, !!tenantId && styles.chipTextOn]}>
                 {tenantId ? tenants.find((x) => x.id === tenantId)?.name || tenantId : ar ? 'مستأجر' : 'Tenant'}
               </Text>
             </Pressable>
@@ -226,10 +232,16 @@ export default function PaymentsScreen() {
         <Pressable style={styles.modalBackdrop} onPress={() => setShowMonthPicker(false)}>
           <View style={styles.pickerSheet}>
             <Text style={styles.pickerTitle}>{ar ? 'اختر الشهر' : 'Select month'}</Text>
+            <Pressable
+              onPress={() => { setMonthKey(undefined); setShowMonthPicker(false); }}
+              style={styles.pickerRow}
+            >
+              <Text style={styles.pickerRowText}>{ar ? 'كل الأشهر' : 'All months'}</Text>
+            </Pressable>
             {months.map((m) => (
               <Pressable
                 key={m.key}
-                onPress={() => { setMonthKey(m.key); setFilter('month'); setShowMonthPicker(false); }}
+                onPress={() => { setMonthKey(m.key); setShowMonthPicker(false); }}
                 style={styles.pickerRow}
               >
                 <Text style={styles.pickerRowText}>{m.label}</Text>
@@ -244,10 +256,16 @@ export default function PaymentsScreen() {
         <Pressable style={styles.modalBackdrop} onPress={() => setShowTenantPicker(false)}>
           <View style={styles.pickerSheet}>
             <Text style={styles.pickerTitle}>{ar ? 'اختر المستأجر' : 'Select tenant'}</Text>
+            <Pressable
+              onPress={() => { setTenantId(undefined); setShowTenantPicker(false); }}
+              style={styles.pickerRow}
+            >
+              <Text style={styles.pickerRowText}>{ar ? 'كل المستأجرين' : 'All tenants'}</Text>
+            </Pressable>
             {tenants.map((tn) => (
               <Pressable
                 key={tn.id}
-                onPress={() => { setTenantId(tn.id); setFilter('tenant'); setShowTenantPicker(false); }}
+                onPress={() => { setTenantId(tn.id); setShowTenantPicker(false); }}
                 style={styles.pickerRow}
               >
                 <Text style={styles.pickerRowText}>{tn.name}</Text>

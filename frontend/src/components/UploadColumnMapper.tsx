@@ -4,7 +4,10 @@ import type { ColumnField, ColumnMapping } from '@/src/utils/upload-parse';
 import { colors, spacing, typography, radius } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
 
-const FIELDS: ColumnField[] = ['unit', 'tenant', 'rent', 'phone', 'contract', 'skip'];
+const FIELDS: ColumnField[] = [
+  'unit', 'tenant', 'rent', 'phone', 'contract',
+  'contract_status', 'contract_end', 'arrears', 'skip',
+];
 
 const FIELD_KEYS: Record<ColumnField, string> = {
   unit: 'opsv2.import.mapUnit',
@@ -12,6 +15,9 @@ const FIELD_KEYS: Record<ColumnField, string> = {
   rent: 'opsv2.import.mapRent',
   phone: 'opsv2.import.mapPhone',
   contract: 'opsv2.import.mapContract',
+  contract_status: 'opsv2.import.mapContractStatus',
+  contract_end: 'opsv2.import.mapContractEnd',
+  arrears: 'opsv2.import.mapArrears',
   skip: 'opsv2.import.mapSkip',
 };
 

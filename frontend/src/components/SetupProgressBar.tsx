@@ -1,7 +1,7 @@
-import React, { useEffect } from 'react';
+import React, { useCallback, useEffect } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { Feather } from '@expo/vector-icons';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import * as Haptics from 'expo-haptics';
 
@@ -32,7 +32,15 @@ export function SetupProgressBar({ compact = false, testID = 'setup-progress' }:
   const { t, isRTL } = useI18n();
   const router = useRouter();
   const { countEnabled } = useNotificationPrefs();
-  const { phases, overallPercent, nextPhase, isFullyReady, state, dismissProgress, markSetupComplete, ready } = usePropertyOS(countEnabled);
+  const { phases, overallPercent, nextPhase, isFullyReady, state, dismissProgress, markSetupComplete, ready, reload } = usePropertyOS(countEnabled);
+
+  // Bug-fix: re-read PropertyOS on focus — after upload Apply (which persists
+  // setupCompleted) the wizard/17% must not reappear on stale state.
+  useFocusEffect(
+    useCallback(() => {
+      void reload();
+    }, [reload]),
+  );
 
   useEffect(() => {
     if (ready && isFullyReady && !state.setupCompleted) {

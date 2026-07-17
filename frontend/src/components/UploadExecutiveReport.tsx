@@ -23,6 +23,7 @@ import type {
 import { colors, spacing, typography, radius } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
 import { useRouter } from 'expo-router';
+import { arrearsFromAnalysis } from '@/src/utils/ops-truth';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -132,6 +133,7 @@ function statusTone(label?: string): 'good' | 'watch' | 'critical' {
 
 function buildBriefFallback(analysis: PortfolioAnalysis, ar: boolean): ExecutiveBrief {
   const m = analysis.metrics;
+  const arrears = arrearsFromAnalysis(analysis);
   return {
     title: ar ? 'تقرير كويل التنفيذي' : 'Koil executive report',
     status_label: ar ? 'تحتاج متابعة' : 'Needs follow-up',
@@ -143,7 +145,7 @@ function buildBriefFallback(analysis: PortfolioAnalysis, ar: boolean): Executive
       { label: ar ? 'التحصيل' : 'Collection', value: `${m.collection_rate_pct ?? '—'}%` },
       {
         label: ar ? 'المتأخرات المؤكدة' : 'Confirmed arrears',
-        value: `${(m.late_value || 0).toLocaleString()}`,
+        value: `${arrears.totalUnpaid.toLocaleString()}`,
       },
       { label: ar ? 'الصيانة' : 'Maintenance', value: String(m.total_expenses || 0) },
       { label: ar ? 'العقود المنتهية' : 'Expired contracts', value: String(m.contracts_expired || 0) },
@@ -162,7 +164,7 @@ function groupSections(
   const byKey = Object.fromEntries(sections.map((s) => [s.key, s]));
   const take = (...keys: string[]) => keys.map((k) => byKey[k]).filter(Boolean) as ReportSection[];
   const m = analysis.metrics;
-  const late = analysis.late_payments?.summary;
+  const arrearsTruth = arrearsFromAnalysis(analysis);
 
   const summarize = (secs: ReportSection[], fallback: string) => {
     if (!secs.length) return fallback;
@@ -198,13 +200,9 @@ function groupSections(
     {
       id: 'late',
       title: ar ? 'المتأخرات' : 'Arrears',
-      summary: late
-        ? ar
-          ? `${late.late_tenant_count} مستأجر · ${(late.total_unpaid || 0).toLocaleString()} ر.س`
-          : `${late.late_tenant_count} · ${(late.total_unpaid || 0).toLocaleString()}`
-        : ar
-          ? `${m.late_tenants || 0} · ${(m.late_value || 0).toLocaleString()} ر.س`
-          : `${m.late_tenants || 0}`,
+      summary: ar
+        ? `${arrearsTruth.lateTenantCount} مستأجر · ${arrearsTruth.totalUnpaid.toLocaleString()} ر.س`
+        : `${arrearsTruth.lateTenantCount} · ${arrearsTruth.totalUnpaid.toLocaleString()}`,
       sections: lateSecs,
       late: true,
     },
@@ -245,15 +243,30 @@ function groupSections(
   ];
 
   if (analysis.month_comparison?.length) {
+    const lateByMonth = new Map<string, { late: number; unpaid: number }>();
+    (analysis.late_payments?.months ?? []).forEach((mth) => {
+      lateByMonth.set(mth.label, {
+        late: mth.tenant_count || (mth.tenants?.length ?? 0),
+        unpaid: mth.month_total || 0,
+      });
+    });
     const cmpSec: ReportSection = {
       key: 'month_comparison_inline',
-      title: ar ? 'مقارنة الأشهر' : 'Month compare',
-      items: analysis.month_comparison.slice(0, 8).map((row) => ({
-        label: row.month,
-        value: ar
-          ? `إيراد ${row.revenue.toLocaleString()} · مصروف ${row.expenses.toLocaleString()}`
-          : `rev ${row.revenue.toLocaleString()} · exp ${row.expenses.toLocaleString()}`,
-      })),
+      title: ar ? 'مقارنة الأشهر (من دفع / من تأخر)' : 'Month compare (paid / late)',
+      items: analysis.month_comparison.slice(0, 8).map((row) => {
+        const lateInfo = lateByMonth.get(row.month);
+        const latePart = lateInfo
+          ? ar
+            ? ` · متأخرون ${lateInfo.late} · ${(lateInfo.unpaid || 0).toLocaleString()} ر.س`
+            : ` · late ${lateInfo.late} · ${(lateInfo.unpaid || 0).toLocaleString()}`
+          : '';
+        return {
+          label: row.month,
+          value: ar
+            ? `إيراد ${row.revenue.toLocaleString()} · مصروف ${row.expenses.toLocaleString()}${latePart}`
+            : `rev ${row.revenue.toLocaleString()} · exp ${row.expenses.toLocaleString()}${latePart}`,
+        };
+      }),
     };
     const g = groups.find((x) => x.id === 'collection');
     if (g) g.sections = [...g.sections, cmpSec];
@@ -338,6 +351,7 @@ export function UploadExecutiveReport({ analysis, delay = 0 }: Props) {
   const ar = isRTL;
   const router = useRouter();
   const { executive_report: report, late_payments } = analysis;
+  const arrearsTruth = useMemo(() => arrearsFromAnalysis(analysis), [analysis]);
 
   const openOps = (tab: string, filter?: string) => {
     Haptics.selectionAsync();
@@ -409,10 +423,10 @@ export function UploadExecutiveReport({ analysis, delay = 0 }: Props) {
         ) : null}
         <Text style={[styles.statusText, isRTL && styles.rtl]}>{brief.property_status}</Text>
 
-        {/* Confirmed arrears — always visible at top; tap opens late ledger */}
+        {/* Confirmed arrears — same SoT as summary/late_payments (ops-truth) */}
         <Pressable
           onPress={() => openOps('payments', 'arrears')}
-          style={[styles.arrearsBox, (brief.arrears?.count || 0) > 0 && styles.arrearsHot]}
+          style={[styles.arrearsBox, (brief.arrears?.count || arrearsTruth.lateTenantCount || 0) > 0 && styles.arrearsHot]}
           testID="exec-arrears-drill"
         >
           <Text style={[styles.statusLabel, isRTL && styles.rtl]}>
@@ -421,8 +435,8 @@ export function UploadExecutiveReport({ analysis, delay = 0 }: Props) {
           <Text style={[styles.arrearsTitle, isRTL && styles.rtl]}>
             {brief.arrears?.label ||
               (ar
-                ? `${brief.arrears?.count ?? analysis.late_payments?.summary.late_tenant_count ?? 0} مستأجر · ${(brief.arrears?.total ?? analysis.late_payments?.summary.total_unpaid ?? 0).toLocaleString()} ر.س`
-                : `${brief.arrears?.count ?? 0} · ${brief.arrears?.total ?? 0}`)}
+                ? `${brief.arrears?.count ?? arrearsTruth.lateTenantCount} مستأجر · ${(brief.arrears?.total ?? arrearsTruth.totalUnpaid).toLocaleString()} ر.س`
+                : `${brief.arrears?.count ?? arrearsTruth.lateTenantCount} · ${brief.arrears?.total ?? arrearsTruth.totalUnpaid}`)}
           </Text>
           {(brief.critical_cases || brief.arrears?.critical_names || []).length > 0 ? (
             <Text style={[styles.criticalLine, isRTL && styles.rtl]}>

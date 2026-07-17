@@ -150,6 +150,11 @@ export async function analyzePickedFiles(files: PickedFile[], lang: Lang): Promi
 }
 
 const COLUMN_ALIASES: Record<string, string[]> = {
+  // Order matters: most specific first so "حالة العقد" and "نهاية العقد"
+  // don't collapse to the generic contract-number field.
+  contract_status: ['contract status', 'حالة العقد', 'حالة عقد', 'حالة', 'status'],
+  contract_end: ['contract end', 'end date', 'تاريخ الانتهاء', 'تاريخ النهاية', 'نهاية العقد', 'انتهاء', 'expiry'],
+  arrears: ['arrears', 'متأخرات', 'إجمالي المتأخرات', 'اجمالي المتأخرات', 'متبقي', 'remaining', 'outstanding', 'unpaid'],
   unit: ['unit', 'وحدة', 'شقة', 'رقم', 'apt'],
   tenant: ['tenant', 'مستأجر', 'اسم', 'name'],
   rent: ['rent', 'إيجار', 'ايجار', 'مبلغ', 'amount', 'تحصيل'],

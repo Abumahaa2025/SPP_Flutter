@@ -17,6 +17,7 @@ export type LedgerFilterId =
   | 'paid'
   | 'partial'
   | 'late'
+  | 'arrears'
   | 'needs_review'
   | 'month'
   | 'tenant';
@@ -206,12 +207,18 @@ export function filterLedgerViews(
 ): OperationalLedgerView[] {
   const q = query.trim().toLowerCase();
   return views.filter((v) => {
+    // Month/tenant narrowing always applies, so "who paid and who was late in
+    // month X" is answerable by combining a month with a status filter.
+    if (monthKey && v.monthKey !== monthKey) return false;
+    if (tenantId && v.tenantId !== tenantId) return false;
     if (filter === 'paid' && v.paymentStatus !== 'paid') return false;
     if (filter === 'partial' && v.paymentStatus !== 'partial') return false;
+    // late = late only; arrears = late + partial (matches executive drill + KPI SoT)
     if (filter === 'late' && v.paymentStatus !== 'late') return false;
+    if (filter === 'arrears' && v.paymentStatus !== 'late' && v.paymentStatus !== 'partial' && v.remaining <= 0.009) {
+      return false;
+    }
     if (filter === 'needs_review' && v.paymentStatus !== 'needs_review') return false;
-    if (filter === 'month' && monthKey && v.monthKey !== monthKey) return false;
-    if (filter === 'tenant' && tenantId && v.tenantId !== tenantId) return false;
     if (!q) return true;
     const hay = [v.tenantName, v.phone, v.unitNumber, v.contractNumber, v.monthLabel, v.monthKey]
       .join(' ')

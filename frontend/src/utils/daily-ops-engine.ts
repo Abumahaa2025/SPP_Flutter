@@ -6,6 +6,7 @@ import type {
   ContractRecord, PropertyOSState, TenantRecord, UnitRecord, UnitHistoryEntry,
 } from '@/src/types/property-os';
 import { onNotificationPrepared, onRenewalSuggested } from '@/src/utils/operational-flow-engine';
+import { arrearsFromPropertyOS, isArrearsLedgerEntry } from '@/src/utils/ops-truth';
 
 export type OpsChoice = {
   id: string;
@@ -146,6 +147,50 @@ function isMostLateQuery(text: string) {
   return /أكثر.*تأخر|most.*late|مين.*متأخر/i.test(text);
 }
 
+function isArrearsQuery(text: string) {
+  return /متأخر|متبقي|متأخرات|مستحق|arrear|overdue|outstanding|unpaid|who.*(late|owe)|كم.*(باقي|متبقي)/i.test(text);
+}
+
+/**
+ * Bug-6: answer arrears/late questions from PropertyOS ledger (Source of Truth)
+ * before deferring to the LLM. Lists late tenants with real remaining amounts.
+ */
+function buildArrearsReply(state: PropertyOSState, lang: 'ar' | 'en'): OpsReply {
+  const truth = arrearsFromPropertyOS(state);
+  const ledger = (state.paymentLedger || []).filter(isArrearsLedgerEntry);
+
+  if (!ledger.length) {
+    return {
+      text: lang === 'ar'
+        ? 'لا توجد متأخرات مؤكدة في بيانات العقار الحالية.'
+        : 'No confirmed arrears in the current property data.',
+    };
+  }
+
+  // Aggregate remaining per tenant from the ledger.
+  const byTenant = new Map<string, { name: string; unit: string; total: number; months: number }>();
+  ledger.forEach((l) => {
+    const prev = byTenant.get(l.tenantId) || { name: l.tenant || '—', unit: l.unit || '—', total: 0, months: 0 };
+    prev.total += Number(l.remaining) || 0;
+    prev.months += 1;
+    byTenant.set(l.tenantId, prev);
+  });
+  const rows = [...byTenant.values()].sort((a, b) => b.total - a.total);
+
+  const lines = rows.slice(0, 12).map((r) => (lang === 'ar'
+    ? `• ${r.name} — وحدة ${r.unit} — ${r.total.toLocaleString('ar-SA')} ريال (${r.months} شهر)`
+    : `• ${r.name} — unit ${r.unit} — ${r.total.toLocaleString()} SAR (${r.months} mo)`));
+
+  const header = lang === 'ar'
+    ? `المتأخرات من بيانات العقار: ${truth.lateTenantCount} مستأجر · ${truth.totalUnpaid.toLocaleString('ar-SA')} ريال`
+    : `Arrears from property data: ${truth.lateTenantCount} tenant(s) · ${truth.totalUnpaid.toLocaleString()} SAR`;
+
+  return {
+    text: `${header}\n${lines.join('\n')}`,
+    suggestions: lang === 'ar' ? ['أرسل تذكير للمتأخرين', 'تقرير العقار'] : ['Send reminders', 'Property report'],
+  };
+}
+
 function buildContractEndReply(
   state: PropertyOSState,
   unit: UnitRecord,
@@ -272,6 +317,25 @@ function buildReportReply(state: PropertyOSState, lang: 'ar' | 'en'): OpsReply {
 }
 
 function buildMostLateReply(state: PropertyOSState, lang: 'ar' | 'en'): OpsReply {
+  // Bug-6: prefer the live PropertyOS ledger (SoT) over legacy unitHistory.
+  const ledger = (state.paymentLedger || []).filter(isArrearsLedgerEntry);
+  if (ledger.length) {
+    const byTenant = new Map<string, { name: string; unit: string; total: number }>();
+    ledger.forEach((l) => {
+      const prev = byTenant.get(l.tenantId) || { name: l.tenant || '—', unit: l.unit || '—', total: 0 };
+      prev.total += Number(l.remaining) || 0;
+      byTenant.set(l.tenantId, prev);
+    });
+    const top = [...byTenant.values()].sort((a, b) => b.total - a.total)[0];
+    if (top) {
+      return {
+        text: lang === 'ar'
+          ? `الأكثر تأخرًا: ${top.name} — وحدة ${top.unit} — ${top.total.toLocaleString('ar-SA')} ريال`
+          : `Most late: ${top.name} — unit ${top.unit} — ${top.total.toLocaleString()} SAR`,
+        suggestions: lang === 'ar' ? ['أرسل تذكير للمتأخرين'] : ['Send reminders'],
+      };
+    }
+  }
   const withLate = (state.unitHistory ?? [])
     .filter((h) => h.lateAmount && h.lateAmount > 0)
     .sort((a, b) => (b.lateAmount ?? 0) - (a.lateAmount ?? 0));
@@ -361,6 +425,10 @@ export function parseDailyOps(
   if (isMostLateQuery(trimmed)) return buildMostLateReply(state, lang);
   if (isReportQuery(trimmed)) return buildReportReply(state, lang);
   if (isReminderQuery(trimmed) && !unitNum) return buildReminderReply(state, lang);
+  // Bug-6: answer arrears from PropertyOS ledger before LLM (only when we have a ledger).
+  if (isArrearsQuery(trimmed) && !unitNum && (state.paymentLedger?.length ?? 0) > 0) {
+    return buildArrearsReply(state, lang);
+  }
 
   if (unitNum) {
     const unit = findUnit(state, unitNum);

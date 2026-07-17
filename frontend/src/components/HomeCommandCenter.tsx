@@ -1,6 +1,6 @@
-import React, { useMemo } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import { Feather } from '@expo/vector-icons';
@@ -44,9 +44,16 @@ export function HomeCommandCenter({ briefing, notifications }: Props) {
   const { t, isRTL } = useI18n();
   const router = useRouter();
   const { countEnabled } = useNotificationPrefs();
-  const { state: osState, isFullyReady, ready, nextPhase } = usePropertyOS(countEnabled);
+  const { state: osState, isFullyReady, ready, nextPhase, reload } = usePropertyOS(countEnabled);
   const { openTickets, pendingActions, recentEvents } = useOperational();
   const { acknowledge } = useAttentionPulse();
+
+  // Bug-fix: refresh PropertyOS on focus so post-Apply data shows immediately.
+  useFocusEffect(
+    useCallback(() => {
+      void reload();
+    }, [reload]),
+  );
 
   const dailyMode = Boolean(osState.setupCompleted && osState.property);
   const lastDecision = briefing?.decisions?.[0];
