@@ -18,6 +18,7 @@ import { ScreenScaffold } from '@/src/components/ScreenScaffold';
 import { StoryScreenHeader } from '@/src/components/StoryScreenHeader';
 import { GlassCard } from '@/src/components/GlassCard';
 import { AliveEmpty } from '@/src/components/AliveEmpty';
+import { OpsNavChrome } from '@/src/components/OpsNavChrome';
 import { OperationalPaymentLedgerCard } from '@/src/components/OperationalPaymentLedgerCard';
 import { OperationalTenantCard } from '@/src/components/OperationalTenantCard';
 import { OperationalContractCard } from '@/src/components/OperationalContractCard';
@@ -104,7 +105,14 @@ export default function PaymentsScreen() {
 
   return (
     <ScreenScaffold testID="payments-screen">
-      <StoryScreenHeader question={t('op.payments.title')} hint={t('op.payments.sub')} showBack />
+      <StoryScreenHeader question={t('op.payments.title')} hint={t('op.payments.sub')} showBack={false} />
+      <OpsNavChrome
+        crumbs={[ar ? 'تشغيل العقار' : 'Ops', ar ? 'دفتر المدفوعات' : 'Payment ledger']}
+        propertyName={osState.property?.name}
+        resultCount={allViews.length}
+        resultLabel={ar ? 'سجل شهر' : 'month rows'}
+        rtl={!!isRTL}
+      />
 
       {allViews.length === 0 ? (
         <AliveEmpty title={t('op.payments.title')} body={t('op.payments.empty')} />

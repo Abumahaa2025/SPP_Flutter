@@ -27,12 +27,12 @@ type HubLink = {
 
 /** Daily operations only — Spec §3 / §5.5. Reports & connections live under More. */
 const LINKS: HubLink[] = [
-  { key: 'properties', icon: 'home', labelKey: 'op.owner.properties', hintKey: 'op.owner.properties.hint', route: '/operational/base?tab=properties', tone: 'gold' },
-  { key: 'units', icon: 'grid', labelKey: 'op.owner.units', hintKey: 'op.owner.units.hint', route: '/operational/base?tab=units' },
+  { key: 'properties', icon: 'home', labelKey: 'op.owner.properties', hintKey: 'op.owner.properties.hint', route: '/operational/base', tone: 'gold' },
+  { key: 'units', icon: 'grid', labelKey: 'op.owner.units', hintKey: 'op.owner.units.hint', route: '/operational/property?tab=units' },
   { key: 'contracts', icon: 'file-text', labelKey: 'op.owner.contracts', hintKey: 'op.owner.contracts.hint', route: '/contracts', tone: 'gold' },
   { key: 'tenants', icon: 'users', labelKey: 'op.owner.tenants', hintKey: 'op.owner.tenants.hint', route: '/tenants' },
   { key: 'payments', icon: 'dollar-sign', labelKey: 'op.owner.payments', hintKey: 'op.owner.payments.hint', route: '/operational/payments', tone: 'emerald' },
-  { key: 'imports', icon: 'download', labelKey: 'op.owner.imports', hintKey: 'op.owner.imports.hint', route: '/operational/base?tab=imports', tone: 'gold' },
+  { key: 'imports', icon: 'download', labelKey: 'op.owner.imports', hintKey: 'op.owner.imports.hint', route: '/operational/property?tab=imports', tone: 'gold' },
   { key: 'electricity', icon: 'zap', labelKey: 'op.owner.electricity', hintKey: 'op.owner.electricity.hint', route: '/sensors?utility=electricity', tone: 'gold' },
   { key: 'water', icon: 'droplet', labelKey: 'op.owner.water', hintKey: 'op.owner.water.hint', route: '/sensors?utility=water', tone: 'emerald' },
   { key: 'maintenance', icon: 'tool', labelKey: 'op.owner.maintenance', hintKey: 'op.owner.maintenance.hint', route: '/maintenance', tone: 'emerald' },

@@ -41,6 +41,8 @@ type ApplyBreakdown = {
     units: number;
     tenants: number;
     contracts: number;
+    paidMonths: number;
+    lateMonths: number;
     paymentsNoted: boolean;
     needsReview: number;
   };
@@ -256,12 +258,25 @@ export function UploadResultsWizard({
       });
     }
 
+    const paidMonths = Number(
+      summary.paid_month_count
+        ?? summary.payments?.paid_month_count
+        ?? 0,
+    );
+    const lateMonths = Number(
+      summary.payments?.confirmed_late_month_count
+        ?? summary.arrears?.confirmed_late_month_count
+        ?? 0,
+    );
+    const ledgerN = localCommit?.ledger_entries ?? 0;
     const local = {
       properties: localCommit?.summary?.properties ?? summary.properties ?? (localOk ? 1 : 0),
       units: localCommit?.units ?? 0,
       tenants: localCommit?.tenants ?? 0,
       contracts: localCommit?.contracts ?? 0,
-      paymentsNoted: !!(summary.payments || summary.collected || summary.paid_month_count),
+      paidMonths: paidMonths || Math.max(0, ledgerN - lateMonths),
+      lateMonths,
+      paymentsNoted: !!(summary.payments || summary.collected || summary.paid_month_count || ledgerN),
       needsReview: needsReviewCount,
     };
 
@@ -416,37 +431,30 @@ export function UploadResultsWizard({
               </Text>
               {breakdown.localOk ? (
                 <>
-                  <Text style={[styles.body, ar && styles.rtl]}>
-                    {ar
-                      ? `تم حفظ ${breakdown.local.properties} عقارات.`
-                      : `Saved ${breakdown.local.properties} properties.`}
+                  <Text style={[styles.title, ar && styles.rtl, { marginBottom: 8 }]}>
+                    {ar ? 'تم بناء ملف العقار' : 'Property file built'}
                   </Text>
                   <Text style={[styles.body, ar && styles.rtl]}>
-                    {ar ? `تم حفظ ${breakdown.local.units} وحدات.` : `Saved ${breakdown.local.units} units.`}
+                    {ar ? `تم حفظ: ${breakdown.local.properties} عقارات` : `Saved: ${breakdown.local.properties} properties`}
                   </Text>
                   <Text style={[styles.body, ar && styles.rtl]}>
-                    {ar
-                      ? `تم ربط ${breakdown.local.tenants} مستأجرين.`
-                      : `Linked ${breakdown.local.tenants} tenants.`}
+                    {ar ? `${breakdown.local.units} وحدات` : `${breakdown.local.units} units`}
                   </Text>
                   <Text style={[styles.body, ar && styles.rtl]}>
-                    {ar
-                      ? `تم إنشاء ${breakdown.local.contracts} عقود.`
-                      : `Created ${breakdown.local.contracts} contracts.`}
+                    {ar ? `${breakdown.local.tenants} مستأجرين` : `${breakdown.local.tenants} tenants`}
                   </Text>
                   <Text style={[styles.body, ar && styles.rtl]}>
-                    {breakdown.local.paymentsNoted
-                      ? ar
-                        ? 'تم تسجيل ملخص المدفوعات المتوفر.'
-                        : 'Available payments summary recorded.'
-                      : ar
-                        ? 'لا ملخص مدفوعات متوفر للحفظ.'
-                        : 'No payments summary available to save.'}
+                    {ar ? `${breakdown.local.contracts} عقود` : `${breakdown.local.contracts} contracts`}
                   </Text>
                   <Text style={[styles.body, ar && styles.rtl]}>
                     {ar
-                      ? `تم اكتشاف ${breakdown.local.needsReview} عناصر تحتاج مراجعة.`
-                      : `Detected ${breakdown.local.needsReview} items needing review.`}
+                      ? `${breakdown.local.paidMonths} أشهر مدفوعة · ${breakdown.local.lateMonths} أشهر متأخرة`
+                      : `${breakdown.local.paidMonths} paid months · ${breakdown.local.lateMonths} late months`}
+                  </Text>
+                  <Text style={[styles.body, ar && styles.rtl]}>
+                    {ar
+                      ? `${breakdown.local.needsReview} عناصر تحتاج مراجعة`
+                      : `${breakdown.local.needsReview} items need review`}
                   </Text>
                 </>
               ) : (
@@ -512,13 +520,27 @@ export function UploadResultsWizard({
               ) : null}
               {breakdown.localOk ? (
                 <View style={styles.navGrid}>
-                  <NavBtn label={ar ? 'فتح العقارات' : 'Open properties'} onPress={() => router.push('/portfolio' as never)} />
+                  <NavBtn
+                    label={ar ? 'فتح تشغيل العقار' : 'Open property ops'}
+                    onPress={() => router.push('/operational/base' as never)}
+                  />
+                  <NavBtn
+                    label={ar ? 'فتح العقارات' : 'Open properties'}
+                    onPress={() => router.push('/operational/base' as never)}
+                  />
+                  <NavBtn
+                    label={ar ? 'فتح الوحدات' : 'Open units'}
+                    onPress={() => router.push('/operational/property?tab=units' as never)}
+                  />
                   <NavBtn label={ar ? 'فتح المستأجرين' : 'Open tenants'} onPress={() => router.push('/tenants' as never)} />
                   <NavBtn label={ar ? 'فتح العقود' : 'Open contracts'} onPress={() => router.push('/contracts' as never)} />
-                  <NavBtn label={ar ? 'فتح التقارير' : 'Open reports'} onPress={() => router.push('/reports' as never)} />
+                  <NavBtn
+                    label={ar ? 'فتح المدفوعات' : 'Open payments'}
+                    onPress={() => router.push('/operational/payments' as never)}
+                  />
                   <NavBtn
                     label={ar ? 'فتح سجل الاستيراد' : 'Open import log'}
-                    onPress={() => router.push('/reports' as never)}
+                    onPress={() => router.push('/operational/property?tab=imports' as never)}
                   />
                   {onReset ? <NavBtn label={ar ? 'رفع جديد' : 'New upload'} onPress={onReset} /> : null}
                 </View>

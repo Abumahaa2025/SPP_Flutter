@@ -22,6 +22,7 @@ import type {
 } from '@/src/api/portfolio-analysis';
 import { colors, spacing, typography, radius } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
+import { useRouter } from 'expo-router';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -331,11 +332,29 @@ function groupSections(
   });
 }
 
-/** Decision-first executive report — details stay folded. */
+/** Decision-first executive report — details stay folded. Numbers open ops records. */
 export function UploadExecutiveReport({ analysis, delay = 0 }: Props) {
   const { isRTL } = useI18n();
   const ar = isRTL;
+  const router = useRouter();
   const { executive_report: report, late_payments } = analysis;
+
+  const openOps = (tab: string, filter?: string) => {
+    Haptics.selectionAsync();
+    const q = [`tab=${tab}`];
+    if (filter) q.push(`filter=${filter}`);
+    router.push(`/operational/property?${q.join('&')}` as any);
+  };
+
+  const routeForKeyNumber = (label: string) => {
+    const l = label.toLowerCase();
+    if (/متأخر|late|arrear|unpaid/.test(l)) return openOps('payments', 'arrears');
+    if (/عقد|contract|منته|expir/.test(l)) return openOps('contracts', 'followup');
+    if (/شاغر|vacant|وحد|unit/.test(l)) return openOps('units', /شاغر|vacant/.test(l) ? 'vacant' : undefined);
+    if (/صيان|maint/.test(l)) return openOps('maintenance');
+    if (/تحصيل|collect|إيراد|occup/.test(l)) return openOps('payments');
+    return openOps('units');
+  };
 
   const brief = useMemo(
     () => analysis.executive_brief || buildBriefFallback(analysis, ar),
@@ -390,8 +409,12 @@ export function UploadExecutiveReport({ analysis, delay = 0 }: Props) {
         ) : null}
         <Text style={[styles.statusText, isRTL && styles.rtl]}>{brief.property_status}</Text>
 
-        {/* Confirmed arrears — always visible at top */}
-        <View style={[styles.arrearsBox, (brief.arrears?.count || 0) > 0 && styles.arrearsHot]}>
+        {/* Confirmed arrears — always visible at top; tap opens late ledger */}
+        <Pressable
+          onPress={() => openOps('payments', 'arrears')}
+          style={[styles.arrearsBox, (brief.arrears?.count || 0) > 0 && styles.arrearsHot]}
+          testID="exec-arrears-drill"
+        >
           <Text style={[styles.statusLabel, isRTL && styles.rtl]}>
             {ar ? 'المتأخرات المؤكدة' : 'Confirmed arrears'}
           </Text>
@@ -414,7 +437,7 @@ export function UploadExecutiveReport({ analysis, delay = 0 }: Props) {
                 : 'No auto collection advice — unclear payment months remain'}
             </Text>
           ) : null}
-        </View>
+        </Pressable>
 
         <View style={styles.briefBlock}>
           <Text style={[styles.statusLabel, isRTL && styles.rtl]}>{ar ? 'ماذا حدث؟' : 'What happened?'}</Text>
@@ -497,10 +520,16 @@ export function UploadExecutiveReport({ analysis, delay = 0 }: Props) {
         <Text style={[styles.statusLabel, isRTL && styles.rtl]}>{ar ? 'أهم الأرقام' : 'Key numbers'}</Text>
         <View style={styles.numRow}>
           {brief.key_numbers.map((n) => (
-            <View key={n.label} style={styles.numCell}>
+            <Pressable
+              key={n.label}
+              style={styles.numCell}
+              onPress={() => routeForKeyNumber(n.label)}
+              testID={`exec-num-${n.label}`}
+            >
               <Text style={[styles.numLabel, isRTL && styles.rtl]}>{n.label}</Text>
               <Text style={styles.numValue}>{n.value}</Text>
-            </View>
+              <Text style={[styles.numHint, isRTL && styles.rtl]}>{ar ? 'اضغط للفتح' : 'Tap to open'}</Text>
+            </Pressable>
           ))}
         </View>
 
@@ -535,12 +564,31 @@ export function UploadExecutiveReport({ analysis, delay = 0 }: Props) {
                 embedded
                 tenantCards={analysis.property_knowledge?.tenants || []}
               />
+              <Pressable onPress={() => openOps('payments', 'arrears')} style={{ marginTop: 10 }}>
+                <Text style={[styles.numHint, isRTL && styles.rtl]}>
+                  {ar ? 'فتح دفتر المتأخرات ←' : 'Open arrears ledger →'}
+                </Text>
+              </Pressable>
             </CollapsibleSection>
           ) : (
             <CollapsibleSection title={g.title} summary={g.summary}>
               {g.sections.map((sec) => (
                 <SectionItems key={sec.key} sec={sec} isRTL={isRTL} ar={ar} />
               ))}
+              {g.id === 'contracts' || g.id === 'maint' || g.id === 'collection' ? (
+                <Pressable
+                  onPress={() => {
+                    if (g.id === 'contracts') openOps('contracts', 'followup');
+                    else if (g.id === 'maint') openOps('maintenance');
+                    else openOps('payments');
+                  }}
+                  style={{ marginTop: 10 }}
+                >
+                  <Text style={[styles.numHint, isRTL && styles.rtl]}>
+                    {ar ? 'فتح السجلات ←' : 'Open records →'}
+                  </Text>
+                </Pressable>
+              ) : null}
             </CollapsibleSection>
           )}
         </Animated.View>
@@ -659,6 +707,7 @@ const styles = StyleSheet.create({
   },
   numLabel: { color: colors.textMuted, fontSize: 10 },
   numValue: { color: colors.text, fontSize: 16, fontWeight: typography.weight.semibold, marginTop: 4 },
+  numHint: { color: colors.gold, fontSize: 9, marginTop: 4 },
   confRow: { flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 12 },
   confBadge: {
     fontSize: 12,
