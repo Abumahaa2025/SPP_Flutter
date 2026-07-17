@@ -179,6 +179,9 @@ export type ApplyCommit = {
   period?: string;
   success_message?: string;
   ledger_entries?: number;
+  /** Counted from materialised paymentLedger (not summary alone). */
+  paid_months?: number;
+  late_months?: number;
   payments?: number;
   import_batch_id?: string;
   change_counts?: { added: number; updated: number; conflicts?: number };
@@ -196,6 +199,21 @@ export type ApplyCommit = {
     gaps?: number;
   };
 };
+
+function countLedgerMonths(ledger: PaymentLedgerEntry[]): { paid: number; late: number } {
+  let paid = 0;
+  let late = 0;
+  for (const l of ledger) {
+    const rem = Number(l.remaining) || 0;
+    const st = (l.status || '').toLowerCase();
+    if (rem > 0.009 || st === 'unpaid' || st === 'unpaid_confirmed' || st === 'partial') {
+      late += 1;
+    } else if (st === 'paid' || ((Number(l.paid) || 0) > 0 && rem <= 0.009)) {
+      paid += 1;
+    }
+  }
+  return { paid, late };
+}
 
 type IncomingRecords = {
   property: PropertyRecord;
@@ -352,6 +370,7 @@ export function buildPropertyOSFromAnalysis(
   const report = buildReport(analysis, lang);
   const m = analysis.metrics;
   const period = analysis.executive_brief?.period || '';
+  const monthCounts = countLedgerMonths(ledger);
 
   const summary = analysis.summary || {
     properties: 1,
@@ -399,10 +418,13 @@ export function buildPropertyOSFromAnalysis(
       period,
       success_message: analysis.success_message,
       ledger_entries: ledger.length,
+      paid_months: monthCounts.paid,
+      late_months: monthCounts.late,
       payments: payments.length,
       summary: {
         ...summary,
-        properties: summary.properties ?? 1,
+        // Never report 0 properties when a property record was materialised.
+        properties: Math.max(1, Number(summary.properties) || 0),
         units: units.length,
         tenants: tenants.length,
         contracts: contracts.length,
@@ -639,18 +661,19 @@ export async function persistApplyFromAnalysis(
     period: analysis.executive_brief?.period || '',
     success_message: analysis.success_message,
     ledger_entries: incoming.ledger.length,
+    paid_months: countLedgerMonths(incoming.ledger).paid,
+    late_months: countLedgerMonths(incoming.ledger).late,
     payments: incoming.payments.length,
     import_batch_id: batchId,
     change_counts: { added, updated, conflicts },
-    summary: summary
-      ? {
-          ...summary,
-          properties: summary.properties ?? 1,
-          units: incoming.units.length,
-          tenants: incoming.tenants.length,
-          contracts: incoming.contracts.length,
-        }
-      : undefined,
+    summary: {
+      ...(summary || {}),
+      // Materialised property always counts as ≥1 (summary.properties may be 0).
+      properties: property ? Math.max(1, Number(summary?.properties) || 0) : 0,
+      units: incoming.units.length,
+      tenants: incoming.tenants.length,
+      contracts: incoming.contracts.length,
+    },
   };
 
   await storage.setItem(

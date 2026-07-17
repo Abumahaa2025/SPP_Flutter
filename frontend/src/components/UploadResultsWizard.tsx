@@ -259,22 +259,33 @@ export function UploadResultsWizard({
     }
 
     const paidMonths = Number(
-      summary.paid_month_count
+      localCommit?.paid_months
+        ?? summary.paid_month_count
         ?? summary.payments?.paid_month_count
         ?? 0,
     );
     const lateMonths = Number(
-      summary.payments?.confirmed_late_month_count
+      localCommit?.late_months
+        ?? summary.payments?.confirmed_late_month_count
         ?? summary.arrears?.confirmed_late_month_count
         ?? 0,
     );
     const ledgerN = localCommit?.ledger_entries ?? 0;
+    // Property count from materialised OS — never show 0 when units were saved.
+    const propCount = localOk
+      ? Math.max(
+          1,
+          Number(localCommit?.summary?.properties) || 0,
+          localCommit?.property_id ? 1 : 0,
+          Number(summary.properties) || 0,
+        )
+      : 0;
     const local = {
-      properties: localCommit?.summary?.properties ?? summary.properties ?? (localOk ? 1 : 0),
+      properties: propCount,
       units: localCommit?.units ?? 0,
       tenants: localCommit?.tenants ?? 0,
       contracts: localCommit?.contracts ?? 0,
-      paidMonths: paidMonths || Math.max(0, ledgerN - lateMonths),
+      paidMonths: paidMonths || (lateMonths > 0 ? Math.max(0, ledgerN - lateMonths) : ledgerN),
       lateMonths,
       paymentsNoted: !!(summary.payments || summary.collected || summary.paid_month_count || ledgerN),
       needsReview: needsReviewCount,
@@ -309,6 +320,48 @@ export function UploadResultsWizard({
     setApplying(false);
     applyLock.current = false;
     await persistStage(5);
+  };
+
+  const runCloudSyncOnly = async () => {
+    if (applyLock.current || applying || !applyDone) return;
+    applyLock.current = true;
+    setApplying(true);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    let remoteOk = false;
+    let gas: boolean | undefined;
+    let remoteCommit: Record<string, unknown> | null = null;
+    let remoteError: string | undefined;
+    const failed: ApplyBreakdown['failed'] = [];
+    try {
+      const remote = await applyPortfolioAnalysis(analysis.analysis_id, fileMeta);
+      remoteOk = !!remote?.ok;
+      gas = remote?.gas;
+      remoteCommit = (remote?.commit as Record<string, unknown>) || null;
+      if (!remoteOk) {
+        remoteError = ar ? 'الخادم لم يؤكد الاعتماد' : 'Backend did not confirm apply';
+        failed.push({ item: ar ? 'مزامنة Backend / GAS' : 'Backend / GAS sync', reason: remoteError });
+      }
+    } catch (err) {
+      remoteError = err instanceof Error ? err.message : 'remote sync failed';
+      failed.push({
+        item: ar ? 'مزامنة Backend / GAS' : 'Backend / GAS sync',
+        reason: remoteError,
+      });
+    }
+    setBreakdown((prev) =>
+      prev
+        ? {
+            ...prev,
+            remoteOk,
+            gas,
+            remoteCommit,
+            remoteError,
+            failed,
+          }
+        : prev,
+    );
+    setApplying(false);
+    applyLock.current = false;
   };
 
   const stageTitle = useMemo(() => {
@@ -431,6 +484,9 @@ export function UploadResultsWizard({
               </Text>
               {breakdown.localOk ? (
                 <>
+                  <Text style={[styles.okTitle, ar && styles.rtl, { marginBottom: 8 }]}>
+                    {ar ? 'تم حفظ التشغيل على الجهاز' : 'Operations saved on device'}
+                  </Text>
                   <Text style={[styles.title, ar && styles.rtl, { marginBottom: 8 }]}>
                     {ar ? 'تم بناء ملف العقار' : 'Property file built'}
                   </Text>
@@ -451,6 +507,13 @@ export function UploadResultsWizard({
                       ? `${breakdown.local.paidMonths} أشهر مدفوعة · ${breakdown.local.lateMonths} أشهر متأخرة`
                       : `${breakdown.local.paidMonths} paid months · ${breakdown.local.lateMonths} late months`}
                   </Text>
+                  {breakdown.local.paidMonths + breakdown.local.lateMonths === 0 ? (
+                    <Text style={[styles.warn, ar && styles.rtl]}>
+                      {ar
+                        ? 'دفتر الأشهر فارغ في هذا الاعتماد — راجع مصدر الأشهر في التحليل أو افتح المدفوعات بعد الاستيراد.'
+                        : 'Month ledger empty in this apply — check analysis months source or open payments after import.'}
+                    </Text>
+                  ) : null}
                   <Text style={[styles.body, ar && styles.rtl]}>
                     {ar
                       ? `${breakdown.local.needsReview} عناصر تحتاج مراجعة`
@@ -462,7 +525,7 @@ export function UploadResultsWizard({
               )}
 
               <Text style={[styles.sectionLabel, ar && styles.rtl, { marginTop: 14 }]}>
-                {ar ? 'ما أكده Backend / GAS' : 'Backend / GAS confirmation'}
+                {ar ? 'المزامنة السحابية (Backend / GAS)' : 'Cloud sync (Backend / GAS)'}
               </Text>
               {breakdown.remoteOk ? (
                 <Text style={[styles.body, ar && styles.rtl]}>
@@ -470,24 +533,41 @@ export function UploadResultsWizard({
                     ? `تم التأكيد${breakdown.gas ? ' عبر GAS' : ' محليًا من الخادم'}.`
                     : `Confirmed${breakdown.gas ? ' via GAS' : ' by local backend'}.`}
                 </Text>
+              ) : breakdown.localOk ? (
+                <Text style={[styles.warn, ar && styles.rtl]}>
+                  {ar
+                    ? `المزامنة السحابية فشلت — التشغيل محفوظ على الجهاز. أعد المحاولة لاحقًا على شبكة ثابتة.\n${breakdown.remoteError || ''}`
+                    : `Cloud sync failed — operations remain on device. Retry later on a stable network.\n${breakdown.remoteError || ''}`}
+                </Text>
               ) : (
                 <Text style={[styles.fail, ar && styles.rtl]}>
                   {breakdown.remoteError || (ar ? 'لم يُؤكد' : 'Not confirmed')}
                 </Text>
               )}
 
-              <Text style={[styles.sectionLabel, ar && styles.rtl, { marginTop: 14 }]}>
-                {ar ? 'ما فشل حفظه' : 'What failed'}
-              </Text>
-              {breakdown.failed.length ? (
-                breakdown.failed.map((f) => (
-                  <Text key={f.item} style={[styles.fail, ar && styles.rtl]}>
-                    · {f.item}: {f.reason}
+              {breakdown.failed.length && !breakdown.localOk ? (
+                <>
+                  <Text style={[styles.sectionLabel, ar && styles.rtl, { marginTop: 14 }]}>
+                    {ar ? 'ما فشل حفظه' : 'What failed'}
                   </Text>
-                ))
-              ) : (
-                <Text style={[styles.muted, ar && styles.rtl]}>{ar ? 'لا إخفاقات.' : 'No failures.'}</Text>
-              )}
+                  {breakdown.failed.map((f) => (
+                    <Text key={f.item} style={[styles.fail, ar && styles.rtl]}>
+                      · {f.item}: {f.reason}
+                    </Text>
+                  ))}
+                </>
+              ) : breakdown.failed.length && breakdown.localOk ? (
+                <>
+                  <Text style={[styles.sectionLabel, ar && styles.rtl, { marginTop: 14 }]}>
+                    {ar ? 'تفاصيل المزامنة' : 'Sync details'}
+                  </Text>
+                  {breakdown.failed.map((f) => (
+                    <Text key={f.item} style={[styles.warn, ar && styles.rtl]}>
+                      · {f.item}: {f.reason}
+                    </Text>
+                  ))}
+                </>
+              ) : null}
 
               <Text style={[styles.sectionLabel, ar && styles.rtl, { marginTop: 14 }]}>
                 {ar ? 'ما يحتاج مراجعة' : 'Needs review'}
@@ -502,7 +582,7 @@ export function UploadResultsWizard({
                 <Text style={[styles.muted, ar && styles.rtl]}>{ar ? 'لا عناصر.' : 'None.'}</Text>
               )}
 
-              {!breakdown.localOk || !breakdown.remoteOk ? (
+              {!breakdown.localOk ? (
                 <Pressable
                   style={[styles.primaryBtn, applying && styles.btnDisabled, { marginTop: 14 }]}
                   onPress={() => {
@@ -515,6 +595,23 @@ export function UploadResultsWizard({
                     <ActivityIndicator color={colors.bg} />
                   ) : (
                     <Text style={styles.primaryText}>{ar ? 'إعادة المحاولة' : 'Retry'}</Text>
+                  )}
+                </Pressable>
+              ) : !breakdown.remoteOk ? (
+                <Pressable
+                  style={[styles.secondaryBtn, applying && styles.btnDisabled, { marginTop: 14, justifyContent: 'center' }]}
+                  onPress={() => {
+                    void runCloudSyncOnly();
+                  }}
+                  disabled={applying}
+                  testID="wizard-cloud-sync-btn"
+                >
+                  {applying ? (
+                    <ActivityIndicator color={colors.text} />
+                  ) : (
+                    <Text style={styles.secondaryText}>
+                      {ar ? 'إعادة المزامنة السحابية فقط' : 'Retry cloud sync only'}
+                    </Text>
                   )}
                 </Pressable>
               ) : null}
@@ -629,6 +726,8 @@ const styles = StyleSheet.create({
   unavailable: { color: colors.textMuted, fontSize: 12, lineHeight: 20 },
   gapLine: { marginBottom: 6 },
   fail: { color: colors.danger, fontSize: 13, lineHeight: 20 },
+  warn: { color: colors.gold, fontSize: 13, lineHeight: 20, marginTop: 4 },
+  okTitle: { color: colors.emerald, fontSize: 16, fontWeight: typography.weight.semibold },
   navRow: { flexDirection: 'row', gap: 10, marginTop: 4 },
   primaryBtn: {
     flex: 1,
