@@ -58,6 +58,8 @@ from adapters.ai_employee import (
     generate_proactive_suggestions,
     retrieve_relevant_memory,
 )
+# Gap 6 — LLM interpretation layer (controlled, environment-based)
+from adapters.llm import LLMRequest, LLMService
 
 # In-memory portfolio for beta builds when Mongo is unavailable
 _memory_db: Dict[str, List[dict]] = {}
@@ -1758,6 +1760,65 @@ async def upload_create_pdf(req: UploadPdfRequest):
 @api_router.get("/upload/last-applied")
 async def upload_last_applied():
     return {"analysis_id": _last_applied_analysis}
+
+
+# ---------------------------------------------------------------------------
+# Gap 6 — LLM interpretation layer (POST /api/ai/respond)
+#
+# Controlled LLM endpoint that explains verified SPP intelligence results.
+# The LLM NEVER calculates, invents, or executes — it only explains.
+# When AI_ENABLED=false, returns a deterministic fallback (no external call).
+# ---------------------------------------------------------------------------
+class AIRespondRequest(BaseModel):
+    analysis_id: str
+    task: str = "answer"  # answer | executive_summary | decision_explanation
+    question: Optional[str] = None
+
+
+# Singleton LLM service — provider is resolved from env on first use.
+_llm_service: Optional[LLMService] = None
+
+
+def _get_llm_service() -> LLMService:
+    global _llm_service
+    if _llm_service is None:
+        _llm_service = LLMService()
+    return _llm_service
+
+
+@api_router.post("/ai/respond")
+async def ai_respond(req: AIRespondRequest):
+    """Controlled LLM interpretation of persisted SPP intelligence.
+
+    Loads AI state by analysis_id, builds a controlled context (no raw
+    files), enforces the consistency gate, calls the LLM provider only
+    when AI_ENABLED=true, validates the response, and returns a typed
+    LLMResponse.
+
+    When AI_ENABLED=false: returns status=disabled with a deterministic
+    fallback generated from existing SPP data.
+    """
+    # 1. Load persisted AI state by analysis_id.
+    ai_state = await _load_ai_state()
+    if not ai_state or ai_state.get("analysis_id") != req.analysis_id:
+        # Also check if this is the latest applied analysis.
+        if req.analysis_id != _last_applied_analysis:
+            raise HTTPException(404, f"AI state not found for analysis_id={req.analysis_id}")
+        if not ai_state:
+            raise HTTPException(404, "No AI state persisted")
+
+    # 2. Build the LLM request.
+    llm_req = LLMRequest(
+        analysis_id=req.analysis_id,
+        task=req.task if req.task in ("answer", "executive_summary", "decision_explanation") else "answer",
+        question=req.question,
+    )
+
+    # 3. Call the LLM service (handles gate enforcement + provider call + validation).
+    service = _get_llm_service()
+    response = await service.respond(llm_req, ai_state)
+
+    return response.model_dump()
 
 
 # ---------------------------------------------------------------------------
