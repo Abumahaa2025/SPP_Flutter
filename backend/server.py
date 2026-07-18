@@ -50,6 +50,14 @@ from adapters.gas_import_bridge import (
     create_gas_owner_pdf,
     gas_import_available,
 )
+# AI Property Employee (Phase 1 — additive, no changes to existing endpoints)
+from adapters.ai_employee import (
+    build_employee_context,
+    build_system_prompt,
+    classify_intent,
+    generate_proactive_suggestions,
+    retrieve_relevant_memory,
+)
 
 # In-memory portfolio for beta builds when Mongo is unavailable
 _memory_db: Dict[str, List[dict]] = {}
@@ -1010,6 +1018,230 @@ async def chat_history(session_id: str):
     return await _safe_mongo_find(
         "chat_messages", {"session_id": session_id}, sort=("at", 1)
     )
+
+
+# ---------------------------------------------------------------------------
+# AI Property Employee — Phase 1 (additive, no changes to existing endpoints)
+#
+# New endpoints under /api/ai/employee/*:
+#   POST /api/ai/employee/chat         — context-aware chat (snapshot + focused memory)
+#   GET  /api/ai/employee/suggestions  — proactive recommendations (rule-based)
+#   GET  /api/ai/employee/context      — debug: the assembled snapshot + last intent
+#
+# All existing endpoints (/api/chat, /api/briefing, /api/executive, /api/verdicts,
+# /api/intelligence, /api/notifications, etc.) are UNCHANGED. The legacy
+# /api/chat continues to work exactly as before. The new /api/ai/employee/chat
+# is a parallel endpoint that injects portfolio context into the prompt.
+# ---------------------------------------------------------------------------
+class AIEmployeeChatRequest(BaseModel):
+    session_id: str
+    text: str
+    lang: str = "ar"  # ar | en — defaults to Arabic (matches Koïl engine default)
+
+
+@api_router.post("/ai/employee/chat")
+async def ai_employee_chat(req: AIEmployeeChatRequest):
+    """Context-aware chat: inject portfolio snapshot + focused memory into the prompt.
+
+    Falls back to a deterministic local reply when the LLM key is missing or the
+    emergentintegrations package is not installed — so the endpoint always returns
+    a structured reply instead of 500ing in beta / local mode.
+    """
+    now = _iso(datetime.now(timezone.utc))
+    user_msg = {
+        "id": str(uuid.uuid4()),
+        "session_id": req.session_id,
+        "role": "user",
+        "text": req.text,
+        "at": now,
+    }
+
+    # 1. Build employee context from the live portfolio.
+    ctx = await _portfolio_live_context()
+    emp_ctx = build_employee_context(ctx)
+
+    # 2. Classify intent + retrieve focused memory for this turn.
+    intent = classify_intent(req.text, emp_ctx.properties, emp_ctx.tenants, emp_ctx.contracts)
+    retrieval = retrieve_relevant_memory(emp_ctx, intent)
+
+    # 3. Build the system prompt (voice + snapshot + focused context).
+    lang = "ar" if (req.lang or "ar").startswith("ar") else "en"
+    system_prompt = build_system_prompt(emp_ctx, retrieval, lang=lang)  # type: ignore[arg-type]
+
+    # 4. Call the LLM (graceful fallback if no key / no emergentintegrations).
+    reply_text: str
+    used_llm = False
+    try:
+        from emergentintegrations.llm.chat import UserMessage  # type: ignore
+        if not EMERGENT_LLM_KEY:
+            raise RuntimeError("AI key not configured")
+        chat_obj = get_llm_chat(session_id=req.session_id, system_message=system_prompt)
+        reply_text = await chat_obj.send_message(UserMessage(text=req.text))
+        used_llm = True
+    except ModuleNotFoundError:
+        reply_text = _local_employee_reply(req.text, emp_ctx, retrieval, lang)
+    except RuntimeError:
+        reply_text = _local_employee_reply(req.text, emp_ctx, retrieval, lang)
+    except Exception as e:
+        msg_lower = str(e).lower()
+        if "budget" in msg_lower or "quota" in msg_lower:
+            reply_text = (
+                "The AI Employee is momentarily paused — the Emergent Universal Key "
+                "balance has run out. Top up in Profile → Universal Key → Add Balance "
+                "and I will be right back."
+            ) if lang == "en" else (
+                "AI Employee متوقف مؤقتاً — رصيد Emergent Universal Key نفد. "
+                "أعد الشحن من الملف الشخصي → Universal Key → Add Balance وسأعود فوراً."
+            )
+        else:
+            reply_text = _local_employee_reply(req.text, emp_ctx, retrieval, lang)
+
+    assistant_msg = {
+        "id": str(uuid.uuid4()),
+        "session_id": req.session_id,
+        "role": "assistant",
+        "text": reply_text,
+        "at": _iso(datetime.now(timezone.utc)),
+    }
+
+    # 5. Persist both messages (same store as /api/chat — unified history).
+    if _use_memory_store():
+        bucket = _memory_db.setdefault("chat_messages", [])
+        bucket.extend([dict(user_msg), dict(assistant_msg)])
+    elif _mongo_available:
+        try:
+            await _get_db().chat_messages.insert_many([dict(user_msg), dict(assistant_msg)])
+        except Exception as exc:
+            logger.warning("AI Employee chat history not saved (Mongo unavailable): %s", exc)
+
+    return {
+        "reply": reply_text,
+        "at": assistant_msg["at"],
+        "session_id": req.session_id,
+        "intent": intent.to_dict(),
+        "used_llm": used_llm,
+        "context_summary": {
+            "properties_in_focus": len(retrieval.properties),
+            "tenants_in_focus": len(retrieval.tenants),
+            "contracts_in_focus": len(retrieval.contracts),
+            "decisions_in_focus": len(retrieval.decisions),
+            "notes_count": len(retrieval.notes),
+        },
+    }
+
+
+@api_router.get("/ai/employee/suggestions")
+async def ai_employee_suggestions():
+    """Proactive recommendations — rule-based, deterministic, no LLM cost.
+
+    Returns a sorted list of Suggestion objects across 4 categories:
+    critical | important | follow_up | information
+    Each suggestion includes reason, action, impact, confidence, and
+    related property/tenant/contract ids.
+    """
+    ctx = await _portfolio_live_context()
+    emp_ctx = build_employee_context(ctx)
+    suggestions = generate_proactive_suggestions(emp_ctx)
+    return {
+        "version": "ai-employee-v1",
+        "count": len(suggestions),
+        "suggestions": [s.to_dict() for s in suggestions],
+        "categories": {
+            "critical": sum(1 for s in suggestions if s.category == "critical"),
+            "important": sum(1 for s in suggestions if s.category == "important"),
+            "follow_up": sum(1 for s in suggestions if s.category == "follow_up"),
+            "information": sum(1 for s in suggestions if s.category == "information"),
+        },
+    }
+
+
+@api_router.get("/ai/employee/context")
+async def ai_employee_context():
+    """Debug endpoint: returns the assembled EmployeeContext snapshot.
+
+    Useful for verifying the assistant is grounded in real data.
+    No PII — only property/tenant/contract ids and aggregate metrics.
+    """
+    ctx = await _portfolio_live_context()
+    emp_ctx = build_employee_context(ctx)
+    snap = emp_ctx.snapshot
+    return {
+        "version": "ai-employee-v1",
+        "owner_name": snap.owner_name,
+        "currency": snap.currency,
+        "portfolio_annual_revenue": snap.portfolio_annual_revenue,
+        "avg_health": snap.avg_health,
+        "occupancy_pct": snap.occupancy_pct,
+        "expiring_contracts": snap.expiring_contracts,
+        "open_decisions": snap.open_decisions,
+        "properties_count": len(snap.properties),
+        "tenants_count": len(snap.tenants),
+        "contracts_count": len(snap.contracts),
+        "decisions_count": len(snap.decisions),
+        "property_ids": [p.id for p in snap.properties],
+        "tenant_ids": [t.id for t in snap.tenants],
+        "contract_ids": [c.id for c in snap.contracts],
+    }
+
+
+def _local_employee_reply(
+    text: str,
+    emp_ctx: Any,
+    retrieval: Any,
+    lang: str,
+) -> str:
+    """Deterministic fallback reply when LLM is unavailable.
+
+    Builds a short, grounded reply from the focused memory — never generic.
+    Used in beta / local mode without EMERGENT_LLM_KEY.
+    """
+    ar = lang == "ar"
+    if not retrieval.notes and not retrieval.properties and not retrieval.tenants and not retrieval.contracts:
+        # Nothing matched — surface the top decision or top property.
+        if emp_ctx.snapshot.decisions:
+            top = emp_ctx.snapshot.decisions[0]
+            if ar:
+                return (
+                    f"لا توجد بيانات مطابقة لسؤالك. أولوية اليوم: {top.title} "
+                    f"({top.priority}). الإجراء المقترح: {top.action}."
+                )
+            return (
+                f"No direct match for your question. Today's top priority: {top.title} "
+                f"({top.priority}). Suggested action: {top.action}."
+            )
+        if ar:
+            return (
+                f"محفظتك تحتوي على {len(emp_ctx.snapshot.properties)} عقار و"
+                f"{len(emp_ctx.snapshot.tenants)} مستأجر. "
+                f"الصحة {emp_ctx.snapshot.avg_health}/100، الإشغال {emp_ctx.snapshot.occupancy_pct}%. "
+                "اسألني عن عقار أو مستأجر أو عقد محدد لأعطيك إجابة دقيقة."
+            )
+        return (
+            f"Your portfolio has {len(emp_ctx.snapshot.properties)} properties and "
+            f"{len(emp_ctx.snapshot.tenants)} tenants. "
+            f"Health {emp_ctx.snapshot.avg_health}/100, occupancy {emp_ctx.snapshot.occupancy_pct}%. "
+            "Ask me about a specific property, tenant, or contract for a grounded answer."
+        )
+
+    # Build a short grounded reply from the focused notes.
+    notes = retrieval.notes[:3]
+    if ar:
+        prefix = "بناءً على بيانات محفظتك:"
+        bullets = " · ".join(notes)
+        action_line = (
+            "الإجراء التالي: راجع التفاصيل واتخذ قراراً اليوم."
+            if not emp_ctx.snapshot.decisions
+            else f"الإجراء التالي: {emp_ctx.snapshot.decisions[0].action}"
+        )
+        return f"{prefix} {bullets}. {action_line}"
+    prefix = "Based on your portfolio:"
+    bullets = " · ".join(notes)
+    action_line = (
+        "Next action: review the details and decide today."
+        if not emp_ctx.snapshot.decisions
+        else f"Next action: {emp_ctx.snapshot.decisions[0].action}"
+    )
+    return f"{prefix} {bullets}. {action_line}"
 
 
 # ---------------------------------------------------------------------------
