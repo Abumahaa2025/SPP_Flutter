@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone, timedelta
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Literal
 
 from .intake_classifier import month_label
@@ -23,6 +23,8 @@ from adapters.koil.koil_report_bridge import (
     reasoning_to_smart_decisions,
 )
 from adapters.koil.consistency_gate import apply_gate_to_reasoning, run_consistency_gate
+# Gap 2 — upload → canonical → memory graph → executive intelligence bridge
+from adapters.canonical.pipeline import upload_analysis_to_canonical
 
 Lang = Literal["ar", "en"]
 
@@ -101,6 +103,25 @@ def _sec(key: str, title: str, items: List[dict]) -> dict:
 
 def _item(label: str, value: str) -> dict:
     return {"label": label, "value": value}
+
+
+def _icon_for_kind(kind: str) -> str:
+    """Map a unified decision kind to an icon name for next_actions."""
+    return {
+        "contact_late_tenant": "bell",
+        "follow_up_departed_tenant": "user-minus",
+        "onboard_new_tenant": "user-plus",
+        "review_payment_history": "file-text",
+        "investigate_tenant_change": "search",
+        "compare_collection_periods": "bar-chart-2",
+        "request_missing_lifecycle_data": "alert-triangle",
+        "maintenance": "wrench",
+        "renewal": "file",
+        "vacancy": "home",
+        "opportunity": "trending-up",
+        "tenant": "user",
+        "financial": "dollar-sign",
+    }.get(kind, "activity")
 
 
 def analyze_upload_portfolio(
@@ -248,6 +269,30 @@ def analyze_upload_portfolio(
     consistency_gate = run_consistency_gate(deep, property_knowledge, lang)
     koil_reasoning = apply_gate_to_reasoning(koil_reasoning, consistency_gate, lang)
 
+    # Gap 5: normalize the raw consistency gate output into the authoritative
+    # persisted shape. This is the ONE gate shape consumed by all live-context
+    # endpoints (briefing, verdicts, executive, unified decisions).
+    from adapters.gate import normalize_gate_output
+    normalized_gate = normalize_gate_output(
+        consistency_gate,
+        deep=deep,
+        knowledge=property_knowledge,
+        analysis_id=str(uuid.uuid4()),
+    )
+
+    # Gap 3 (complete): build the ONE normalized lifecycle payload using
+    # the existing 7 intake_lifecycle functions. This is the authoritative
+    # lifecycle shape persisted in ai_state and consumed by all live-context
+    # endpoints (briefing, verdicts, executive, smart decisions).
+    from adapters.lifecycle import build_normalized_lifecycle, generate_lifecycle_decisions
+    normalized_lifecycle = build_normalized_lifecycle(deep, lang=lang)
+    lifecycle_decisions = generate_lifecycle_decisions(
+        normalized_lifecycle,
+        gate=consistency_gate,
+    )
+
+    # Gap 4 block moved below (after smart_decisions is built).
+
     units_summary_items = [
         _item("الوحدات السكنية" if lang == "ar" else "Residential units", str(apartment_count or max(0, total_units - shop_count))),
         _item("المحلات" if lang == "ar" else "Commercial units", str(shop_count)),
@@ -357,6 +402,58 @@ def analyze_upload_portfolio(
         }
     )
 
+    # --- Gap 4: unify all four decision sources into ONE list ---
+    # Koïl smart_decisions + lifecycle_decisions + live ctx decisions +
+    # executive ranked items → single authoritative unified_smart_decisions
+    # with stable dedupe_keys, merged evidence, deterministic scores,
+    # and consistency-gate awareness.
+    from adapters.decisions import unify_decisions
+    from adapters.executive.ranking import build_ranked_items as _build_ranked
+    _ctx_decisions = ctx.get("decisions") or []
+    _ctx_properties = ctx.get("properties") or []
+    _ctx_tenants = ctx.get("tenants") or []
+    _ctx_contracts = ctx.get("contracts") or []
+    _executive_ranked = _build_ranked(
+        _ctx_properties,
+        _ctx_tenants,
+        _ctx_contracts,
+        _ctx_decisions,
+        lifecycle=normalized_lifecycle.get("lifecycle") if normalized_lifecycle else None,
+    )
+    unified_smart_decisions = unify_decisions(
+        koil_smart_decisions=smart_decisions,
+        koil_reasoning=koil_reasoning,
+        lifecycle_decisions=lifecycle_decisions,
+        live_decisions=_ctx_decisions,
+        executive_ranked_items=_executive_ranked,
+        consistency_gate=consistency_gate,
+        analysis_id=str(uuid.uuid4()),
+        unresolved_count=len(normalized_lifecycle.get("unresolved") or []),
+        property_knowledge=property_knowledge,
+    )
+    # Gap 5: apply the authoritative normalized gate to unified decisions.
+    # This adds blocked_by_gate, gate_status, gate_conflict_codes,
+    # gate_evidence, confidence_before_gate, confidence_after_gate to each
+    # decision, using entity-aware blocking (not global).
+    from adapters.gate import apply_gate_to_unified_decisions
+    unified_smart_decisions = apply_gate_to_unified_decisions(
+        unified_smart_decisions, normalized_gate,
+    )
+    # Derive next_actions from unified decisions (replaces hardcoded list
+    # when an analysis exists). Each action references the unified decision id.
+    unified_next_actions = [
+        {
+            "key": d.get("kind", "action"),
+            "icon": _icon_for_kind(d.get("kind", "")),
+            "route": d.get("route", "/"),
+            "label": d.get("title", ""),
+            "decision_id": d.get("id"),
+            "priority": d.get("priority", "medium"),
+            "confidence": d.get("confidence", 0),
+        }
+        for d in unified_smart_decisions[:8]
+    ]
+
     metrics = {
         "properties": len(properties),
         "units": total_units,
@@ -401,8 +498,28 @@ def analyze_upload_portfolio(
         executive_report,
     )
 
+    # --- Gap 2: run the upload → canonical → memory → insights bridge ---
+    # Produces 4 additive fields attached to the response:
+    #   canonical_portfolio_summary — portfolio shape (units/assets/events counts)
+    #   property_memory            — asset risk profiles (same shape as
+    #                                /api/portfolio-memory response)
+    #   executive_intelligence     — repeat_repair / warranty_window /
+    #                                renewal_pricing insights (same shape as
+    #                                /api/intelligence response)
+    #   canonical_warnings         — unresolved records (parse errors,
+    #                                missing phones, missing contracts, etc.)
+    #
+    # The bridge degrades gracefully - on any error it returns empty
+    # defaults so the upload analysis response is never broken.
+    analysis_id_for_canonical = str(uuid.uuid4())
+    canonical_outputs = upload_analysis_to_canonical(
+        property_knowledge=property_knowledge,
+        metrics=metrics,
+        analysis_id=analysis_id_for_canonical,
+    )
+
     return {
-        "analysis_id": str(uuid.uuid4()),
+        "analysis_id": analysis_id_for_canonical,
         # Regression / Koil brief contract: success_message must be Koil-signed
         # ("كويل · …" / "Koil · …"). property_status stays on executive_brief for UI.
         "success_message": koil_reasoning.get("brief")
@@ -424,13 +541,41 @@ def analyze_upload_portfolio(
         "koil_understanding": koil_understanding,
         "koil_reasoning": koil_reasoning,
         "consistency_gate": consistency_gate,
+        # Gap 2: canonical portfolio + memory + intelligence outputs.
+        # All additive - existing clients ignore these keys. Persisted into
+        # ai_state by build_local_apply_commit() so /api/portfolio-memory
+        # and /api/intelligence can serve them after Apply without rebuild.
+        "canonical_portfolio_summary": canonical_outputs["canonical_portfolio_summary"],
+        "property_memory": canonical_outputs["property_memory"],
+        "executive_intelligence": canonical_outputs["executive_intelligence"],
+        "canonical_warnings": canonical_outputs["canonical_warnings"],
+        # Gap 3 (complete): the ONE normalized lifecycle payload +
+        # lifecycle-derived smart decisions. Persisted in ai_state by
+        # build_local_apply_commit() so /api/briefing, /api/verdicts,
+        # /api/executive can serve them after Apply.
+        "normalized_lifecycle": normalized_lifecycle,
+        "lifecycle_decisions": lifecycle_decisions,
+        # Gap 4: the ONE unified smart decisions list + derived next_actions.
+        # Replaces the four independent decision lists (koil smart_decisions,
+        # lifecycle_decisions, live decisions, executive ranked_items) with
+        # a single authoritative list that has stable dedupe_keys, merged
+        # evidence, deterministic scores, and consistency-gate awareness.
+        "unified_smart_decisions": unified_smart_decisions,
+        # Gap 5: the ONE authoritative normalized consistency gate. This is
+        # the authoritative gate shape consumed by all live-context endpoints.
+        "normalized_gate": normalized_gate,
         "month_comparison": [
             {"month": m["month"], "revenue": m["revenue"], "expenses": m["expenses"]}
             for m in month_cmp
         ],
         "expense_by_type": [{"type": d, "amount": t} for d, _, t in maint_freq[:5]],
         "smart_decisions": smart_decisions[:8],
-        "next_actions": [
+        # Gap 4: next_actions derived from unified_smart_decisions when an
+        # analysis exists. Each action references the unified decision id
+        # so the same operational event keeps the same id across all views.
+        # The hardcoded fallback below is only used when unified_next_actions
+        # is empty (no decisions were produced).
+        "next_actions": unified_next_actions if unified_next_actions else [
             {"key": "update_portfolio", "icon": "database", "route": "/portfolio"},
             {"key": "send_alerts", "icon": "bell", "route": "/notifications"},
             {"key": "create_pdf", "icon": "file-text", "route": "/reports"},

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional
 
 from adapters.mappers.brain_copy import (
     contract_renewal_action,
@@ -81,8 +81,25 @@ def build_verdicts(
     decisions: List[dict],
     reports: List[dict],
     notifications: List[dict],
+    *,
+    lifecycle: Optional[Dict[str, Any]] = None,
+    normalized_lifecycle: Optional[Dict[str, Any]] = None,
+    unified_smart_decisions: Optional[List[Dict[str, Any]]] = None,
 ) -> Dict[str, Optional[Dict[str, str]]]:
-    """One recommendation per surface — derived only from live domain rows."""
+    """One recommendation per surface — derived only from live domain rows.
+
+    Gap 3: when a persisted ai_state lifecycle is provided (imported from
+    upload analysis), surface departures / newcomers / tenant_changes in
+    the relevant verdicts (home, tenants, portfolio). Pre-Gap-3 behavior
+    is fully preserved when lifecycle is None.
+
+    Gap 3 (complete): when normalized_lifecycle is provided, add evidence
+    fields to verdicts that have lifecycle backing:
+        tenant, unit, previous_period, current_period,
+        evidence_source, confidence
+    These fields are additive — placed inside the relevant verdict object
+    without changing the existing {headline, why, action, route} shape.
+    """
     props_by_id = _property_map(properties)
     tenants_by_id = _tenant_map(tenants)
     ranked = _sorted_decisions(decisions)
@@ -100,7 +117,78 @@ def build_verdicts(
         key=lambda n: _PRIORITY.get(n.get("priority", "medium"), 9),
     )
 
+    # --- Gap 3: extract lifecycle signals from persisted ai_state ---
+    # When an import has been applied, lifecycle contains departed / newcomers /
+    # tenant_changes detected by intake_lifecycle.build_lifecycle(). These
+    # signals are NOT visible in contracts[].status (which only knows
+    # "expiring") — surfacing them in verdicts closes Gap 3.
+    #
+    # Gap 3 (complete): when normalized_lifecycle is provided, use it as
+    # the authoritative source. It takes precedence over the legacy
+    # property_knowledge.lifecycle arg, and adds late_tenants + payment
+    # ledger evidence to the verdicts.
+    lc_departed: List[dict] = []
+    lc_newcomers: List[dict] = []
+    lc_changes: List[dict] = []
+    lc_late_tenants: List[dict] = []
+    lc_reporting_period: Dict[str, Any] = {}
+    nl = normalized_lifecycle if isinstance(normalized_lifecycle, dict) else None
+    if nl:
+        lc_departed = list(nl.get("departed") or [])[:5]
+        lc_newcomers = list(nl.get("newcomers") or [])[:5]
+        lc_changes = list(nl.get("tenant_changes") or [])[:5]
+        lc_late_tenants = list(nl.get("late_tenants") or [])[:5]
+        lc_reporting_period = nl.get("reporting_period") or {}
+        # Gap 3 (complete): when has_real_content is False (filename-only
+        # upload), force all lifecycle event lists empty — no verdicts
+        # should be generated from filename-only imports.
+        if not nl.get("has_real_content", True):
+            lc_departed = []
+            lc_newcomers = []
+            lc_changes = []
+            lc_late_tenants = []
+    elif lifecycle and isinstance(lifecycle, dict):
+        lc_departed = list(lifecycle.get("departed") or [])[:5]
+        lc_newcomers = list(lifecycle.get("newcomers") or [])[:5]
+        lc_changes = list(lifecycle.get("tenant_changes") or [])[:5]
+
+    # Gap 3 (complete): helper to attach evidence fields to a verdict.
+    def _with_evidence(
+        verdict: Optional[Dict[str, Any]],
+        *,
+        tenant: Optional[str] = None,
+        unit: Optional[str] = None,
+        previous_period: Optional[Dict[str, Any]] = None,
+        current_period: Optional[Dict[str, Any]] = None,
+        evidence_source: str = "normalized_lifecycle",
+        confidence: int = 70,
+    ) -> Optional[Dict[str, Any]]:
+        """Attach additive evidence fields to a verdict without changing
+        its existing {headline, why, action, route} shape."""
+        if verdict is None:
+            return None
+        verdict["tenant"] = tenant
+        verdict["unit"] = unit
+        verdict["previous_period"] = previous_period
+        verdict["current_period"] = current_period
+        verdict["evidence_source"] = evidence_source
+        verdict["confidence"] = confidence
+        return verdict
+
     out: Dict[str, Optional[Dict[str, str]]] = {}
+
+    # Gap 4: when unified_smart_decisions is provided, attach the top
+    # unified decision id to the home verdict so the same operational
+    # event keeps the same id across /api/decisions, /api/executive,
+    # /api/briefing, /api/verdicts.
+    _unified_top_id = None
+    if unified_smart_decisions:
+        for ud in unified_smart_decisions:
+            if not ud.get("blocked_by_gate", False):
+                _unified_top_id = ud.get("id")
+                break
+        if _unified_top_id is None and unified_smart_decisions:
+            _unified_top_id = unified_smart_decisions[0].get("id")
 
     if len(urgent) >= 2:
         a, b = urgent[0], urgent[1]
@@ -131,14 +219,79 @@ def build_verdicts(
         )
     elif properties:
         occ = round(100 * sum(p.get("occupancy", 0) for p in properties) / len(properties))
-        out["home"] = _verdict(
-            headline="لا قرارات عاجلة اليوم.",
-            why=f"راقب الإشغال عند {occ}% — المحفظة مستقرة.",
-            action="راجع المحفظة",
-            route="/portfolio",
-        )
+        # Gap 3: when no urgent decisions but lifecycle shows tenant changes,
+        # surface them as the home verdict. This is the only way the owner
+        # sees imported turnover signals on the home screen.
+        # Gap 3 (complete): also surface late tenants from normalized_lifecycle.
+        if lc_late_tenants and nl:
+            # Late tenant evidence takes precedence (more actionable than turnover).
+            lt = lc_late_tenants[0]
+            out["home"] = _verdict(
+                headline=f"تواصل مع {lt.get('tenant', '—')} — متأخر {lt.get('late_month_count', 0)} شهر.",
+                why=f"متأخرات مؤكدة على الوحدة {lt.get('unit', '—')} · {float(lt.get('total_unpaid') or 0):,.0f} ر.س.",
+                action=f"أرسل تذكير دفع إلى {lt.get('tenant', '—')} اليوم.",
+                route="/tenants",
+            )
+            # Gap 3 (complete): attach evidence fields.
+            _with_evidence(
+                out["home"],
+                tenant=lt.get("tenant"),
+                unit=lt.get("unit"),
+                current_period=lc_reporting_period,
+                evidence_source="normalized_lifecycle.late_tenants",
+                confidence=88,
+            )
+        elif lc_departed or lc_newcomers:
+            dep_n = len(lc_departed)
+            new_n = len(lc_newcomers)
+            headline = f"راجع {dep_n} مغادرة و{new_n} دخول من آخر استيراد."
+            why_parts = []
+            ev_tenant = None
+            ev_unit = None
+            if lc_departed:
+                d = lc_departed[0]
+                ev_tenant = d.get("tenant")
+                ev_unit = d.get("unit")
+                why_parts.append(
+                    f"غادر: {d.get('tenant', '—')} (وحدة {d.get('unit', '—')})"
+                )
+            if lc_newcomers:
+                n = lc_newcomers[0]
+                if not ev_tenant:
+                    ev_tenant = n.get("tenant")
+                    ev_unit = n.get("unit")
+                why_parts.append(
+                    f"دخل: {n.get('tenant', '—')} (وحدة {n.get('unit', '—')})"
+                )
+            out["home"] = _verdict(
+                headline=headline,
+                why=" · ".join(why_parts) + " — أكّد الهويات والجوال قبل التحصيل.",
+                action="راجع الكشوف المستوردة",
+                route="/tenants",
+            )
+            # Gap 3 (complete): attach evidence fields.
+            _with_evidence(
+                out["home"],
+                tenant=ev_tenant,
+                unit=ev_unit,
+                current_period=lc_reporting_period,
+                evidence_source="normalized_lifecycle.departed_newcomers",
+                confidence=75,
+            )
+        else:
+            out["home"] = _verdict(
+                headline="لا قرارات عاجلة اليوم.",
+                why=f"راقب الإشغال عند {occ}% — المحفظة مستقرة.",
+                action="راجع المحفظة",
+                route="/portfolio",
+            )
     else:
         out["home"] = None
+
+    # Gap 4: attach the unified decision id to the home verdict so callers
+    # can cross-reference /api/decisions, /api/executive, /api/briefing.
+    if _unified_top_id and out.get("home"):
+        out["home"]["unified_decision_id"] = _unified_top_id
 
     if weakest:
         out["portfolio"] = _verdict(
@@ -246,6 +399,54 @@ def build_verdicts(
                 "جهّز عرض التجديد"
             ),
             route="/tenants",
+        )
+    elif lc_changes:
+        # Gap 3: no expiring contracts, but the import detected tenant
+        # changes (departures / arrivals / replacements). Surface the
+        # most recent one as the tenants verdict.
+        ch = lc_changes[0]
+        unit = ch.get("unit", "—")
+        from_t = ch.get("from_tenant") or "—"
+        to_t = ch.get("to_tenant") or "—"
+        ch_type = ch.get("type") or "change"
+        ch_confirmed = bool(ch.get("confirmed"))
+        type_label = {
+            "departure": "مغادرة",
+            "arrival": "دخول",
+            "replacement": "استبدال",
+        }.get(ch_type, "تغيّر")
+        out["tenants"] = _verdict(
+            headline=f"{type_label} على الوحدة {unit} — راجع الملف.",
+            why=f"من {from_t} إلى {to_t} — أكّد الهوية والجوال قبل أي تحصيل.",
+            action="افتح ملف المستأجر وراجع العقد",
+            route="/tenants",
+        )
+        # Gap 3 (complete): attach evidence fields to tenants verdict.
+        _with_evidence(
+            out["tenants"],
+            tenant=to_t if to_t != "—" else from_t,
+            unit=unit if unit != "—" else None,
+            current_period=lc_reporting_period,
+            evidence_source="normalized_lifecycle.tenant_changes",
+            confidence=75 if ch_confirmed else 45,
+        )
+    elif lc_late_tenants and nl:
+        # Gap 3 (complete): no renewal + no tenant_changes, but there are
+        # late tenants from the import — surface the top one as tenants verdict.
+        lt = lc_late_tenants[0]
+        out["tenants"] = _verdict(
+            headline=f"تواصل مع {lt.get('tenant', '—')} بخصوص المتأخرات.",
+            why=f"متأخر {lt.get('late_month_count', 0)} شهر · {float(lt.get('total_unpaid') or 0):,.0f} ر.س على الوحدة {lt.get('unit', '—')}.",
+            action=f"أرسل تذكير دفع إلى {lt.get('tenant', '—')} اليوم.",
+            route="/tenants",
+        )
+        _with_evidence(
+            out["tenants"],
+            tenant=lt.get("tenant"),
+            unit=lt.get("unit"),
+            current_period=lc_reporting_period,
+            evidence_source="normalized_lifecycle.late_tenants",
+            confidence=88,
         )
     else:
         out["tenants"] = None

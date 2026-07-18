@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Literal, Optional
+from typing import Dict, List, Literal, Optional
 
 Lang = Literal["ar", "en"]
 
@@ -149,6 +149,130 @@ def run_consistency_gate(
             continue
         seen.add(key)
         uniq.append(c)
+
+    # --- Gap 5: additional conflict detectors (additive) ---
+    # These extend the existing gate without rewriting it. Each new detector
+    # appends conflicts to `uniq` using the same {code, unit/detail} shape.
+
+    # 6) Departed and active in the same period
+    for d in (lc.get("departed") or []):
+        unit = str(d.get("unit") or "")
+        d_m = int(d.get("departed_month") or d.get("departedMonth") or 0)
+        d_y = int(d.get("departed_year") or d.get("departedYear") or 0)
+        for a in (lc.get("active") or []):
+            if str(a.get("unit") or "") != unit:
+                continue
+            # If the same tenant appears as both departed and active.
+            if d.get("tenant") and a.get("tenant") and d.get("tenant") == a.get("tenant"):
+                detail = (
+                    f"الوحدة {unit}: {d.get('tenant')} مُسجّل كمغادر ونشط في نفس الفترة"
+                    if ar
+                    else f"Unit {unit}: {d.get('tenant')} marked both departed and active"
+                )
+                if detail not in seen:
+                    seen.add(detail)
+                    uniq.append({"code": "departed_and_active", "unit": unit, "detail": detail})
+                break
+
+    # 7) Collected exceeds due without adjustment
+    for ent in ledger.values():
+        for m in ent.get("months") or []:
+            due = float(m.get("due") or 0)
+            paid = float(m.get("paid") or 0)
+            if due > 0 and paid > due * 1.05:  # 5% tolerance
+                detail = (
+                    f"الوحدة {ent.get('unit')}: شهر {m.get('month')}/{m.get('year')} "
+                    f"المحصّل ({paid:,.0f}) > المستحق ({due:,.0f})"
+                    if ar
+                    else f"Unit {ent.get('unit')}: collected {paid} exceeds due {due}"
+                )
+                if detail not in seen:
+                    seen.add(detail)
+                    uniq.append({"code": "collected_exceeds_due", "unit": ent.get("unit"), "detail": detail})
+
+    # 8) Negative rent or maintenance values
+    for ent in ledger.values():
+        rent = float(ent.get("rent") or 0)
+        if rent < 0:
+            detail = (
+                f"الوحدة {ent.get('unit')}: إيجار سالب ({rent})"
+                if ar
+                else f"Unit {ent.get('unit')}: negative rent ({rent})"
+            )
+            if detail not in seen:
+                seen.add(detail)
+                uniq.append({"code": "negative_value", "unit": ent.get("unit"), "detail": detail})
+    for mr in (deep.get("maintenance_log") or []):
+        amt = float(mr.get("amount") or 0)
+        if amt < 0:
+            detail = f"صيانة بقيمة سالبة ({amt}): {mr.get('description', '')}" if ar else f"Negative maintenance amount ({amt})"
+            if detail not in seen:
+                seen.add(detail)
+                uniq.append({"code": "negative_value", "unit": mr.get("unit", ""), "detail": detail})
+
+    # 9) Duplicate payment (same tenant+unit+month counted twice)
+    month_seen: set = set()
+    for ent in ledger.values():
+        for m in ent.get("months") or []:
+            mk = f"{ent.get('unit')}|{m.get('month')}|{m.get('year')}|{m.get('paid')}"
+            if mk in month_seen and float(m.get("paid") or 0) > 0:
+                detail = (
+                    f"الوحدة {ent.get('unit')}: دفعة مكررة في شهر {m.get('month')}/{m.get('year')}"
+                    if ar
+                    else f"Unit {ent.get('unit')}: duplicate payment in month {m.get('month')}/{m.get('year')}"
+                )
+                if detail not in seen:
+                    seen.add(detail)
+                    uniq.append({"code": "duplicate_payment", "unit": ent.get("unit"), "detail": detail})
+            month_seen.add(mk)
+
+    # 10) Closed and open maintenance contradiction
+    maint_entries = (knowledge.get("maintenance") or {}).get("entries") or []
+    maint_by_desc: Dict[str, List[dict]] = {}
+    for me in maint_entries:
+        desc = str(me.get("description") or "")
+        if desc:
+            maint_by_desc.setdefault(desc, []).append(me)
+    for desc, group in maint_by_desc.items():
+        statuses = set(str(g.get("status") or "").lower() for g in group)
+        if statuses & {"closed", "done", "مكتمل", "completed"} and statuses & {"open", "pending", "in_progress"}:
+            unit = group[0].get("unit", "")
+            detail = (
+                f"الوحدة {unit}: صيانة «{desc}» مُسجّلة كمكتوبة ومفتوحة"
+                if ar
+                else f"Unit {unit}: maintenance '{desc}' marked both closed and open"
+            )
+            if detail not in seen:
+                seen.add(detail)
+                uniq.append({"code": "closed_and_open_maintenance", "unit": unit, "detail": detail})
+
+    # 11) Expired and active contract simultaneously
+    for c in (knowledge.get("lifecycle") or {}).get("active") or []:
+        c_status = str(c.get("contract_status") or c.get("payment_status") or "").lower()
+        if c_status in ("expired", "ended") and c.get("tenant"):
+            unit = c.get("unit", "")
+            detail = (
+                f"الوحدة {unit}: عقد مُسجّل كمنتهي لكن المستأجر نشط"
+                if ar
+                else f"Unit {unit}: contract expired but tenant is active"
+            )
+            if detail not in seen:
+                seen.add(detail)
+                uniq.append({"code": "expired_and_active_contract", "unit": unit, "detail": detail})
+
+    # 12) Filename-only lifecycle inference
+    parsed_rolls = deep.get("parsed_rolls") or []
+    has_real_content = any(int(pr.get("row_count") or 0) > 0 for pr in parsed_rolls)
+    files_without = deep.get("files_without_content") or []
+    if files_without and not has_real_content:
+        detail = (
+            "استنتاج دورة الحياة من أسماء الملفات فقط — لا يوجد محتوى"
+            if ar
+            else "Lifecycle inferred from filenames only — no file content"
+        )
+        if detail not in seen:
+            seen.add(detail)
+            uniq.append({"code": "filename_only_lifecycle", "detail": detail})
 
     status = "ok" if not uniq else "blocked_for_review"
     message = (

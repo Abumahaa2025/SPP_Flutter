@@ -566,6 +566,168 @@ async def _safe_mongo_find_one(collection: str, query: Optional[dict] = None) ->
         return None
 
 
+# ---------------------------------------------------------------------------
+# Gap 1 — AI reasoning state persistence
+# ---------------------------------------------------------------------------
+# After a successful Apply, the import pipeline has produced rich reasoning
+# artifacts (property_knowledge, koil_reasoning, consistency_gate,
+# executive_brief, lifecycle, tenant_cards). These MUST be persisted so the
+# live-context endpoints (/api/briefing, /api/verdicts, /api/executive) can
+# consume them — otherwise the next briefing rebuilds from raw properties
+# with zero memory of why those properties look the way they do.
+#
+# Storage abstraction:
+#   - When Mongo is available → persist to `ai_state` collection (one doc per
+#     analysis_id) + `ai_state_latest` singleton doc pointing to the most
+#     recent successful apply. Survives server restart.
+#   - When Mongo is unavailable (beta / local / test) → fall back to the
+#     in-memory `_memory_db` dict under the `ai_state` and `ai_state_latest`
+#     keys. Lost on restart, but that matches the existing memory-store
+#     contract for properties/tenants/contracts.
+#
+# Safety guarantees:
+#   1. A failed or incomplete analysis NEVER overwrites the last valid AI
+#      state. _persist_ai_state() is only called after build_local_apply_commit()
+#      succeeds with both properties AND ai_state.
+#   2. _load_ai_state() returns None when no state exists — callers must
+#      fall back to the pre-Gap-1 behavior (raw ctx without reasoning).
+#   3. Repeated Apply with the same analysis_id is idempotent: the same
+#      analysis_id overwrites its own doc, but the `latest` pointer only
+#      moves forward in `applied_at` time.
+# ---------------------------------------------------------------------------
+_AI_STATE_COLLECTION = "ai_state"
+_AI_STATE_LATEST_COLLECTION = "ai_state_latest"
+
+
+def _ai_state_memory_store() -> Dict[str, dict]:
+    """Return (creating if needed) the in-memory dict holding AI state docs.
+
+    Memory-store shape (different from list-based _memory_db):
+        {
+            "ai_state": { analysis_id: ai_state_doc, ... },
+            "ai_state_latest": { "analysis_id": "...", "applied_at": "..." },
+        }
+    """
+    store = _memory_db.setdefault(_AI_STATE_COLLECTION, {})
+    if not isinstance(store, dict):
+        # If something put a list here by mistake, reset to dict.
+        store = {}
+        _memory_db[_AI_STATE_COLLECTION] = store
+    return store
+
+
+def _ai_state_latest_memory_pointer() -> Dict[str, str]:
+    ptr = _memory_db.setdefault(_AI_STATE_LATEST_COLLECTION, {})
+    if not isinstance(ptr, dict):
+        ptr = {}
+        _memory_db[_AI_STATE_LATEST_COLLECTION] = ptr
+    return ptr
+
+
+async def _persist_ai_state(ai_state: Dict[str, Any]) -> None:
+    """Persist a successful Apply's AI state. No-op if ai_state is empty.
+
+    Called only after build_local_apply_commit() returns a valid commit with
+    both `properties` and `ai_state` populated. Failed applies never reach
+    this function — they raise HTTPException before the call site.
+
+    Safety: refuse to persist an empty / incomplete AI state. This protects
+    against the case where build_local_apply_commit() is called with an
+    unknown analysis_id (session lookup returns {}) and produces an ai_state
+    with empty property_knowledge + koil_reasoning. Persisting that would
+    overwrite the last valid AI state with garbage.
+    """
+    if not ai_state or not ai_state.get("analysis_id"):
+        return
+
+    # Refuse to persist an AI state that has no real reasoning content.
+    # This is the "failed apply does not overwrite last valid state" guard.
+    pk = ai_state.get("property_knowledge") or {}
+    reasoning = ai_state.get("koil_reasoning") or {}
+    if not pk or not reasoning:
+        logger.warning(
+            "Refusing to persist incomplete AI state (analysis_id=%s) — "
+            "property_knowledge or koil_reasoning is empty",
+            ai_state.get("analysis_id"),
+        )
+        return
+
+    analysis_id = ai_state["analysis_id"]
+    applied_at = ai_state.get("applied_at") or _iso(datetime.now(timezone.utc))
+    ai_state = dict(ai_state)
+    ai_state["applied_at"] = applied_at
+
+    if _use_memory_store():
+        store = _ai_state_memory_store()
+        store[analysis_id] = ai_state
+        _ai_state_latest_memory_pointer()["analysis_id"] = analysis_id
+        _ai_state_latest_memory_pointer()["applied_at"] = applied_at
+        return
+
+    if not _mongo_available:
+        return
+
+    try:
+        await _get_db()[_AI_STATE_COLLECTION].update_one(
+            {"analysis_id": analysis_id},
+            {"$set": ai_state},
+            upsert=True,
+        )
+        await _get_db()[_AI_STATE_LATEST_COLLECTION].update_one(
+            {"_id": "latest"},
+            {"$set": {"analysis_id": analysis_id, "applied_at": applied_at}},
+            upsert=True,
+        )
+    except Exception as exc:
+        # Persistence failure must NOT break the apply response — the
+        # portfolio rows are already committed. Log and move on; the next
+        # briefing will fall back to raw ctx (pre-Gap-1 behavior).
+        logger.warning("AI state persist failed (analysis_id=%s): %s", analysis_id, exc)
+
+
+async def _load_ai_state() -> Optional[Dict[str, Any]]:
+    """Load the latest successfully-applied AI state, or None if absent.
+
+    Used by _portfolio_live_context() to enrich ctx with reasoning artifacts.
+    """
+    if _use_memory_store():
+        ptr = _ai_state_latest_memory_pointer()
+        aid = ptr.get("analysis_id")
+        if not aid:
+            return None
+        return _ai_state_memory_store().get(aid)
+
+    if not _mongo_available:
+        return None
+
+    try:
+        ptr = await _get_db()[_AI_STATE_LATEST_COLLECTION].find_one({"_id": "latest"})
+        if not ptr or not ptr.get("analysis_id"):
+            return None
+        aid = ptr["analysis_id"]
+        doc = await _get_db()[_AI_STATE_COLLECTION].find_one({"analysis_id": aid}, {"_id": 0})
+        return _strip_id(doc) if doc else None
+    except Exception as exc:
+        logger.warning("AI state load failed: %s", exc)
+        return None
+
+
+async def _clear_ai_state() -> None:
+    """Clear all persisted AI state. Used by /api/demo/clear so a fresh
+    demo load doesn't leak the previous import's reasoning."""
+    if _use_memory_store():
+        _memory_db.pop(_AI_STATE_COLLECTION, None)
+        _memory_db.pop(_AI_STATE_LATEST_COLLECTION, None)
+        return
+    if not _mongo_available:
+        return
+    try:
+        await _get_db()[_AI_STATE_COLLECTION].delete_many({})
+        await _get_db()[_AI_STATE_LATEST_COLLECTION].delete_many({})
+    except Exception as exc:
+        logger.warning("AI state clear failed: %s", exc)
+
+
 def _gas_memory_bundle() -> Optional[Dict[str, Any]]:
     gas = get_gas_client()
     if not gas.configured:
@@ -755,6 +917,68 @@ async def _portfolio_live_context() -> Dict[str, Any]:
             "reports": reports,
         }
 
+    # Gap 1: enrich ctx with the latest successfully-applied AI reasoning
+    # artifacts. _load_ai_state() returns None when no state has been
+    # persisted (fresh server, no imports yet, or Mongo unavailable) — in
+    # that case ctx stays unchanged and all downstream endpoints fall back
+    # to their pre-Gap-1 behavior. This is the backward-compat guarantee.
+    ai_state = await _load_ai_state()
+    if ai_state:
+        ctx["ai_state"] = ai_state
+        # Convenience accessors — callers can read these directly from ctx
+        # without digging into ai_state. All optional; absent when no state.
+        ctx["reasoning"] = ai_state.get("koil_reasoning")
+        ctx["consistency_gate"] = ai_state.get("consistency_gate")
+        ctx["executive_brief"] = ai_state.get("executive_brief")
+        # Lifecycle comes from property_knowledge.lifecycle (the canonical
+        # source inside the import snapshot). Expose it directly so
+        # build_briefing() can read it without nested lookups.
+        pk = ai_state.get("property_knowledge") or {}
+        ctx["lifecycle"] = pk.get("lifecycle") or ai_state.get("lifecycle")
+        ctx["property_knowledge"] = pk
+        # Gap 2: expose canonical portfolio + memory + intelligence so
+        # /api/portfolio-memory and /api/intelligence can serve them
+        # directly without rebuilding from demo/GAS data.
+        ctx["canonical_portfolio_summary"] = ai_state.get("canonical_portfolio_summary")
+        ctx["property_memory"] = ai_state.get("property_memory")
+        ctx["executive_intelligence"] = ai_state.get("executive_intelligence")
+        ctx["canonical_warnings"] = ai_state.get("canonical_warnings")
+        # Gap 3 (complete): expose the ONE normalized lifecycle payload +
+        # lifecycle decisions. This is the authoritative lifecycle source
+        # for /api/briefing, /api/verdicts, /api/executive, smart decisions.
+        # Falls back to property_knowledge.lifecycle when normalized_lifecycle
+        # is absent (backward compat with Gap 1-only ai_state).
+        ctx["normalized_lifecycle"] = ai_state.get("normalized_lifecycle") or {
+            "version": "lifecycle-v1",
+            "reporting_period": {},
+            "departed": (pk.get("lifecycle") or {}).get("departed") or [],
+            "newcomers": (pk.get("lifecycle") or {}).get("newcomers") or [],
+            "active": (pk.get("lifecycle") or {}).get("active") or [],
+            "tenant_changes": (pk.get("lifecycle") or {}).get("tenant_changes") or [],
+            "late_tenants": (pk.get("late") or {}).get("tenants") or [],
+            "payment_ledger": [],
+            "late_by_month": [],
+            "month_comparison": [],
+            "annual_stats": {},
+            "summary": {
+                "departed_count": (pk.get("lifecycle") or {}).get("departed_count") or 0,
+                "newcomers_count": (pk.get("lifecycle") or {}).get("newcomers_count") or 0,
+                "active_count": (pk.get("lifecycle") or {}).get("active_count") or 0,
+                "late_count": (pk.get("late") or {}).get("tenant_count") or 0,
+            },
+            "warnings": [], "unresolved": [],
+            "source": "fallback_from_property_knowledge",
+            "has_real_content": True, "month_count": 0,
+        }
+        ctx["lifecycle_decisions"] = ai_state.get("lifecycle_decisions") or []
+        # Gap 4: expose the ONE unified smart decisions list. Authoritative
+        # for /api/decisions, /api/executive, /api/briefing, /api/verdicts.
+        # Falls back to empty list when no ai_state (backward compat).
+        ctx["unified_smart_decisions"] = ai_state.get("unified_smart_decisions") or []
+        # Gap 5: expose the authoritative normalized consistency gate.
+        # This is the ONE gate shape consumed by all live-context endpoints.
+        ctx["normalized_gate"] = ai_state.get("normalized_gate")
+
     _portfolio_cache = ctx
     _portfolio_cache_at = now
     return _portfolio_cache
@@ -772,53 +996,143 @@ async def root():
 async def briefing():
     """The AI Employee's morning briefing — the heart of the home screen."""
     ctx = await _portfolio_live_context()
-    return build_briefing(
+    brief = build_briefing(
         ctx["settings"],
         ctx["properties"],
         ctx["tenants"],
         ctx["contracts"],
         ctx["decisions"],
         ctx["reports"],
+        # Gap 1: pass persisted reasoning artifacts so build_briefing() can
+        # weave them into the narrative. All optional — None when no import
+        # has been applied yet, in which case build_briefing() falls back
+        # to its pre-Gap-1 behavior.
+        reasoning=ctx.get("reasoning"),
+        consistency_gate=ctx.get("consistency_gate"),
+        lifecycle=ctx.get("lifecycle"),
+        executive_brief=ctx.get("executive_brief"),
+        # Gap 3 (complete): pass the ONE normalized lifecycle payload so
+        # the briefing uses it as the authoritative source for late tenants,
+        # payment history, and month-over-month collection change.
+        normalized_lifecycle=ctx.get("normalized_lifecycle"),
+        # Gap 4: pass the ONE unified smart decisions list so the briefing
+        # action line references the same decision id as /api/decisions,
+        # /api/executive, /api/verdicts.
+        unified_smart_decisions=ctx.get("unified_smart_decisions"),
     )
+    # Gap 5: apply the authoritative normalized gate to the briefing.
+    # When blocked, claims are rephrased as review requirements.
+    # Only apply when a persisted gate exists (backward compat: no gate
+    # when no import has been applied).
+    _ng = ctx.get("normalized_gate")
+    if _ng:
+        from adapters.gate import apply_gate_to_briefing
+        brief = apply_gate_to_briefing(brief, _ng)
+    return brief
 
 
 @api_router.get("/executive")
 async def executive_brain():
     """Executive Brain V2 — daily agenda, ranked decisions, opportunities."""
     ctx = await _portfolio_live_context()
-    return build_executive_brain(
+    brain = build_executive_brain(
         ctx["settings"],
         ctx["properties"],
         ctx["tenants"],
         ctx["contracts"],
         ctx["decisions"],
         ctx["reports"],
+        # Gap 3: pass persisted lifecycle so tenant-change items appear in
+        # the ranked queue + agenda + daily brief. None when no import
+        # has been applied (backward compat).
+        lifecycle=ctx.get("lifecycle"),
+        # Gap 3 (complete): pass the ONE normalized lifecycle payload +
+        # the 7 lifecycle decision kinds so they appear in ranked_decisions,
+        # agenda, daily_brief, risks, and opportunities.
+        normalized_lifecycle=ctx.get("normalized_lifecycle"),
+        lifecycle_decisions=ctx.get("lifecycle_decisions"),
+        # Gap 4: pass the ONE unified smart decisions list so ranked_decisions
+        # + agenda are DERIVED from it (not independently rebuilt). Same
+        # decision ids appear across /api/decisions, /api/executive,
+        # /api/briefing, /api/verdicts.
+        unified_smart_decisions=ctx.get("unified_smart_decisions"),
     )
+    # Gap 5: apply the authoritative normalized gate to the executive brain.
+    # Blocked items move to a review_queue; daily_brief separates confirmed
+    # / warnings / review; data_confidence block is added.
+    # Only apply when a persisted gate exists (backward compat).
+    _ng = ctx.get("normalized_gate")
+    if _ng:
+        from adapters.gate import apply_gate_to_executive_brain
+        brain = apply_gate_to_executive_brain(brain, _ng)
+    return brain
 
 
 @api_router.get("/portfolio-memory")
 async def portfolio_memory():
-    """Portfolio Memory graph — canonical asset life profiles."""
+    """Portfolio Memory graph — canonical asset life profiles.
+
+    Gap 2: when an import has been applied, the persisted ai_state contains
+    a property_memory block (same shape as this endpoint's response) that
+    was built from the REAL uploaded data. Serve it directly instead of
+    rebuilding from demo/GAS bundles. Falls back to the legacy behavior
+    when no ai_state is present (backward compat).
+    """
     ctx = await _portfolio_live_context()
+    # Gap 2: prefer persisted property_memory from ai_state when available.
+    ai_state = ctx.get("ai_state") or {}
+    persisted_memory = ai_state.get("property_memory")
+    if persisted_memory and isinstance(persisted_memory, dict) and persisted_memory.get("assets") is not None:
+        # Add a provenance marker so callers can verify they're seeing
+        # the imported memory, not a rebuild.
+        out = dict(persisted_memory)
+        out["_source"] = "ai_state_persisted"
+        out["_analysis_id"] = ai_state.get("analysis_id")
+        return out
+
+    # Legacy path: build from GAS bundles / canonical portfolio.
     memory = ctx.get("memory")
     if memory is None:
         portfolio = portfolio_from_bundles()
         from adapters.portfolio_memory.graph import build_memory_graph
 
         memory = build_memory_graph(portfolio)
-    return memory_graph_to_dict(memory)
+    result = memory_graph_to_dict(memory)
+    result["_source"] = "canonical_rebuild"
+    return result
 
 
 @api_router.get("/intelligence")
 async def executive_intelligence():
-    """Executive Intelligence — pattern-based insights from canonical memory."""
+    """Executive Intelligence — pattern-based insights from canonical memory.
+
+    Gap 2: when an import has been applied, the persisted ai_state contains
+    an executive_intelligence block (same shape as this endpoint's response)
+    that was derived from the REAL uploaded canonical portfolio. Serve it
+    directly instead of rebuilding from demo/GAS bundles. Falls back to the
+    legacy behavior when no ai_state is present (backward compat).
+    """
     ctx = await _portfolio_live_context()
+    # Gap 2: prefer persisted executive_intelligence from ai_state when available.
+    ai_state = ctx.get("ai_state") or {}
+    persisted_intel = ai_state.get("executive_intelligence")
+    if (
+        persisted_intel
+        and isinstance(persisted_intel, dict)
+        and "insights" in persisted_intel
+    ):
+        out = dict(persisted_intel)
+        out["_source"] = "ai_state_persisted"
+        out["_analysis_id"] = ai_state.get("analysis_id")
+        return out
+
+    # Legacy path: build from canonical portfolio + memory graph.
     portfolio = ctx.get("portfolio")
     memory = ctx.get("memory")
     if portfolio is None:
-        return {"insights": [], "count": 0}
+        return {"insights": [], "count": 0, "_source": "no_portfolio"}
     insights = generate_insights(portfolio, memory)
-    return {"insights": insights_to_api(insights), "count": len(insights)}
+    return {"insights": insights_to_api(insights), "count": len(insights), "_source": "canonical_rebuild"}
 
 
 @api_router.get("/properties")
@@ -841,7 +1155,25 @@ async def get_property(pid: str):
 
 @api_router.get("/decisions")
 async def list_decisions():
+    """Ranked AI decisions.
+
+    Gap 4: when unified_smart_decisions is present (after Apply), return
+    the unified list with a _source marker. Falls back to legacy
+    ctx["decisions"] when no ai_state (backward compat).
+    """
     ctx = await _portfolio_live_context()
+    unified = ctx.get("unified_smart_decisions") or []
+    if unified:
+        # Return unified list with provenance marker. Legacy consumers
+        # that expect a list of decision dicts still work — the unified
+        # shape is a superset of the legacy shape.
+        return {
+            "decisions": unified,
+            "count": len(unified),
+            "_source": "unified",
+            "_analysis_id": (ctx.get("ai_state") or {}).get("analysis_id"),
+        }
+    # Legacy fallback: return the raw decisions list (pre-Gap-4 shape).
     return ctx["decisions"]
 
 
@@ -955,6 +1287,9 @@ async def load_demo():
 async def clear_demo():
     """Remove all seeded data — return to empty portfolio."""
     await _clear_all_collections()
+    # Gap 1: also clear persisted AI state so a fresh demo load doesn't
+    # leak the previous import's reasoning into the new portfolio.
+    await _clear_ai_state()
     global _portfolio_cache, _portfolio_cache_at
     _portfolio_cache = None
     _portfolio_cache_at = 0.0
@@ -966,14 +1301,34 @@ async def verdicts():
     """Contextual AI verdicts — one Brain speaking on every surface."""
     ctx = await _portfolio_live_context()
     notifications = await _list_notifications_live()
-    return build_verdicts(
+    verdicts_result = build_verdicts(
         ctx["properties"],
         ctx["tenants"],
         ctx["contracts"],
         ctx["decisions"],
         ctx["reports"],
         notifications,
+        # Gap 3: pass persisted lifecycle so tenant-change signals surface
+        # in the home + tenants verdicts. None when no import applied.
+        lifecycle=ctx.get("lifecycle"),
+        # Gap 3 (complete): pass the ONE normalized lifecycle payload so
+        # verdicts include evidence fields (tenant/unit/period/source/confidence)
+        # when lifecycle data exists.
+        normalized_lifecycle=ctx.get("normalized_lifecycle"),
+        # Gap 4: pass the ONE unified smart decisions list so verdicts
+        # reference the same decision ids as /api/decisions, /api/executive,
+        # /api/briefing.
+        unified_smart_decisions=ctx.get("unified_smart_decisions"),
     )
+    # Gap 5: apply the authoritative normalized gate to the verdicts.
+    # Affected verdicts get gate_status, confidence cap, conflict_codes,
+    # requires_review, and evidence fields.
+    # Only apply when a persisted gate exists (backward compat).
+    _ng = ctx.get("normalized_gate")
+    if _ng:
+        from adapters.gate import apply_gate_to_verdicts
+        verdicts_result = apply_gate_to_verdicts(verdicts_result, _ng)
+    return verdicts_result
 
 
 @api_router.post("/chat")
@@ -1329,13 +1684,44 @@ async def upload_apply_analysis(req: UploadApplyRequest):
     _memory_db["contracts"] = list(commit.get("contracts") or [])
     _memory_db["reports"] = list(commit.get("reports") or [])
     _memory_db.setdefault("decisions", [])
+
+    # Gap 1: persist AI reasoning artifacts (property_knowledge, koil_reasoning,
+    # consistency_gate, executive_brief, lifecycle, tenant_cards) so the next
+    # /api/briefing, /api/verdicts, /api/executive call can consume them.
+    #
+    # Safety: this is reached ONLY after build_local_apply_commit() succeeded
+    # with non-empty properties/tenants. A failed analysis raises HTTPException
+    # above and never reaches this line — last valid AI state is preserved.
+    #
+    # Additional safety: _persist_ai_state() refuses to persist an AI state
+    # with empty property_knowledge or koil_reasoning (which happens when the
+    # session lookup returned {} for an unknown analysis_id). The
+    # ai_state_persisted flag in the response reflects whether persistence
+    # actually happened.
+    ai_state = commit.get("ai_state") or {}
+    ai_state_persisted = False
+    if ai_state:
+        # Check completeness BEFORE persisting so the response flag is accurate.
+        pk_check = ai_state.get("property_knowledge") or {}
+        reasoning_check = ai_state.get("koil_reasoning") or {}
+        if pk_check and reasoning_check:
+            await _persist_ai_state(ai_state)
+            ai_state_persisted = True
+        else:
+            logger.warning(
+                "Skipping AI state persist for analysis_id=%s — incomplete "
+                "(property_knowledge or koil_reasoning empty)",
+                req.analysis_id,
+            )
+
     _portfolio_cache = None
     _portfolio_cache_at = 0.0
     _last_applied_analysis = req.analysis_id
+    applied_at = _iso(datetime.now(timezone.utc))
     return {
         "ok": True,
         "analysis_id": req.analysis_id,
-        "applied_at": _iso(datetime.now(timezone.utc)),
+        "applied_at": applied_at,
         "gas": False,
         "commit": {
             "units": commit.get("units"),
@@ -1346,6 +1732,14 @@ async def upload_apply_analysis(req: UploadApplyRequest):
             "source": commit.get("source"),
             "summary": commit.get("summary") or {},
         },
+        # Gap 1: surface the persisted AI state pointer in the response so
+        # clients can verify reasoning was persisted. Frontend ignores this
+        # field if it doesn't recognize it (additive). ai_state_persisted
+        # is False when the session was empty (unknown analysis_id) — the
+        # safety guard refused to overwrite the last valid state.
+        "ai_state_persisted": ai_state_persisted,
+        "ai_state_analysis_id": (ai_state or {}).get("analysis_id") if ai_state_persisted else None,
+        "ai_state_pipeline_version": (ai_state or {}).get("pipeline_version") if ai_state_persisted else None,
     }
 
 

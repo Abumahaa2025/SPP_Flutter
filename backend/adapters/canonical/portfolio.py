@@ -10,6 +10,13 @@ from adapters.canonical.ingest import (
     maintenance_from_bundle,
     settings_from_bundle,
     units_from_dashboard,
+    # Gap 2 — upload analysis bridge helpers
+    assets_from_maintenance_entries,
+    life_events_from_lifecycle,
+    life_events_from_maintenance_entries,
+    maintenance_from_property_knowledge,
+    settings_from_upload_analysis,
+    units_from_property_knowledge,
 )
 from adapters.canonical.models import CanonicalPortfolio, CanonicalUnit
 
@@ -75,4 +82,73 @@ def build_portfolio(
         life_events=life_events,
         maintenance=[m for m in maintenance if m.status != "closed"],
         ingest_sources=sources,
+    )
+
+
+# ===========================================================================
+# Gap 2 — Upload analysis → CanonicalPortfolio bridge
+#
+# Builds a CanonicalPortfolio from real upload-analysis outputs using the
+# SAME CanonicalUnit / CanonicalAsset / CanonicalLifeEvent / CanonicalMaintenance
+# models that build_portfolio() produces from GAS bundles.
+#
+# Source mapping:
+#   property_knowledge.tenants (tenant_cards) → CanonicalUnit[]
+#   property_knowledge.maintenance.entries   → CanonicalAsset[] (grouped)
+#                                             → CanonicalLifeEvent[] (per entry)
+#                                             → CanonicalMaintenance[] (open only)
+#   property_knowledge.lifecycle.tenant_changes → CanonicalLifeEvent[] (contract type)
+#   metrics + property_knowledge.meta         → CanonicalSettings
+#
+# Provenance: every entity's .raw dict includes "analysis_id" and "source".
+# ===========================================================================
+
+
+def build_portfolio_from_upload_analysis(
+    *,
+    property_knowledge: Dict[str, Any],
+    metrics: Optional[Dict[str, Any]] = None,
+    analysis_id: str = "",
+) -> CanonicalPortfolio:
+    """Build a CanonicalPortfolio from upload-analysis outputs.
+
+    Args:
+        property_knowledge: the full PK dict from analyze_upload_portfolio()
+            (contains tenants, maintenance, lifecycle, quality, contracts, meta).
+        metrics: the upload metrics dict (used for settings synthesis).
+        analysis_id: the import's analysis_id (preserved in every entity's raw).
+
+    Returns:
+        A CanonicalPortfolio with units, assets, life_events, maintenance,
+        and settings - ready for build_memory_graph() and generate_insights().
+    """
+    metrics = metrics or {}
+    property_knowledge = property_knowledge or {}
+
+    # 1. Settings from metrics + PK meta
+    settings = settings_from_upload_analysis(metrics, property_knowledge, analysis_id)
+
+    # 2. Units from tenant cards
+    units = units_from_property_knowledge(property_knowledge, analysis_id)
+
+    # 3. Assets from maintenance entries (grouped by unit + description)
+    maint_entries = (property_knowledge.get("maintenance") or {}).get("entries") or []
+    assets = assets_from_maintenance_entries(maint_entries, analysis_id)
+
+    # 4. Life events from maintenance entries + lifecycle tenant changes
+    maint_events = life_events_from_maintenance_entries(maint_entries, assets, analysis_id)
+    lifecycle = property_knowledge.get("lifecycle") or {}
+    lifecycle_events = life_events_from_lifecycle(lifecycle, analysis_id)
+    life_events = maint_events + lifecycle_events
+
+    # 5. Open maintenance items
+    maintenance = maintenance_from_property_knowledge(property_knowledge, analysis_id)
+
+    return CanonicalPortfolio(
+        settings=settings,
+        units=units,
+        assets=assets,
+        life_events=life_events,
+        maintenance=maintenance,
+        ingest_sources=["upload_analysis"],
     )
