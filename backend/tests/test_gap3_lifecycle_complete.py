@@ -156,17 +156,22 @@ class TestPaymentLedgerReachesVerdicts:
         }
         assert set(verdicts.keys()) == expected_keys
         # At least one verdict must have evidence fields (home or tenants)
+        # when lifecycle data exists. We check evidence_source NOT in (None, "legacy")
+        # because "legacy" is set on ALL verdicts by the gate (for traceability),
+        # but only lifecycle-backed verdicts have the tenant/unit/current_period/
+        # confidence evidence fields. Checking "evidence_source in v" would match
+        # legacy verdicts too and fail on the tenant/unit assertions below.
         home = verdicts.get("home") or {}
         tenants_v = verdicts.get("tenants") or {}
         evidence_found = False
         for v in (home, tenants_v):
-            if v and "evidence_source" in v:
+            if v and v.get("evidence_source") not in (None, "legacy"):
                 evidence_found = True
                 assert "tenant" in v
                 assert "unit" in v
                 assert "current_period" in v
                 assert "confidence" in v
-        assert evidence_found, "no verdict has evidence fields"
+        assert evidence_found, "no verdict has lifecycle evidence fields"
 
 
 # ===========================================================================

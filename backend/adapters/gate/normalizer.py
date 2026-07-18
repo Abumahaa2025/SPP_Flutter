@@ -126,9 +126,16 @@ def normalize_gate_output(
         })
 
     # Determine final status: ok | warning | blocked_for_review.
+    # The gate is a confidence controller, not a data remover.
+    # - HIGH severity conflicts → blocked_for_review (entity-specific blocking)
+    # - MEDIUM severity conflicts → warning (reduce confidence, preserve ranked_decisions)
+    # - LOW severity → ok (informational only)
+    # The raw gate sets "blocked_for_review" for ANY conflict, but we must
+    # only block when there are actual HIGH-severity conflicts. Medium-only
+    # conflicts should warn and reduce confidence, not remove decisions.
     has_high = any(c["severity"] == "high" for c in normalized_conflicts)
     has_medium = any(c["severity"] == "medium" for c in normalized_conflicts)
-    if raw_status == "blocked_for_review" or has_high:
+    if has_high:
         status = "blocked_for_review"
     elif has_medium:
         status = "warning"
@@ -372,15 +379,20 @@ def apply_gate_to_briefing(
     if gate_status == "blocked_for_review":
         # Rephrase headline as a review requirement.
         brief["headline"] = "راجع تعارضات البيانات قبل الإجراءات التنفيذية."
-        # Replace any definitive departure/late claims in the narrative
-        # with review language.
+        # Replace definitive claims with review language — BUT preserve
+        # decision IDs so traceability is never lost.
+        # The gate changes confidence and wording only. It must never
+        # hide evidence or remove decision IDs.
         narrative = brief.get("narrative") or []
         new_narrative: List[str] = []
         for line in narrative:
             if any(w in line for w in ("غادر", "متأخر مؤكد", "تواصل مع", "أرسل تذكير")):
-                # Replace with review language.
+                # Extract any decision ID from the line before replacing.
+                import re as _re
+                id_match = _re.search(r"قرار[:\s]+([A-Za-z0-9_\-|:.]+)", line)
+                id_tag = f" (قرار: {id_match.group(1)})" if id_match else ""
                 new_narrative.append(
-                    "توجد مؤشرات تحتاج مراجعة — لا يمكن تأكيد المغادرة أو المتأخرات حتى تُحل التعارضات."
+                    f"توجد مؤشرات تحتاج مراجعة — لا يمكن تأكيد المغادرة أو المتأخرات حتى تُحل التعارضات.{id_tag}"
                 )
             else:
                 new_narrative.append(line)
@@ -415,18 +427,16 @@ def apply_gate_to_verdicts(
       - evidence (from the gate)
     """
     gate = normalized_gate or {}
-    if gate.get("status") == "ok":
-        return verdicts
-    verdicts = dict(verdicts)
     gate_status = gate.get("status", "ok")
-    conflicts = gate.get("conflicts") or []
     confidence_cap = gate.get("confidence_cap", 100)
+    conflicts = gate.get("conflicts") or []
 
+    # Always apply gate fields to ALL verdicts (even when ok) for consistency.
+    verdicts = dict(verdicts)
     for key, verdict in verdicts.items():
         if not isinstance(verdict, dict):
             continue
         # Check if this verdict is entity-blocked.
-        # Build a pseudo-decision for entity matching.
         pseudo = {
             "tenant_name": verdict.get("tenant"),
             "unit_label": verdict.get("unit"),
@@ -436,10 +446,8 @@ def apply_gate_to_verdicts(
         if blocked:
             verdict["gate_status"] = "blocked_for_review"
             verdict["requires_review"] = True
-            # Cap confidence.
             original_conf = verdict.get("confidence", 70)
             verdict["confidence"] = min(original_conf, confidence_cap)
-            # Attach relevant conflict codes.
             decision_keys = _entity_keys_for_decision(pseudo)
             relevant_codes: List[str] = []
             relevant_evidence: List[str] = []
@@ -452,13 +460,18 @@ def apply_gate_to_verdicts(
                     relevant_evidence.append(c.get("message", ""))
             verdict["conflict_codes"] = relevant_codes
             verdict["evidence"] = relevant_evidence
-        elif gate_status == "blocked_for_review":
-            # Not directly blocked but gate is globally blocked.
-            verdict["gate_status"] = "ok"
+        else:
+            # Not entity-blocked, but gate may still be warning/blocked globally.
+            verdict["gate_status"] = gate_status
             verdict["requires_review"] = False
-        elif gate_status == "warning":
-            verdict["gate_status"] = "warning"
-            verdict["requires_review"] = False
+            # Always set confidence (default 70 when no lifecycle evidence).
+            # This ensures every verdict has the 7 required traceability fields
+            # even when the gate is "ok" and no lifecycle evidence exists.
+            verdict.setdefault("confidence", 70)
+            if gate_status != "ok":
+                verdict["confidence"] = min(verdict["confidence"], confidence_cap)
+            verdict.setdefault("conflict_codes", [])
+            verdict.setdefault("evidence", [])
     return verdicts
 
 
@@ -551,9 +564,16 @@ def apply_gate_to_executive_brain(
         db["confirmed_facts"] = f"{len(executable)} قرار قابل للتنفيذ"
         db["warnings"] = gate.get("warnings") or []
         db["items_requiring_review"] = f"{len(review_queue)} قرار يحتاج مراجعة"
-        if review_queue:
-            db["what"] = f"راجع {len(review_queue)} قرار محظور قبل التنفيذ."
+        # Gap F: When all decisions are in review_queue, focus_count should
+        # reflect the review items, not 0. The owner still has work to do —
+        # it's just review work, not execution work.
+        if review_queue and not executable:
+            db["focus_count"] = len(review_queue)
+            db["what"] = f"راجع {len(review_queue)} قرار يحتاج مراجعة قبل التنفيذ."
             db["why"] = "بوابة الاتساق رصدت تعارضات — راجع قبل الإجراءات التنفيذية."
+        elif review_queue:
+            db["what"] = f"{len(executable)} قرار قابل للتنفيذ · راجع {len(review_queue)} قرار محظور."
+            db["why"] = "بوابة الاتساق رصدت تعارضات — راجع القرارات المحظورة قبل الإجراءات التنفيذية."
         brain["daily_brief"] = db
 
     # Add data_confidence block.

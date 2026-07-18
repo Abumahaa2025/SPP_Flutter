@@ -140,7 +140,11 @@ def _build_tenant_cards(snapshot: dict, lang: Lang) -> List[dict]:
         cards.append(
             {
                 "id": f"{ent.get('unit')}|{ent.get('contract') or ent.get('phone') or ent.get('tenant')}",
-                "tenant": ent.get("tenant") or "—",
+                "tenant": ent.get("tenant") or "",
+                "tenant_raw": ent.get("tenant_raw") or ent.get("tenant") or "",
+                "is_vacant": bool(ent.get("is_vacant")) or not (ent.get("tenant") or "").strip(),
+                "property": ent.get("property") or ent.get("property_raw") or "",
+                "property_raw": ent.get("property_raw") or ent.get("property") or "",
                 "unit": unit,
                 "phone": (ent.get("phone") or "").strip(),
                 "contract": (ent.get("contract") or "").strip(),

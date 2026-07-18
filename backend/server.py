@@ -1021,6 +1021,8 @@ async def briefing():
         # action line references the same decision id as /api/decisions,
         # /api/executive, /api/verdicts.
         unified_smart_decisions=ctx.get("unified_smart_decisions"),
+        # Gap A: pass canonical portfolio summary for authoritative count hierarchy
+        canonical_portfolio_summary=ctx.get("canonical_portfolio_summary"),
     )
     # Gap 5: apply the authoritative normalized gate to the briefing.
     # When blocked, claims are rephrased as review requirements.
@@ -1058,6 +1060,8 @@ async def executive_brain():
         # decision ids appear across /api/decisions, /api/executive,
         # /api/briefing, /api/verdicts.
         unified_smart_decisions=ctx.get("unified_smart_decisions"),
+        # Gap A: pass canonical portfolio summary for authoritative unit/property counts
+        canonical_portfolio_summary=ctx.get("canonical_portfolio_summary"),
     )
     # Gap 5: apply the authoritative normalized gate to the executive brain.
     # Blocked items move to a review_queue; daily_brief separates confirmed

@@ -306,7 +306,12 @@ def build_normalized_lifecycle(deep: Dict[str, Any], lang: Lang = "ar") -> Dict[
         summary={
             "departed_count": int(lifecycle.get("departed_count") or len(lifecycle.get("departed") or [])),
             "newcomers_count": int(lifecycle.get("newcomers_count") or len(lifecycle.get("newcomers") or [])),
-            "active_count": int(lifecycle.get("active_count") or len(lifecycle.get("active") or [])),
+            # active_count counts UNIQUE OCCUPIED units in the latest month.
+            # Vacant units (is_vacant=True OR empty tenant) are tracked in the
+            # active list (so downstream knows they exist) but excluded here.
+            # If lifecycle.active_count is already correctly computed upstream
+            # (e.g., by build_annual_stats), use it; otherwise derive here.
+            "active_count": _count_occupied_active(lifecycle),
             "late_count": len(late_tenants),
         },
         warnings=warnings,
@@ -315,6 +320,30 @@ def build_normalized_lifecycle(deep: Dict[str, Any], lang: Lang = "ar") -> Dict[
         has_real_content=True,
         month_count=int(lifecycle.get("month_count") or 0),
     ).to_dict()
+
+
+def _count_occupied_active(lifecycle: Dict[str, Any]) -> int:
+    """Count UNIQUE OCCUPIED units in the latest month's `active` list.
+
+    A unit is "occupied" when its active entry has a non-empty tenant
+    AND is_vacant is not True. Vacant units appear in the active list
+    (so downstream knows the unit exists in the latest month) but are
+    excluded from active_count.
+
+    If lifecycle.active_count is already correctly computed upstream
+    (e.g., by build_annual_stats), that value is preferred — but only
+    when it's less than len(active), to defend against stale upstream
+    code paths that still count vacant units.
+    """
+    active_list = lifecycle.get("active") or []
+    if not active_list:
+        upstream = lifecycle.get("active_count") or 0
+        return int(upstream)
+    occupied = sum(
+        1 for a in active_list
+        if not bool(a.get("is_vacant")) and (a.get("tenant") or "").strip()
+    )
+    return int(occupied)
 
 
 def _derive_changes_from_lifecycle(lifecycle: Dict[str, Any]) -> List[dict]:

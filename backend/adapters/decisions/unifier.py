@@ -549,17 +549,34 @@ def merge_duplicates(decisions: List[UnifiedDecision]) -> List[UnifiedDecision]:
         existing.confidence = max(existing.confidence, ud.confidence)
         existing.requires_confirmation = existing.requires_confirmation or ud.requires_confirmation
         existing.financial_impact = max(existing.financial_impact, ud.financial_impact)
-        # Fill in missing entity refs from the new decision.
-        if not existing.tenant_name and ud.tenant_name:
-            existing.tenant_name = ud.tenant_name
-            existing.tenant_id = ud.tenant_id
-        if not existing.unit_label and ud.unit_label:
-            existing.unit_label = ud.unit_label
-            existing.unit_id = ud.unit_id
+        # Entity refs: ALWAYS prefer lifecycle source's refs (richest).
+        # Lifecycle sources carry tenant_name, unit_label, reporting_period
+        # that other sources (executive, koil, live) often lack.
+        ud_sources = ud.provenance.get("sources", [])
+        ud_is_lifecycle = "lifecycle" in ud_sources
+        existing_is_lifecycle = "lifecycle" in existing.provenance.get("sources", [])
+        if ud_is_lifecycle and not existing_is_lifecycle:
+            # Lifecycle source always wins for entity refs.
+            if ud.tenant_name:
+                existing.tenant_name = ud.tenant_name
+                existing.tenant_id = ud.tenant_id
+            if ud.unit_label:
+                existing.unit_label = ud.unit_label
+                existing.unit_id = ud.unit_id
+            if ud.reporting_period:
+                existing.reporting_period = ud.reporting_period
+        else:
+            # Fill in missing entity refs from the new decision.
+            if not existing.tenant_name and ud.tenant_name:
+                existing.tenant_name = ud.tenant_name
+                existing.tenant_id = ud.tenant_id
+            if not existing.unit_label and ud.unit_label:
+                existing.unit_label = ud.unit_label
+                existing.unit_id = ud.unit_id
+            if not existing.reporting_period and ud.reporting_period:
+                existing.reporting_period = ud.reporting_period
         if not existing.property_id and ud.property_id:
             existing.property_id = ud.property_id
-        if not existing.reporting_period and ud.reporting_period:
-            existing.reporting_period = ud.reporting_period
         # Take the longer title/why/action (more informative).
         if len(ud.title) > len(existing.title):
             existing.title = ud.title

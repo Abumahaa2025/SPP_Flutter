@@ -530,4 +530,13 @@ def build_verdicts(
     else:
         out["owner"] = None
 
+    # Gap D: Ensure ALL non-None verdicts have the 7 required traceability fields.
+    # evidence_source and unified_decision_id are added here (gate adds the rest).
+    # verdicts that already have these fields (from lifecycle branches) are not overwritten.
+    for vkey, v in out.items():
+        if not isinstance(v, dict):
+            continue
+        v.setdefault("evidence_source", "legacy")
+        v.setdefault("unified_decision_id", _unified_top_id)
+
     return out

@@ -48,6 +48,7 @@ def build_briefing(
     executive_brief: Optional[Dict[str, Any]] = None,
     normalized_lifecycle: Optional[Dict[str, Any]] = None,
     unified_smart_decisions: Optional[List[Dict[str, Any]]] = None,
+    canonical_portfolio_summary: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Build the morning briefing.
 
@@ -281,6 +282,33 @@ def build_briefing(
         snap = lines[-1]
         lines = lines[:-1][:5] + [snap]
 
+    # Gap A: Use authoritative counts from persisted canonical portfolio.
+    # Hierarchy:
+    #   properties_count → canonical_portfolio_summary.properties_count → len(properties)
+    #   tenants_count → normalized_lifecycle.summary.active_count → len(tenants)
+    #   units_count → canonical_portfolio_summary.units_count (UNIQUE units,
+    #                 including vacant ones — occupied + vacant)
+    #   occupied_units_count → canonical_portfolio_summary.occupied_units_count
+    #   vacant_units_count → canonical_portfolio_summary.vacant_units_count
+    # NEVER replace properties_count with active_count — they measure different things.
+    nl = normalized_lifecycle if isinstance(normalized_lifecycle, dict) else None
+    nl_summary = (nl or {}).get("summary") or {}
+    active_tenants = nl_summary.get("active_count") if nl_summary else None
+    cps = canonical_portfolio_summary if isinstance(canonical_portfolio_summary, dict) else None
+    canonical_properties = cps.get("properties_count") if cps else None
+    canonical_units = cps.get("units_count") if cps else None
+    canonical_occupied = cps.get("occupied_units_count") if cps else None
+    canonical_vacant = cps.get("vacant_units_count") if cps else None
+    # properties_count: use canonical when available, otherwise len(properties)
+    properties_count = canonical_properties if canonical_properties is not None else len(properties)
+    tenants_count = active_tenants if active_tenants is not None else len(tenants)
+    # units_count + occupied + vacant: only present when canonical summary exists.
+    # When absent (legacy / no AI state), they remain None so the client can
+    # detect "field not available" rather than confusing it with 0.
+    units_count = canonical_units
+    occupied_units_count = canonical_occupied
+    vacant_units_count = canonical_vacant
+
     brief_out: Dict[str, Any] = {
         "salutation": salutation_ar(),
         "owner_name": _owner_first_name(settings),
@@ -289,8 +317,11 @@ def build_briefing(
         "portfolio_annual_revenue": portfolio_value,
         "avg_health": avg_health,
         "occupancy": occupancy,
-        "properties_count": len(properties),
-        "tenants_count": len(tenants),
+        "properties_count": properties_count,
+        "tenants_count": tenants_count,
+        "units_count": units_count,
+        "occupied_units_count": occupied_units_count,
+        "vacant_units_count": vacant_units_count,
         "expiring_contracts": len(expiring),
         "decisions": polish_decisions(ranked, contracts),
         "sensor_alerts": sensor_alerts[:3],

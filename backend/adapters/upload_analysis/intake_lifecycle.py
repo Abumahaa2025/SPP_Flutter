@@ -173,7 +173,7 @@ def build_lifecycle(monthly_index: dict) -> dict:
     for unit, seq in unit_months.items():
         for i, cur in enumerate(seq):
             row = cur["row"]
-            tenant = row.get("tenant") or unit
+            tenant = row.get("tenant") or ""  # normalized at parser: empty when vacant
             tid = _timeline_identity_key(unit, row)
             if tid not in timeline:
                 timeline[tid] = {
@@ -215,7 +215,7 @@ def build_lifecycle(monthly_index: dict) -> dict:
 
             if i > 0:
                 prev = seq[i - 1]["row"]
-                prev_t = prev.get("tenant") or unit
+                prev_t = prev.get("tenant") or ""  # empty when vacant
                 # Only assert occupancy change on clear identity switch (phone/contract diverge).
                 if _clear_identity_switch(prev, row):
                     dep_k = f"{unit}|{_tenant_key(prev_t)}|{cur['month']}/{cur['year']}"
@@ -258,13 +258,22 @@ def build_lifecycle(monthly_index: dict) -> dict:
         last = by_key[keys[-1]]
         prev = by_key[keys[-2]] if len(keys) > 1 else None
         for unit, row in (last.get("units") or {}).items():
-            tenant = row.get("tenant") or unit
+            tenant = row.get("tenant") or ""
+            is_vacant = bool(row.get("is_vacant")) or not (tenant or "").strip()
             tid = _timeline_identity_key(unit, row)
             t2 = timeline.get(tid, {})
+            # Vacant units do NOT count as "active tenants" — they have no
+            # tenant under contract. We still record the unit in the active
+            # list (so downstream knows the unit exists in the latest month),
+            # but mark it vacant and leave tenant="" so active_count derived
+            # from "non-vacant active entries" is correct.
             active.append(
                 {
                     "unit": unit,
-                    "tenant": t2.get("tenant") or tenant,
+                    "tenant": tenant,  # empty when vacant (normalized at parser)
+                    "is_vacant": is_vacant,
+                    "property": (row.get("property") or row.get("property_raw") or "").strip(),
+                    "property_raw": (row.get("property_raw") or row.get("property") or "").strip(),
                     "phone": row.get("phone") or t2.get("phone", ""),
                     "contract": row.get("contract") or t2.get("contract", ""),
                     "rent": row.get("rent") or t2.get("rent", 0),
@@ -280,7 +289,7 @@ def build_lifecycle(monthly_index: dict) -> dict:
         if prev:
             for unit, cur_row in (last.get("units") or {}).items():
                 prev_row = (prev.get("units") or {}).get(unit)
-                cur_t = cur_row.get("tenant") or unit
+                cur_t = cur_row.get("tenant") or ""
                 prev_t = (prev_row or {}).get("tenant") or ""
                 if prev_row and _clear_identity_switch(prev_row, cur_row):
                     new_in_last.append(
@@ -318,12 +327,19 @@ def build_annual_stats(parsed_rolls: List[dict], lifecycle: dict) -> dict:
             expected += rent
             if r.get("is_paid"):
                 collected += rent
+    # active_count counts UNIQUE occupied units in the latest month —
+    # vacant units (is_vacant=True OR empty tenant) are excluded.
+    active_list = lifecycle.get("active") or []
+    active_count = sum(
+        1 for a in active_list
+        if not bool(a.get("is_vacant")) and (a.get("tenant") or "").strip()
+    )
     return {
         "total_expected": round(expected),
         "total_collected": round(collected),
         "month_count": lifecycle.get("month_count") or 0,
         "departed_count": len(lifecycle.get("departed") or []),
-        "active_count": len(lifecycle.get("active") or []),
+        "active_count": active_count,
         "newcomers_count": len(lifecycle.get("newcomers") or []),
     }
 
@@ -443,11 +459,18 @@ def build_tenant_payment_ledger(parsed_rolls: List[dict]) -> dict:
             if not unit:
                 continue
             tk = _tenant_ledger_key(r, unit)
+            tenant_val = (r.get("tenant") or "").strip()
+            is_vacant = bool(r.get("is_vacant")) or not tenant_val
+            property_val = (r.get("property") or r.get("property_raw") or "").strip()
             if tk not in ledger:
                 ledger[tk] = {
                     "unit": unit,
                     "unit_type": r.get("unit_type") or "شقة",
-                    "tenant": r.get("tenant") or unit,
+                    "tenant": tenant_val,  # normalized: empty when vacant
+                    "tenant_raw": r.get("tenant_raw") or r.get("tenant") or "",
+                    "is_vacant": is_vacant,
+                    "property": property_val,  # raw property/building cell (may be empty)
+                    "property_raw": property_val,
                     "phone": r.get("phone") or "",
                     "contract": r.get("contract") or "",
                     "rent": r.get("rent") or 0,

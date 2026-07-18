@@ -22,6 +22,7 @@ def build_executive_brain(
     normalized_lifecycle: Optional[Dict[str, Any]] = None,
     lifecycle_decisions: Optional[List[Dict[str, Any]]] = None,
     unified_smart_decisions: Optional[List[Dict[str, Any]]] = None,
+    canonical_portfolio_summary: Optional[Dict[str, Any]] = None,
 ) -> Dict[str, Any]:
     """Full executive package: brief + agenda + ranked queue + opportunities.
 
@@ -39,9 +40,33 @@ def build_executive_brain(
     /api/decisions, /api/executive, /api/briefing, /api/verdicts.
     """
     reports = reports or []
-    unit_count = len(properties)
-    tenant_count = len(tenants)
-    n = max(unit_count, 1)
+    # Gap A: Use authoritative counts from persisted AI state.
+    # Hierarchy:
+    #   portfolio.units → canonical_portfolio_summary.units_count (unique units, includes vacant)
+    #   portfolio.occupied → canonical_portfolio_summary.occupied_units_count
+    #   portfolio.vacant → canonical_portfolio_summary.vacant_units_count
+    #   portfolio.tenants → normalized_lifecycle.summary.active_count (active tenants only)
+    #   portfolio.properties → canonical_portfolio_summary.properties_count (or len(properties))
+    # NEVER replace one count with another — they measure different things.
+    nl = normalized_lifecycle if isinstance(normalized_lifecycle, dict) else None
+    nl_summary = (nl or {}).get("summary") or {}
+    active_tenants = nl_summary.get("active_count") if nl_summary else None
+    cps = canonical_portfolio_summary if isinstance(canonical_portfolio_summary, dict) else None
+    canonical_units = cps.get("units_count") if cps else None
+    canonical_properties = cps.get("properties_count") if cps else None
+    canonical_occupied = cps.get("occupied_units_count") if cps else None
+    canonical_vacant = cps.get("vacant_units_count") if cps else None
+
+    # properties_count: from canonical when available, otherwise len(properties)
+    unit_count = canonical_properties if canonical_properties is not None else len(properties)
+    # tenants_count: from lifecycle active_count when available
+    tenant_count = active_tenants if active_tenants is not None else len(tenants)
+    # For portfolio block: units = canonical unique units (includes vacant), properties = property rows
+    portfolio_units = canonical_units if canonical_units is not None else len(properties)
+    # Occupied / vacant from canonical when available; otherwise None (legacy).
+    portfolio_occupied = canonical_occupied
+    portfolio_vacant = canonical_vacant
+    n = max(len(properties), 1)
     annual_revenue = sum(float(p.get("monthly_revenue") or 0) for p in properties) * 12
     avg_health = round(sum(p.get("health_score", 0) for p in properties) / n)
     occupancy_pct = round(100 * sum(p.get("occupancy", 0) for p in properties) / n)
@@ -258,8 +283,11 @@ def build_executive_brain(
             })
 
     portfolio_block: Dict[str, Any] = {
-        "units": unit_count,
+        "units": portfolio_units,
+        "properties": unit_count,
         "tenants": tenant_count,
+        "occupied": portfolio_occupied,
+        "vacant": portfolio_vacant,
         "contracts_tracked": len(contracts),
         "open_decisions": len(decisions),
         "avg_health": avg_health,

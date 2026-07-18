@@ -22,6 +22,11 @@ class CanonicalUnit:
     unit_id: str
     label: str
     tenant_name: str = ""
+    tenant_raw: str = ""  # preserved raw tenant cell value (empty when vacant)
+    is_vacant: bool = False  # explicit vacancy flag — set at ingestion
+    property_id: str = ""  # canonical property entity id (NOT owner_id)
+    property_raw: str = ""  # preserved raw property/building cell value
+    normalization_flags: list = field(default_factory=list)  # e.g. ["vacant"]
     monthly_rent: float = 0.0
     contract_status: str = "active"  # active | expiring | expired | renewed | vacant
     payment_status: str = "unknown"  # current | late | unknown
@@ -30,6 +35,18 @@ class CanonicalUnit:
     contract_no: str = ""
     source: str = "ingest"
     raw: Dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def occupied(self) -> bool:
+        """A unit is occupied when it has a real tenant and is not marked vacant.
+
+        Counting functions MUST consume this property rather than re-deriving
+        vacancy from tenant_name (which would re-introduce parser-defect
+        compensation in the counting layer).
+        """
+        if self.is_vacant:
+            return False
+        return bool((self.tenant_name or "").strip())
 
 
 @dataclass

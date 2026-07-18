@@ -216,7 +216,11 @@ def upload_analysis_to_canonical(
             "version": "canonical-v1",
             "source": "upload_analysis",
             "analysis_id": analysis_id,
-            "units_count": len(portfolio.units),
+            "properties_count": _count_unique_properties(portfolio),
+            "units_count": _count_unique_units(portfolio),
+            "active_tenants_count": _count_active_tenants(portfolio),
+            "occupied_units_count": _count_occupied_units(portfolio),
+            "vacant_units_count": _count_vacant_units(portfolio),
             "assets_count": len(portfolio.assets),
             "life_events_count": len(portfolio.life_events),
             "maintenance_count": len(portfolio.maintenance),
@@ -238,3 +242,124 @@ def upload_analysis_to_canonical(
         },
         "canonical_warnings": warnings,
     }
+
+
+# ---------------------------------------------------------------------------
+# Gap A: Authoritative count helpers.
+#
+# These functions count UNIQUE entities from the CanonicalPortfolio, not
+# from transient runtime structures. They are the single authoritative
+# source for properties_count, units_count, and active_tenants_count.
+#
+# IMPORTANT: These functions CONSUME normalized data — they do NOT
+# compensate for parser defects. Vacancy is determined by the
+# CanonicalUnit.is_vacant flag (set at ingestion), NOT by string
+# comparisons between tenant_name and unit label.
+# ---------------------------------------------------------------------------
+
+def _count_unique_properties(portfolio: CanonicalPortfolio) -> int:
+    """Count unique canonical property entities in the portfolio.
+
+    The canonical property identity is `raw.tenant_card.property_id`, set
+    by build_local_apply_commit at apply time as `prop_imp_{analysis_id[:8]}`.
+    This is NOT the same as `settings.owner_id` (which is the import owner
+    identifier "owner_imported" for ALL uploads — a constant, not an identity).
+
+    Why raw.tenant_card.property_id is the correct source:
+      - One property per import session (one analysis_id → one prop_id).
+      - Stable across rebuilds (same analysis_id → same prop_id).
+      - Survives cache clears (it's persisted in ai_state.tenant_cards).
+      - Multi-property imports: each upload session has its own analysis_id,
+        so each generates its own prop_id. Two uploads in one session
+        would still produce one prop_id (the latest) — but in practice
+        each upload is its own session.
+
+    Safety across scenarios:
+      - Multiple imported properties: each analysis_id → unique prop_id. Safe.
+      - Multi-building portfolios: currently one upload = one property. If
+        a future upload carries an explicit property_id column, the parser
+        would propagate it through tenant_card.property_id and this function
+        would count correctly without changes.
+      - Future merged imports: if two analysis_ids merge into one session,
+        the tenant_card.property_id would still distinguish them. The count
+        reflects the number of distinct property_ids in the portfolio.
+
+    Fallback: when no tenant_card has property_id (e.g., before Apply),
+    fall back to settings.owner_id. This produces 1 for imported portfolios
+    (owner_id="owner_imported") — which is correct because pre-Apply we
+    haven't yet generated the canonical prop_id, but we know there's exactly
+    one property entity in the upload.
+    """
+    property_ids: set = set()
+    for unit in portfolio.units:
+        raw = unit.raw or {}
+        card = raw.get("tenant_card") or {}
+        pid = card.get("property_id") or unit.property_id
+        if pid:
+            property_ids.add(str(pid))
+    if not property_ids:
+        # Fallback: use settings.owner_id (covers pre-Apply + legacy paths).
+        if portfolio.settings.owner_id:
+            property_ids.add(portfolio.settings.owner_id)
+        else:
+            return 1  # default: one imported property
+    return len(property_ids)
+
+
+def _count_unique_units(portfolio: CanonicalPortfolio) -> int:
+    """Count unique unit IDs from canonical units.
+
+    Each CanonicalUnit has a unit_id (stable hash of the normalized label).
+    We count unique unit_ids. This correctly handles duplicate tenant cards
+    that share the same unit (e.g., unit 101 with both "101" and "Ahmad"
+    as tenant names → 1 unique unit, not 2).
+    """
+    unit_ids = set()
+    for unit in portfolio.units:
+        if unit.unit_id:
+            unit_ids.add(unit.unit_id)
+    return len(unit_ids) if unit_ids else len(portfolio.units)
+
+
+def _count_active_tenants(portfolio: CanonicalPortfolio) -> int:
+    """Count unique unit IDs that have at least one active (non-vacant) tenant.
+
+    A unit is considered "active" (occupied) when CanonicalUnit.occupied
+    is True — i.e., is_vacant=False AND tenant_name is non-empty.
+
+    This function consumes the normalized is_vacant flag set at ingestion.
+    It does NOT compare tenant_name to unit label (that was a parser-defect
+    workaround that has been removed).
+    """
+    active_unit_ids = set()
+    for unit in portfolio.units:
+        if unit.occupied and unit.unit_id:
+            active_unit_ids.add(unit.unit_id)
+    return len(active_unit_ids)
+
+
+def _count_occupied_units(portfolio: CanonicalPortfolio) -> int:
+    """Count unique unit IDs that are occupied (have a real tenant).
+
+    Same as _count_active_tenants — both count the same thing (occupied
+    units). Kept as a separate function for semantic clarity: callers
+    that ask "how many active tenants?" and "how many occupied units?"
+    should both work, even if the underlying definition is the same.
+    """
+    occupied = set()
+    for unit in portfolio.units:
+        if unit.occupied and unit.unit_id:
+            occupied.add(unit.unit_id)
+    return len(occupied)
+
+
+def _count_vacant_units(portfolio: CanonicalPortfolio) -> int:
+    """Count unique unit IDs that are vacant (no real tenant).
+
+    A unit is "vacant" when CanonicalUnit.is_vacant is True OR tenant_name
+    is empty. Both conditions are normalized at ingestion, so this function
+    just consumes the normalized state.
+    """
+    all_units = {u.unit_id for u in portfolio.units if u.unit_id}
+    occupied = {u.unit_id for u in portfolio.units if u.occupied and u.unit_id}
+    return len(all_units - occupied)

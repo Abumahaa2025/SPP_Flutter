@@ -512,6 +512,32 @@ def analyze_upload_portfolio(
     # The bridge degrades gracefully - on any error it returns empty
     # defaults so the upload analysis response is never broken.
     analysis_id_for_canonical = str(uuid.uuid4())
+    # Derive the canonical property identity NOW (at analyze time), so the
+    # canonical portfolio summary can count unique properties correctly even
+    # before Apply. The same prop_id is used by build_local_apply_commit()
+    # at apply time — they share the analysis_id, so the prop_id is stable.
+    #
+    # Property identity precedence (most-specific first):
+    #   1. If the source data carries a property/building column (multi-property
+    #      upload), unit_from_row() in canonical/ingest.py derives property_id
+    #      as `prop_<stable_hash_of_name>`. This identifies the REAL property
+    #      entity, not the analysis. Two buildings in one upload → two distinct
+    #      property_ids → properties_count=2.
+    #   2. If no property column exists (single-property upload), we assign
+    #      the analysis-level canonical prop_id (prop_imp_{analysis_id[:8]})
+    #      as a fallback. This is stable across rebuilds and survives cache
+    #      clears. analysis_id is provenance here, not the only identity —
+    #      it's used ONLY when no imported property evidence is available.
+    canonical_prop_id = f"prop_imp_{analysis_id_for_canonical[:8]}"
+    for card in property_knowledge.get("tenants") or []:
+        if not isinstance(card, dict):
+            continue
+        # Only set the fallback property_id when the card has no imported
+        # property/building evidence. If `property` is non-empty, the
+        # canonical ingest layer will derive a stable prop_<hash> from it
+        # and that takes precedence (see unit_from_row in canonical/ingest.py).
+        if not (card.get("property") or card.get("property_raw")):
+            card.setdefault("property_id", canonical_prop_id)
     canonical_outputs = upload_analysis_to_canonical(
         property_knowledge=property_knowledge,
         metrics=metrics,
