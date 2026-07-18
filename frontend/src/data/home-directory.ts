@@ -38,9 +38,11 @@ export const HOME_SHORTCUTS: HomeShortcut[] = [
   { key: 'today', labelKey: 'org.short.today', icon: 'sun', anchor: 'priorities', accent: 'gold' },
   { key: 'upload', labelKey: 'org.short.upload', icon: 'upload-cloud', route: '/upload', accent: 'gold' },
   { key: 'properties', labelKey: 'org.short.properties', icon: 'home', route: '/portfolio' },
+  /** Figma UX strip — portfolio tile (pulse icon + المحفظة label). */
+  { key: 'portfolio', labelKey: 'more.portfolio', icon: 'activity', route: '/portfolio', accent: 'gold' },
   { key: 'contracts', labelKey: 'org.short.contracts', icon: 'file-text', route: '/contracts' },
-  { key: 'maintenance', labelKey: 'org.short.maintenance', icon: 'tool', route: '/maintenance', accent: 'emerald' },
-  { key: 'reports', labelKey: 'org.short.reports', icon: 'bar-chart-2', route: '/reports' },
+  { key: 'maintenance', labelKey: 'org.short.maintenance', icon: 'tool', route: '/maintenance', accent: 'gold' },
+  { key: 'reports', labelKey: 'org.short.reports', icon: 'bar-chart-2', route: '/reports', accent: 'gold' },
   { key: 'settings', labelKey: 'org.short.settings', icon: 'settings', route: '/settings' },
   { key: 'ask', labelKey: 'org.short.ask', icon: 'message-circle', route: '/brain', accent: 'gold' },
 ];

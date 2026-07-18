@@ -5,7 +5,7 @@ import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 
-import { HOME_SHORTCUTS } from '@/src/data/home-directory';
+import { HOME_SHORTCUTS, type HomeShortcut } from '@/src/data/home-directory';
 import { colors, spacing, typography, radius } from '@/src/theme';
 import { useI18n } from '@/src/i18n';
 
@@ -13,18 +13,32 @@ type Props = {
   onScrollToPriorities?: () => void;
   delay?: number;
   testID?: string;
+  /** Figma UX reorg — allow a curated subset (dashboard quick-access strip). */
+  items?: HomeShortcut[];
+  /** Hide subtitle — Figma dashboard strip uses title only. */
+  compact?: boolean;
 };
 
-export function HomeShortcuts({ onScrollToPriorities, delay = 100, testID = 'home-shortcuts' }: Props) {
+export function HomeShortcuts({
+  onScrollToPriorities,
+  delay = 100,
+  testID = 'home-shortcuts',
+  items,
+  compact = false,
+}: Props) {
   const { t, isRTL } = useI18n();
   const router = useRouter();
 
   return (
     <Animated.View entering={FadeInDown.duration(600).delay(delay)} style={styles.wrap} testID={testID}>
       <Text style={[styles.title, isRTL && styles.rtl]}>{t('org.shortcuts.title')}</Text>
-      <Text style={[styles.sub, isRTL && styles.rtl]}>{t('org.shortcuts.sub')}</Text>
-      <View style={styles.grid}>
-        {HOME_SHORTCUTS.map((sc) => {
+      {!compact ? (
+        <Text style={[styles.sub, isRTL && styles.rtl]}>{t('org.shortcuts.sub')}</Text>
+      ) : (
+        <View style={styles.compactGap} />
+      )}
+      <View style={[styles.grid, isRTL && styles.gridRtl]}>
+        {(items ?? HOME_SHORTCUTS).map((sc) => {
           const accent = sc.accent === 'emerald' ? colors.emerald : colors.gold;
           return (
             <Pressable
@@ -40,9 +54,8 @@ export function HomeShortcuts({ onScrollToPriorities, delay = 100, testID = 'hom
               }}
               style={({ pressed }) => [styles.tile, pressed && styles.tilePressed]}
             >
-              <View style={[styles.iconWrap, sc.accent && { borderColor: `${accent}55` }]}>
-                <Feather name={sc.icon} size={16} color={sc.accent ? accent : colors.textDim} />
-              </View>
+              {/* Figma: gold outline icon directly on dark card — no icon circle. */}
+              <Feather name={sc.icon} size={20} color={accent} />
               <Text style={[styles.label, isRTL && styles.rtl]} numberOfLines={2}>
                 {t(sc.labelKey as 'org.short.today')}
               </Text>
@@ -57,19 +70,21 @@ export function HomeShortcuts({ onScrollToPriorities, delay = 100, testID = 'hom
 const styles = StyleSheet.create({
   wrap: { marginBottom: spacing.xl },
   title: {
-    color: colors.text, fontSize: 17, fontWeight: typography.weight.semibold,
+    color: colors.text, fontSize: 15, fontWeight: typography.weight.semibold,
     letterSpacing: typography.letter.tight,
   },
   sub: { color: colors.textMuted, fontSize: 12, lineHeight: 18, marginTop: 4, marginBottom: spacing.md },
+  compactGap: { height: spacing.sm },
   rtl: { writingDirection: 'rtl', textAlign: 'right' },
   grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  gridRtl: { flexDirection: 'row-reverse' },
   tile: {
     width: '23%',
     minWidth: 72,
     flexGrow: 1,
     alignItems: 'center',
-    gap: 8,
-    paddingVertical: 14,
+    gap: 10,
+    paddingVertical: 16,
     paddingHorizontal: 6,
     borderRadius: radius.md,
     borderWidth: StyleSheet.hairlineWidth,
@@ -77,14 +92,8 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.025)',
   },
   tilePressed: { backgroundColor: 'rgba(255,255,255,0.05)' },
-  iconWrap: {
-    width: 36, height: 36, borderRadius: 18,
-    borderWidth: StyleSheet.hairlineWidth, borderColor: colors.border,
-    alignItems: 'center', justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.02)',
-  },
   label: {
-    color: colors.text, fontSize: 10.5, lineHeight: 14,
+    color: colors.text, fontSize: 11, lineHeight: 15,
     textAlign: 'center', fontWeight: typography.weight.medium,
   },
 });

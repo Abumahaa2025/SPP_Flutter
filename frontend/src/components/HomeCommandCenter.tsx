@@ -142,7 +142,12 @@ export function HomeCommandCenter({ briefing, notifications }: Props) {
     router.push('/brain');
   };
 
-  const incomplete = ready && !dailyMode && !isFullyReady;
+  /**
+   * Figma UX reorg — unify setup CTA into SetupProgressBar only.
+   * Show this amber card only when the progress bar is dismissed (still incomplete).
+   */
+  const incomplete =
+    ready && !dailyMode && !isFullyReady && Boolean(osState.dismissedProgress);
 
   return (
     <View testID="home-command-center">
