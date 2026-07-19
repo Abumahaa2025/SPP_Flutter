@@ -367,10 +367,128 @@ class TestMalformedOutput:
             resp = asyncio.get_event_loop().run_until_complete(
                 service.respond(LLMRequest(analysis_id="test"), ai_state)
             )
-            # Should not crash — either completed with warnings (validation failed on empty answer)
-            # or failed gracefully.
-            assert resp.status in ("completed", "failed")
+            # Malformed (None) text → empty answer → validation fails (Rule 7)
+            # → status="blocked_for_review" (not "completed" — the rejected
+            # empty text is not surfaced to the user).
+            assert resp.status in ("blocked_for_review", "failed")
             assert len(resp.warnings) > 0  # must have validation warnings
+        finally:
+            os.environ["AI_ENABLED"] = "false"
+
+
+# ===========================================================================
+# 10l-bis. Validation failure blocks the rejected LLM text from the user
+# ===========================================================================
+class TestValidationFailureBlocksResponse:
+    """End-to-end tests through LLMService.respond() verifying that when
+    validation fails, the rejected LLM text is NOT returned to the user.
+
+    Instead, a safe deterministic fallback is returned with
+    status="blocked_for_review", preserving analysis_id, task, gate_status,
+    and warnings.
+    """
+
+    def test_invented_financial_blocked(self):
+        """When the LLM invents financial values, the response must be
+        blocked_for_review and the invented text must NOT appear in answer."""
+        fake = FakeProvider(mode="invented_financial")
+        service = LLMService(provider=fake)
+        ai_state = _make_fake_ai_state()
+        import asyncio
+        os.environ["AI_ENABLED"] = "true"
+        try:
+            resp = asyncio.get_event_loop().run_until_complete(
+                service.respond(LLMRequest(analysis_id="test-aid-123"), ai_state)
+            )
+            # Status must be blocked_for_review (not completed)
+            assert resp.status == "blocked_for_review", \
+                f"expected blocked_for_review, got {resp.status}"
+            # The rejected LLM text must NOT appear in the answer
+            assert "999,999" not in resp.answer, \
+                f"invented financial value leaked into answer: {resp.answer}"
+            assert "إجمالي الإيرادات 999,999" not in resp.answer, \
+                f"rejected LLM text leaked into answer: {resp.answer}"
+            # Warnings must be preserved
+            assert len(resp.warnings) > 0, "warnings must be preserved"
+            assert any("financial" in w.lower() for w in resp.warnings), \
+                f"expected financial warning, got {resp.warnings}"
+            # Preserved fields
+            assert resp.analysis_id == "test-aid-123"
+            assert resp.task == "answer"
+            # Answer must contain the safe deterministic fallback marker
+            assert "الملخص التنفيذي" in resp.answer or "مراجعة" in resp.answer
+        finally:
+            os.environ["AI_ENABLED"] = "false"
+
+    def test_unknown_tenant_blocked(self):
+        """When the LLM mentions an unknown tenant, the response must be
+        blocked_for_review and the rejected text must NOT appear in answer."""
+        fake = FakeProvider(mode="unknown_tenant")
+        service = LLMService(provider=fake)
+        ai_state = _make_fake_ai_state()
+        import asyncio
+        os.environ["AI_ENABLED"] = "true"
+        try:
+            resp = asyncio.get_event_loop().run_until_complete(
+                service.respond(LLMRequest(analysis_id="test-aid-123"), ai_state)
+            )
+            # Status must be blocked_for_review
+            assert resp.status == "blocked_for_review", \
+                f"expected blocked_for_review, got {resp.status}"
+            # The rejected LLM text must NOT appear in the answer
+            assert "أحمد العتيبي" not in resp.answer, \
+                f"unknown tenant name leaked into answer: {resp.answer}"
+            assert "999" not in resp.answer, \
+                f"unknown unit number leaked into answer: {resp.answer}"
+            # Warnings must be preserved
+            assert len(resp.warnings) > 0, "warnings must be preserved"
+            assert any("tenant" in w.lower() for w in resp.warnings), \
+                f"expected tenant warning, got {resp.warnings}"
+            # Preserved fields
+            assert resp.analysis_id == "test-aid-123"
+            assert resp.task == "answer"
+        finally:
+            os.environ["AI_ENABLED"] = "false"
+
+    def test_gate_contradiction_blocked(self):
+        """When the LLM makes a definitive claim despite a blocked gate,
+        the response must be blocked_for_review and the rejected text must
+        NOT appear in answer."""
+        fake = FakeProvider(mode="gate_contradiction")
+        service = LLMService(provider=fake)
+        ai_state = _make_fake_ai_state()
+        # Set gate to blocked_for_review so Rule 6 (gate contradiction) fires.
+        ai_state["normalized_gate"] = {
+            "version": "consistency-gate-v1",
+            "status": "blocked_for_review",
+            "confidence_cap": 50,
+            "conflicts": [{"code": "paid_marked_overdue", "severity": "high", "message": "test"}],
+        }
+        import asyncio
+        os.environ["AI_ENABLED"] = "true"
+        try:
+            resp = asyncio.get_event_loop().run_until_complete(
+                service.respond(LLMRequest(analysis_id="test-aid-123"), ai_state)
+            )
+            # Status must be blocked_for_review
+            assert resp.status == "blocked_for_review", \
+                f"expected blocked_for_review, got {resp.status}"
+            # The rejected LLM text must NOT appear in the answer
+            assert "تأكيد مغادرة" not in resp.answer, \
+                f"rejected definitive claim leaked into answer: {resp.answer}"
+            assert "خالد" not in resp.answer, \
+                f"rejected tenant name leaked into answer: {resp.answer}"
+            assert "بشكل نهائي" not in resp.answer, \
+                f"rejected definitive language leaked into answer: {resp.answer}"
+            # Warnings must be preserved
+            assert len(resp.warnings) > 0, "warnings must be preserved"
+            assert any("gate" in w.lower() or "definitive" in w.lower() for w in resp.warnings), \
+                f"expected gate/definitive warning, got {resp.warnings}"
+            # Preserved fields
+            assert resp.analysis_id == "test-aid-123"
+            assert resp.task == "answer"
+            # gate_status must be preserved from context
+            assert resp.gate_status == "blocked_for_review"
         finally:
             os.environ["AI_ENABLED"] = "false"
 

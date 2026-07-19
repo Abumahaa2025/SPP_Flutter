@@ -14,7 +14,7 @@ from __future__ import annotations
 import logging
 import os
 import time
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from .contracts import LLMRequest, LLMResponse
 from .context_builder import build_controlled_context
@@ -125,21 +125,24 @@ class LLMService:
         # 6. Validate the response.
         is_valid, warnings = validate_llm_response(answer, context)
 
-        # 7. Determine final status.
+        # 7. If validation failed, do NOT return the rejected LLM text to the
+        # user. Return a safe deterministic fallback built only from trusted
+        # context data. Status is "blocked_for_review" because the LLM output
+        # was not safe to surface — the user must review the fallback instead.
         if not is_valid:
-            # Downgrade: use the answer but mark warnings.
             logger.warning("LLM response validation failed: %s", warnings)
-        elif gate_status == "blocked_for_review":
-            # Check if the answer depends on blocked evidence.
-            # If validation passed but gate is blocked, check for review language.
-            review_markers = ["مراجعة", "تحتاج", "مؤشرات", "تعارض"]
-            has_review_language = any(m in answer for m in review_markers)
-            if not has_review_language and task == "answer":
-                # The answer might not explicitly use review language.
-                # Add a warning but don't block — validation already checked.
-                pass
+            return self._validation_failed_response(
+                analysis_id=analysis_id,
+                task=task,
+                context=context,
+                gate_status=gate_status,
+                model=model,
+                provider_name=provider.name,
+                latency_ms=latency_ms,
+                warnings=warnings,
+            )
 
-        # 8. Extract cited decision IDs from the answer.
+        # 8. Validation passed — extract cited decision IDs from the answer.
         used_decision_ids = self._extract_decision_ids(answer, context)
 
         return LLMResponse(
@@ -197,6 +200,58 @@ class LLMService:
             provider=None,
             latency_ms=0,
             warnings=["AI_ENABLED=false — using deterministic fallback"],
+        )
+
+    def _validation_failed_response(
+        self,
+        analysis_id: str,
+        task: str,
+        context: Dict[str, Any],
+        gate_status: str,
+        model: Optional[str],
+        provider_name: Optional[str],
+        latency_ms: int,
+        warnings: List[str],
+    ) -> LLMResponse:
+        """Generate a safe deterministic fallback when LLM validation fails.
+
+        The rejected LLM text is NOT included in the response — only trusted
+        context data is used (same pattern as _disabled_response). Status is
+        "blocked_for_review" because the LLM output was not safe to surface.
+
+        Preserves: analysis_id, task, gate_status, warnings.
+        """
+        nl = context.get("normalized_lifecycle") or {}
+        summary = nl.get("summary") or {}
+        late_count = summary.get("late_count", 0)
+        departed_count = summary.get("departed_count", 0)
+        newcomers_count = summary.get("newcomers_count", 0)
+
+        parts = []
+        if late_count:
+            parts.append(f"يوجد {late_count} مستأجر متأخر")
+        if departed_count:
+            parts.append(f"{departed_count} مغادرة")
+        if newcomers_count:
+            parts.append(f"{newcomers_count} دخول")
+        if not parts:
+            parts.append("لا توجد إشارات حررة")
+
+        answer = f"الملخص التنفيذي: {' · '.join(parts)}."
+        answer += " تعذّر التحقق من صحة الرد — يُرجى المراجعة قبل الإجراءات التنفيذية."
+
+        return LLMResponse(
+            status="blocked_for_review",
+            analysis_id=analysis_id,
+            task=task,
+            answer=answer,
+            citations=["normalized_lifecycle.summary"],
+            used_decision_ids=[],
+            gate_status=gate_status,
+            model=model,
+            provider=provider_name,
+            latency_ms=latency_ms,
+            warnings=warnings,
         )
 
     def _get_citations(self, context: Dict[str, Any]) -> list:
