@@ -29,6 +29,14 @@ def api_client():
     """Seed Alexander Vale demo portfolio into memory store."""
     spp_server._mongo_available = False
     spp_server._memory_insert_all(spp_server._seed_dataset())
+    # Gap 3 (complete): reset AI state + portfolio cache so prior test
+    # modules (e.g. test_gap3_lifecycle_propagation) don't leak imported
+    # data into this module's assertions.
+    spp_server._portfolio_cache = None
+    spp_server._portfolio_cache_at = 0.0
+    spp_server._memory_db.pop(spp_server._AI_STATE_COLLECTION, None)
+    spp_server._memory_db.pop(spp_server._AI_STATE_LATEST_COLLECTION, None)
+    spp_server._last_applied_analysis = None
     # Optional: AI key stub so chat does not 500 on missing key.
     if not spp_server.EMERGENT_LLM_KEY:
         spp_server.EMERGENT_LLM_KEY = "test-local-key"

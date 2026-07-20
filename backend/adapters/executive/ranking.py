@@ -137,8 +137,18 @@ def build_ranked_items(
     tenants: List[dict],
     contracts: List[dict],
     decisions: List[dict],
+    *,
+    lifecycle: Optional[Dict[str, Any]] = None,
 ) -> List[dict]:
-    """Unified ranked queue from decisions, contracts, and portfolio signals."""
+    """Unified ranked queue from decisions, contracts, and portfolio signals.
+
+    Gap 3: when a persisted ai_state lifecycle is provided (imported from
+    upload analysis), inject tenant changes (departures / arrivals /
+    replacements) as additional ranked items with source="lifecycle".
+    These items close Gap 3 — without them, the executive agenda would
+    miss turnover signals that contracts[].status alone cannot surface.
+    Pre-Gap-3 behavior is fully preserved when lifecycle is None.
+    """
     props = _prop_map(properties)
     tenant_map = _tenant_by_property(tenants)
     max_rent = max((float(p.get("monthly_revenue") or 0) for p in properties), default=1.0)
@@ -244,6 +254,66 @@ def build_ranked_items(
                 "route": "/portfolio",
             }
         )
+
+    # --- Gap 3: inject lifecycle tenant changes as ranked items ---
+    # Each tenant change (departure / arrival / replacement) becomes a
+    # ranked item with source="lifecycle". Scored as medium urgency
+    # (owner should review but it's not a fire). Replacements score
+    # higher than pure departures (which may already be vacant).
+    if lifecycle and isinstance(lifecycle, dict):
+        changes = lifecycle.get("tenant_changes") or []
+        for ch in changes[:20]:  # cap at 20 to avoid agenda flood
+            if not isinstance(ch, dict):
+                continue
+            unit_label = str(ch.get("unit") or "")
+            if not unit_label:
+                continue
+            # Find the property for this unit (best-effort match by name).
+            pid = None
+            rent = 0.0
+            for p in properties:
+                if str(p.get("name") or "") == unit_label or unit_label in str(p.get("name") or ""):
+                    pid = p.get("id")
+                    rent = float(p.get("monthly_revenue") or 0)
+                    break
+            ch_type = ch.get("type") or "change"
+            from_t = ch.get("from_tenant") or "—"
+            to_t = ch.get("to_tenant") or "—"
+            # Replacements are more actionable than pure departures.
+            urgency = 60.0 if ch_type == "replacement" else 45.0
+            priority = "medium" if ch_type == "replacement" else "low"
+            score = score_item(
+                urgency=urgency,
+                financial=_financial_score(rent, max_rent),
+                contract=30.0,  # tenant change implies contract change
+                health_risk=20.0,  # not a health signal
+                priority=_PRIORITY_SCORE.get(priority, 25),
+            )
+            key = f"lc:{unit_label}:{ch_type}:{ch.get('month') or 0}:{ch.get('year') or 0}"
+            if key in seen_keys:
+                continue
+            seen_keys.add(key)
+            type_label = {
+                "departure": "مغادرة",
+                "arrival": "دخول",
+                "replacement": "استبدال",
+            }.get(ch_type, "تغيّر")
+            items.append(
+                {
+                    "id": key,
+                    "source": "lifecycle",
+                    "kind": "tenant",
+                    "priority": priority,
+                    "score": score,
+                    "tier": tier_for_score(score, priority),
+                    "title": f"{type_label} على الوحدة {unit_label}",
+                    "why": f"من {from_t} إلى {to_t} — أكّد الهوية والجوال قبل التحصيل.",
+                    "action": "راجع ملف المستأجر والعقد",
+                    "impact_aed": round(rent * 0.1),  # turnover cost ~10% of one month
+                    "property_id": pid,
+                    "route": "/tenants",
+                }
+            )
 
     items.sort(key=lambda x: (-x["score"], x.get("title", "")))
     return items

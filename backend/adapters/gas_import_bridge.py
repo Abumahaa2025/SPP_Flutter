@@ -590,6 +590,86 @@ def build_local_apply_commit(analysis_id: str) -> Dict[str, Any]:
             "gaps": metrics.get("gaps"),
         },
     }
+
+    # --- AI State block (Gap 1) ---
+    # Persist the full reasoning artifacts so the live-context endpoints
+    # (/api/briefing, /api/verdicts, /api/executive) can consume them after
+    # Apply — instead of rebuilding a fresh brief from raw properties/tenants
+    # with zero memory of the import reasoning.
+    #
+    # Shape contract (consumed by server._persist_ai_state + _load_ai_state):
+    #   analysis_id        — uuid string (matches the apply request)
+    #   pipeline_version   — from koil_reasoning.version (e.g. "koil-reasoning-v1")
+    #   applied_at         — ISO UTC timestamp (set by caller, not here —
+    #                        caller knows the real commit time)
+    #   status             — "applied" (failed applies never reach this path)
+    #   source             — "python" | "gas" (matches commit.source)
+    #   property_knowledge — full PK dict (units/collection/late/lifecycle/...)
+    #   koil_reasoning     — full reasoning dict (what_happened/why/risks/recs)
+    #   consistency_gate   — full gate dict (decision_status/conflicts/...)
+    #   executive_brief    — full brief dict (property_status/key_numbers/...)
+    #   lifecycle          — snapshot.lifecycle subset (departed/newcomers/active)
+    #   tenant_cards       — property_knowledge.tenants list (full payment ledger cards)
+    reasoning = session.get("koil_reasoning") or {}
+    gate = session.get("consistency_gate") or {}
+    ai_state = {
+        "analysis_id": analysis_id,
+        "pipeline_version": reasoning.get("version") or "koil-reasoning-v1",
+        "applied_at": None,  # set by server._persist_ai_state at commit time
+        "status": "applied",
+        "source": session.get("source") or "python",
+        "property_knowledge": pk,
+        "koil_reasoning": reasoning,
+        "consistency_gate": gate,
+        "executive_brief": brief,
+        "lifecycle": lc,
+        "tenant_cards": list(pk.get("tenants") or []),
+        # Gap 2: canonical portfolio + memory + intelligence outputs.
+        # Computed once during analyze_upload_portfolio(), persisted here
+        # so /api/portfolio-memory and /api/intelligence can serve them
+        # after Apply without rebuilding from unrelated demo/GAS data.
+        # All additive - ai_state consumers that don't read these keys
+        # are unaffected.
+        "canonical_portfolio_summary": session.get("canonical_portfolio_summary") or {},
+        "property_memory": session.get("property_memory") or {"summary": {}, "assets": []},
+        "executive_intelligence": session.get("executive_intelligence") or {"insights": [], "count": 0},
+        "canonical_warnings": session.get("canonical_warnings") or [],
+        # Gap 3 (complete): the ONE normalized lifecycle payload +
+        # lifecycle-derived smart decisions. This is the authoritative
+        # lifecycle source for all live-context endpoints.
+        "normalized_lifecycle": session.get("normalized_lifecycle") or {
+            "version": "lifecycle-v1",
+            "reporting_period": {},
+            "departed": [], "newcomers": [], "active": [],
+            "tenant_changes": [], "late_tenants": [],
+            "payment_ledger": [], "late_by_month": [],
+            "month_comparison": [], "annual_stats": {},
+            "summary": {"departed_count": 0, "newcomers_count": 0, "active_count": 0, "late_count": 0},
+            "warnings": [], "unresolved": [],
+            "source": "upload_analysis", "has_real_content": False, "month_count": 0,
+        },
+        "lifecycle_decisions": session.get("lifecycle_decisions") or [],
+        # Gap 4: the ONE unified smart decisions list. Authoritative for
+        # all live-context endpoints (/api/decisions, /api/executive,
+        # /api/briefing, /api/verdicts). Replaces the four independent
+        # decision lists with stable dedupe_keys + merged evidence.
+        "unified_smart_decisions": session.get("unified_smart_decisions") or [],
+        # Gap 5: the authoritative normalized consistency gate. Entity-aware
+        # blocking — only decisions referencing the conflicted entity are
+        # blocked; unrelated decisions remain executable.
+        "normalized_gate": session.get("normalized_gate") or {
+            "version": "consistency-gate-v1",
+            "status": "ok",
+            "confidence_cap": 100,
+            "blocking_reasons": [],
+            "warnings": [],
+            "conflicts": [],
+            "affected_outputs": [],
+            "review_actions": [],
+            "checked_at": None,
+            "analysis_id": None,
+        },
+    }
     return {
         "ok": True,
         "analysis_id": analysis_id,
@@ -601,6 +681,11 @@ def build_local_apply_commit(analysis_id: str) -> Dict[str, Any]:
         "units": int(metrics.get("units") or len(rows)),
         "tenant_count": len(tenants),
         "summary": session.get("summary") or {},
+        # Gap 1: AI reasoning artifacts for live-context endpoints.
+        # Server.upload_apply_analysis() reads this block and persists it
+        # via _persist_ai_state(). Older callers that don't read this key
+        # are unaffected (purely additive).
+        "ai_state": ai_state,
     }
 
 
@@ -643,5 +728,27 @@ def analyze_upload_with_gas_fallback(
         "summary": payload.get("summary"),
         "success_message": payload.get("success_message"),
         "executive_brief": payload.get("executive_brief"),
+        # Gap 1: also persist reasoning + gate so build_local_apply_commit()
+        # can include them in the ai_state block for live-context endpoints.
+        "koil_reasoning": payload.get("koil_reasoning"),
+        "consistency_gate": payload.get("consistency_gate"),
+        # Gap 2: also persist canonical portfolio + memory + intelligence
+        # outputs so /api/portfolio-memory and /api/intelligence can serve
+        # them after Apply without rebuilding from unrelated demo/GAS data.
+        "canonical_portfolio_summary": payload.get("canonical_portfolio_summary"),
+        "property_memory": payload.get("property_memory"),
+        "executive_intelligence": payload.get("executive_intelligence"),
+        "canonical_warnings": payload.get("canonical_warnings"),
+        # Gap 3 (complete): persist the normalized lifecycle payload +
+        # lifecycle decisions. This is the authoritative lifecycle source
+        # for /api/briefing, /api/verdicts, /api/executive, smart decisions.
+        "normalized_lifecycle": payload.get("normalized_lifecycle"),
+        "lifecycle_decisions": payload.get("lifecycle_decisions"),
+        # Gap 4: persist the ONE unified smart decisions list. This is the
+        # authoritative decision list for all live-context endpoints —
+        # replaces the four independent decision lists.
+        "unified_smart_decisions": payload.get("unified_smart_decisions"),
+        # Gap 5: persist the authoritative normalized consistency gate.
+        "normalized_gate": payload.get("normalized_gate"),
     }
     return payload

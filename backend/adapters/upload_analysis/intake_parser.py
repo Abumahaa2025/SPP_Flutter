@@ -51,7 +51,7 @@ def _detect_delimiter(line: str) -> str:
     return ","
 
 
-COLUMN_FIELDS = ("unit", "tenant", "rent", "phone", "contract", "pay_status", "paid", "late")
+COLUMN_FIELDS = ("unit", "tenant", "rent", "phone", "contract", "pay_status", "paid", "late", "property", "building")
 
 
 def _column_labels(headers: List[str], col_map: Dict[str, int]) -> Dict[str, str]:
@@ -118,6 +118,22 @@ def _map_columns(headers: List[str]) -> Dict[str, int]:
             col.setdefault("paid", i)
             if "pay_status" not in col:
                 col.setdefault("pay_status", i)
+        # Property / building / property-reference column.
+        # Used for multi-property uploads (one CSV with multiple buildings, or
+        # multiple CSVs each representing a different property). The parser
+        # passes the raw value through; the canonical ingest layer derives a
+        # stable property_id from it via stable_id(). When this column is
+        # absent, the canonical ingest falls back to prop_imp_{analysis_id[:8]}.
+        # Keywords cover Arabic + English variants:
+        #   عقار / العقار / عقار 1 / property / building / complex / tower / برج / مجمع / مرجع العقار / property_ref
+        if any(
+            k in hl
+            for k in (
+                "العقار", "عقار", "البرج", "برج", "المجمع", "مجمع", "مرجع العقار",
+                "property", "building", "complex", "tower", "property_ref", "propertyref",
+            )
+        ) and "وحدة" not in hl and "وحد" not in hl and "محل" not in hl and "unit" not in hl:
+            col.setdefault("property", i)
     return col
 
 
@@ -499,10 +515,23 @@ def parse_rent_roll_text(text: str, file_meta: dict) -> dict:
                 extra_cells = next(csv.reader(io.StringIO(lines[hi + extra]), delimiter=delim), [])
                 if not extra_cells:
                     continue
-                # Stop merging once a data row starts (numeric unit id — never treat as header labels).
-                # Previously int(first) < 200 false-positive merged units 201+ into the header block.
+                # Stop merging once a data row starts. The original heuristic
+                # checked if the FIRST cell is a digit (typical for unit-no-first
+                # sheets). But when a `property` column is present, the first
+                # cell is the property name (not a digit) — so we ALSO check
+                # the unit column cell and any other cell. If the unit column
+                # cell or rent column cell is a digit, this is a data row.
                 first = (extra_cells[0] or "").strip()
-                if first.isdigit():
+                unit_idx = col_map.get("unit", -1)
+                rent_idx = col_map.get("rent", -1)
+                unit_cell = (extra_cells[unit_idx] or "").strip() if 0 <= unit_idx < len(extra_cells) else ""
+                rent_cell = (extra_cells[rent_idx] or "").strip() if 0 <= rent_idx < len(extra_cells) else ""
+                looks_like_data = (
+                    first.isdigit()
+                    or (unit_cell and unit_cell.isdigit())
+                    or (rent_cell and rent_cell.replace(".", "", 1).replace(",", "").isdigit())
+                )
+                if looks_like_data:
                     break
                 extra_map = _map_columns(extra_cells)
                 for key, idx in extra_map.items():
@@ -544,12 +573,36 @@ def parse_rent_roll_text(text: str, file_meta: dict) -> dict:
         rent = _money(_cell(cells, col_map.get("rent", -1)))
         phone_raw = _cell(cells, col_map.get("phone", -1))
         phone_info = normalize_saudi_phone(phone_raw)
+        # Property / building identity — read from the property column when
+        # present (multi-property uploads). Empty string when no property
+        # column exists (single-property uploads). The canonical ingest layer
+        # derives a stable property_id from this value (when non-empty) or
+        # falls back to prop_imp_{analysis_id[:8]}.
+        property_raw = _cell(cells, col_map.get("property", -1))
+        # Vacancy normalization — done ONCE at the parser (root cause fix).
+        # The parser must NOT silently substitute the unit label for a missing
+        # tenant. Doing so corrupts every downstream count: active lists,
+        # tenant cards, and canonical units all carry a phantom "tenant"
+        # that is actually the unit label. Instead we:
+        #   1. preserve the raw tenant value (tenant_raw, even if empty),
+        #   2. set is_vacant=True when the tenant cell is empty,
+        #   3. leave `tenant` as the empty string (not the unit label).
+        tenant_clean = (tenant or "").strip()
+        is_vacant = not tenant_clean
+        normalization_flags: List[str] = []
+        if is_vacant:
+            normalization_flags.append("vacant")
         row = {
             "unit": unit,
             "unit_no": unit_info["unit_no"],
             "unit_type": unit_info["unit_type"],
             "unit_raw": unit_info["unit_raw"],
-            "tenant": tenant or unit,
+            "tenant": tenant_clean,           # normalized: empty when vacant
+            "tenant_raw": tenant,             # preserved raw cell value
+            "is_vacant": is_vacant,           # explicit vacancy flag
+            "normalization_flags": normalization_flags,
+            "property": property_raw,         # raw property/building cell (may be empty)
+            "property_raw": property_raw,     # preserved alias
             "phone": phone_info["phone"] or phone_raw,
             "phone_raw": phone_info["phone_raw"],
             "phone_e164": phone_info["phone_e164"],
