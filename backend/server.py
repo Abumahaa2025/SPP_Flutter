@@ -24,6 +24,7 @@ from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone, timedelta
 
+from adapters.gas_client import GasClientError
 from adapters.live_data import domain_source, get_gas_client, resolve_domain, beta_mode_enabled
 from adapters.executive.brain import build_executive_brain
 from adapters.canonical.pipeline import (
@@ -860,6 +861,30 @@ _portfolio_cache_at: float = 0.0
 _PORTFOLIO_CACHE_TTL_SEC = 25.0
 
 
+async def _mongo_portfolio_context() -> Dict[str, Any]:
+    """Mongo / empty fallback when GAS is unavailable or canonical load fails.
+
+    Mirrors the domain keys used by live-context endpoints so briefing /
+    executive / list routes keep returning 200 with empty-or-mongo data
+    instead of raising GasClientError (HTTP 500).
+    """
+    props, decisions, tenants, contracts, reports = await asyncio.gather(
+        _mongo_properties(),
+        _mongo_decisions(),
+        _mongo_tenants(),
+        _mongo_contracts(),
+        _mongo_reports(),
+    )
+    return {
+        "settings": {},
+        "properties": props,
+        "tenants": tenants,
+        "contracts": contracts,
+        "decisions": decisions,
+        "reports": reports,
+    }
+
+
 async def _portfolio_live_context() -> Dict[str, Any]:
     """Load portfolio domains in parallel; short TTL cache avoids duplicate GAS round-trips."""
     global _portfolio_cache, _portfolio_cache_at
@@ -888,9 +913,7 @@ async def _portfolio_live_context() -> Dict[str, Any]:
                 "decisions": data.get("decisions", []),
                 "reports": data.get("reports", []),
             }
-    elif not _gas_live_mode():
-        ctx = await asyncio.to_thread(_gas_canonical_context)
-    else:
+    elif _gas_live_mode():
         props, decisions, tenants, contracts, reports = await asyncio.gather(
             _list_properties_live(),
             _list_decisions_live(),
@@ -918,6 +941,23 @@ async def _portfolio_live_context() -> Dict[str, Any]:
             "decisions": decisions,
             "reports": reports,
         }
+    else:
+        # `_gas_live_mode()` is False when GAS is unconfigured OR when the
+        # data source is mongo-only. The old path always called
+        # `_gas_canonical_context()`, which raises GasClientError when
+        # GOOGLE_APPS_SCRIPT_URL is missing — turning every live-context
+        # endpoint (briefing, properties, upload roundtrip, …) into HTTP 500.
+        gas = get_gas_client()
+        if gas.configured:
+            try:
+                ctx = await asyncio.to_thread(_gas_canonical_context)
+            except (GasClientError, Exception) as exc:
+                logger.warning(
+                    "GAS canonical context failed; falling back to mongo: %s", exc
+                )
+                ctx = await _mongo_portfolio_context()
+        else:
+            ctx = await _mongo_portfolio_context()
 
     # Gap 1: enrich ctx with the latest successfully-applied AI reasoning
     # artifacts. _load_ai_state() returns None when no state has been
