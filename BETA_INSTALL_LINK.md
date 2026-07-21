@@ -3,39 +3,30 @@
 ## الرابط الوحيد — احفظه
 
 **تثبيت مباشر (APK) — افتح على أندرويد في Chrome:**
-https://expo.dev/artifacts/eas/GdiPAg-zXwoIyfM5rUbghf2l2hwuOYsr9ZwO5PXHeW4.apk
+https://github.com/Abumahaa2025/SPP_Flutter/releases/download/v1.0.0-beta.22/spp-beta.apk
 
-**صفحة البناءات الدائمة:**
-https://expo.dev/accounts/abumahaa2025/projects/spp-beta/builds
+**صفحة الـ Release:**
+https://github.com/Abumahaa2025/SPP_Flutter/releases/tag/v1.0.0-beta.22
 
 1. افتح رابط **APK المباشر** أعلاه من **هاتف أندرويد** (ليس من الكمبيوتر)
-2. إن لم يعمل: افتح صفحة البناءات → أحدث Build ناجح → Install
+2. إن لم يعمل: افتح صفحة الـ Release → حمّل `spp-beta.apk`
 3. فعّل «السماح من هذا المصدر» إن طُلب
 4. ثبّت فوق النسخة القديمة (`ai.spp.beta`)
 
-> **ملاحظة:** رابط `updates/...` للتحديثات فقط — **لا يثبّت** التطبيق لأول مرة.
-
 ---
 
-## التحديثات بدون APK جديد
+## Backend الحي (Render)
 
-بعد التثبيت الأول، التحديثات تصل عبر **Expo Updates** (قناة `beta`):
-
-```powershell
-cd frontend
-npx eas-cli update --channel beta --message "وصف التحديث"
-```
-
-المختبرون يفتحون التطبيق → يحصلون على التحديث تلقائيًا.
+- URL: https://spp-beta-api.onrender.com
+- Branch: `conflict_030726_0550`
+- Commit: `66ee668e929e08e0086e7d30e4e83f82fcd507c4`
+- Health: `GET /api/beta/info`
+- Build info: `GET /api/build-info`
 
 ---
 
 ## الإصدار الحالي
 
-`1.0.0-beta.6+opsv2` — Operational Experience V2 · استيراد ذكي · صيانة · بوابات · موظف ذكي
-
-**أحدث APK:** https://expo.dev/accounts/abumahaa2025/projects/spp-beta/builds/4ce547cc-9fc7-46b5-803b-3e0a78b07276
-
-**أحدث OTA:** https://expo.dev/accounts/abumahaa2025/projects/spp-beta/updates/41382a17-7c73-4a9e-8239-9f3054ffecba
+`1.0.22` — Beta 22 · مهلة تحليل 240ث + إيقاظ Render عند فتح شاشة الرفع
 
 © SPP Labs

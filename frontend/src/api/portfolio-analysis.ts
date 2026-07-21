@@ -331,7 +331,8 @@ export type UploadFileMeta = {
   parsedFromExcel?: boolean;
 };
 
-const ANALYSIS_TIMEOUT_MS = 90_000;
+// Render free tier cold start (~60s) + full analysis (~30-60s) can exceed 90s.
+const ANALYSIS_TIMEOUT_MS = 240_000;
 
 export async function fetchPortfolioAnalysis(files: UploadFileMeta[]): Promise<PortfolioAnalysis> {
   const lang = getLang();

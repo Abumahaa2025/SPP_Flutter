@@ -1,4 +1,4 @@
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, Pressable, Platform, ActivityIndicator,
 } from 'react-native';
@@ -53,6 +53,12 @@ export default function UploadScreen() {
   const [pickError, setPickError] = useState<string | null>(null);
   const [lastFileMeta, setLastFileMeta] = useState<UploadFileMeta[]>([]);
   const [applyDone, setApplyDone] = useState(false);
+
+  // Warm up Render (free tier sleeps) so analysis doesn't eat the cold start.
+  // Fire-and-forget: never blocks the screen, never surfaces an error.
+  useEffect(() => {
+    fetch(apiUrl('/')).catch(() => {});
+  }, []);
 
   const pickFiles = useCallback(async () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
