@@ -39,6 +39,8 @@ from adapters.mappers.verdicts import build_verdicts
 from adapters.mappers.contracts import map_contracts_from_app_data, reconcile_contracts
 from adapters.mappers.decisions import map_decisions_from_app_data
 from adapters.mappers.notifications import map_notifications_from_app_data
+from adapters.mappers.ai_notifications import derive_notifications_from_ai_state
+from adapters.mappers.common import slug
 from adapters.mappers.properties import map_properties_from_app_data
 from adapters.mappers.reports import map_reports_from_app_data
 from adapters.mappers.tenants import map_tenants_from_app_data
@@ -731,6 +733,77 @@ async def _clear_ai_state() -> None:
         logger.warning("AI state clear failed: %s", exc)
 
 
+async def _persist_apply_notifications(notifications: List[dict], analysis_id: str) -> None:
+    """Upsert Apply-derived notifications; drop stale n_ai_* from other analyses."""
+    if not analysis_id:
+        return
+
+    aid_slug = slug(analysis_id)
+    current_prefix = f"n_ai_{aid_slug}_"
+
+    if _use_memory_store():
+        store = _memory_db.get("notifications")
+        if not isinstance(store, list):
+            store = []
+        legacy = [
+            n for n in store
+            if not str(n.get("id") or "").startswith("n_ai_")
+            or str(n.get("id") or "").startswith(current_prefix)
+        ]
+        by_id = {str(n.get("id")): n for n in legacy if n.get("id")}
+        for notif in notifications:
+            nid = str(notif.get("id") or "")
+            if nid:
+                by_id[nid] = notif
+        _memory_db["notifications"] = list(by_id.values())
+        return
+
+    if not _mongo_available:
+        return
+
+    try:
+        coll = _get_db()["notifications"]
+        await coll.delete_many(
+            {
+                "id": {"$regex": r"^n_ai_"},
+                "analysis_id": {"$ne": analysis_id},
+            }
+        )
+        for notif in notifications:
+            nid = notif.get("id")
+            if not nid:
+                continue
+            await coll.update_one({"id": nid}, {"$set": notif}, upsert=True)
+    except Exception as exc:
+        logger.warning("Apply notifications persist failed (analysis_id=%s): %s", analysis_id, exc)
+
+
+async def _finalize_apply_ai_state(commit: Dict[str, Any]) -> tuple[Dict[str, Any], bool]:
+    """Persist ai_state + derived notifications after a successful Apply commit."""
+    ai_state = dict(commit.get("ai_state") or {})
+    ai_state_persisted = False
+    if not ai_state:
+        return ai_state, False
+
+    pk_check = ai_state.get("property_knowledge") or {}
+    reasoning_check = ai_state.get("koil_reasoning") or {}
+    if not pk_check or not reasoning_check:
+        logger.warning(
+            "Skipping AI state persist for analysis_id=%s — incomplete "
+            "(property_knowledge or koil_reasoning empty)",
+            ai_state.get("analysis_id"),
+        )
+        return ai_state, False
+
+    applied_at = _iso(datetime.now(timezone.utc))
+    ai_state["applied_at"] = applied_at
+    await _persist_ai_state(ai_state)
+    ai_state_persisted = True
+    derived = derive_notifications_from_ai_state(ai_state)
+    await _persist_apply_notifications(derived, str(ai_state.get("analysis_id") or ""))
+    return ai_state, ai_state_persisted
+
+
 def _gas_memory_bundle() -> Optional[Dict[str, Any]]:
     gas = get_gas_client()
     if not gas.configured:
@@ -845,6 +918,9 @@ async def _list_reports_live() -> List[dict]:
 
 
 async def _list_notifications_live() -> List[dict]:
+    ai_state = await _load_ai_state()
+    if ai_state:
+        return derive_notifications_from_ai_state(ai_state)
     return await resolve_domain("ALERTS", _gas_notifications, _mongo_notifications)
 
 
@@ -1701,13 +1777,21 @@ async def upload_apply_analysis(req: UploadApplyRequest):
                 req.analysis_id,
                 files_dump,
             )
+            commit = build_local_apply_commit(req.analysis_id)
+            ai_state, ai_state_persisted = await _finalize_apply_ai_state(commit)
+            _portfolio_cache = None
+            _portfolio_cache_at = 0.0
             _last_applied_analysis = req.analysis_id
+            applied_at = _iso(datetime.now(timezone.utc))
             return {
                 "ok": True,
                 "analysis_id": req.analysis_id,
-                "applied_at": _iso(datetime.now(timezone.utc)),
+                "applied_at": applied_at,
                 "gas": True,
                 "commit": result.get("result"),
+                "ai_state_persisted": ai_state_persisted,
+                "ai_state_analysis_id": (ai_state or {}).get("analysis_id") if ai_state_persisted else None,
+                "ai_state_pipeline_version": (ai_state or {}).get("pipeline_version") if ai_state_persisted else None,
             }
         except Exception as exc:
             # Match analyze_upload_with_gas_fallback: if GAS cannot commit, materialise
@@ -1731,34 +1815,7 @@ async def upload_apply_analysis(req: UploadApplyRequest):
     _memory_db["reports"] = list(commit.get("reports") or [])
     _memory_db.setdefault("decisions", [])
 
-    # Gap 1: persist AI reasoning artifacts (property_knowledge, koil_reasoning,
-    # consistency_gate, executive_brief, lifecycle, tenant_cards) so the next
-    # /api/briefing, /api/verdicts, /api/executive call can consume them.
-    #
-    # Safety: this is reached ONLY after build_local_apply_commit() succeeded
-    # with non-empty properties/tenants. A failed analysis raises HTTPException
-    # above and never reaches this line — last valid AI state is preserved.
-    #
-    # Additional safety: _persist_ai_state() refuses to persist an AI state
-    # with empty property_knowledge or koil_reasoning (which happens when the
-    # session lookup returned {} for an unknown analysis_id). The
-    # ai_state_persisted flag in the response reflects whether persistence
-    # actually happened.
-    ai_state = commit.get("ai_state") or {}
-    ai_state_persisted = False
-    if ai_state:
-        # Check completeness BEFORE persisting so the response flag is accurate.
-        pk_check = ai_state.get("property_knowledge") or {}
-        reasoning_check = ai_state.get("koil_reasoning") or {}
-        if pk_check and reasoning_check:
-            await _persist_ai_state(ai_state)
-            ai_state_persisted = True
-        else:
-            logger.warning(
-                "Skipping AI state persist for analysis_id=%s — incomplete "
-                "(property_knowledge or koil_reasoning empty)",
-                req.analysis_id,
-            )
+    ai_state, ai_state_persisted = await _finalize_apply_ai_state(commit)
 
     _portfolio_cache = None
     _portfolio_cache_at = 0.0
@@ -1778,11 +1835,6 @@ async def upload_apply_analysis(req: UploadApplyRequest):
             "source": commit.get("source"),
             "summary": commit.get("summary") or {},
         },
-        # Gap 1: surface the persisted AI state pointer in the response so
-        # clients can verify reasoning was persisted. Frontend ignores this
-        # field if it doesn't recognize it (additive). ai_state_persisted
-        # is False when the session was empty (unknown analysis_id) — the
-        # safety guard refused to overwrite the last valid state.
         "ai_state_persisted": ai_state_persisted,
         "ai_state_analysis_id": (ai_state or {}).get("analysis_id") if ai_state_persisted else None,
         "ai_state_pipeline_version": (ai_state or {}).get("pipeline_version") if ai_state_persisted else None,

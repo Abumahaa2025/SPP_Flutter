@@ -248,8 +248,9 @@ def map_gas_report_to_portfolio(
         lang=lang,
     )
 
+    deep = deep_stub_from_gas(report, files)
     import_snapshot = snapshot_from_gas_report(report, batch_id, files)
-    koil_understanding = run_koil_understanding(files, deep_stub_from_gas(report, files), lang)
+    koil_understanding = run_koil_understanding(files, deep, lang)
     property_knowledge = build_property_knowledge(import_snapshot, lang)
     koil_reasoning = run_koil_reasoning(property_knowledge, lang)
 
@@ -368,7 +369,7 @@ def map_gas_report_to_portfolio(
     metrics = enrich_metrics_for_summary(metrics, property_knowledge)
 
     consistency_gate = run_consistency_gate(
-        deep_stub_from_gas(report, files),
+        deep,
         property_knowledge,
         lang,
     )
@@ -388,6 +389,36 @@ def map_gas_report_to_portfolio(
         executive_report,
     )
 
+    from adapters.lifecycle import build_normalized_lifecycle, generate_lifecycle_decisions
+    from adapters.gate import normalize_gate_output, apply_gate_to_unified_decisions
+    from adapters.decisions import unify_decisions
+
+    normalized_lifecycle = build_normalized_lifecycle(deep, lang=lang)
+    lifecycle_decisions = generate_lifecycle_decisions(
+        normalized_lifecycle,
+        gate=consistency_gate,
+    )
+    normalized_gate = normalize_gate_output(
+        consistency_gate,
+        deep=deep,
+        knowledge=property_knowledge,
+        analysis_id=analysis_id,
+    )
+    unified_smart_decisions = unify_decisions(
+        koil_smart_decisions=smart_decisions,
+        koil_reasoning=koil_reasoning,
+        lifecycle_decisions=lifecycle_decisions,
+        live_decisions=[],
+        executive_ranked_items=[],
+        consistency_gate=consistency_gate,
+        analysis_id=analysis_id,
+        unresolved_count=len(normalized_lifecycle.get("unresolved") or []),
+        property_knowledge=property_knowledge,
+    )
+    unified_smart_decisions = apply_gate_to_unified_decisions(
+        unified_smart_decisions, normalized_gate,
+    )
+
     _import_sessions[analysis_id] = {
         "batch_id": batch_id,
         "files_meta": _to_gas_files_meta(files),
@@ -399,6 +430,16 @@ def map_gas_report_to_portfolio(
         "summary": summary,
         "success_message": koil_reasoning.get("brief") or report.get("headline") or labels["success"].format(months=month_count),
         "executive_brief": executive_brief,
+        "koil_reasoning": koil_reasoning,
+        "consistency_gate": consistency_gate,
+        "normalized_lifecycle": normalized_lifecycle,
+        "lifecycle_decisions": lifecycle_decisions,
+        "unified_smart_decisions": unified_smart_decisions,
+        "normalized_gate": normalized_gate,
+        "canonical_portfolio_summary": {},
+        "property_memory": {"summary": {}, "assets": []},
+        "executive_intelligence": {"insights": [], "count": 0},
+        "canonical_warnings": [],
     }
 
     return {
