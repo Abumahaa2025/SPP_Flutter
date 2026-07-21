@@ -20,7 +20,7 @@ import json
 import time
 import asyncio
 from pathlib import Path
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, ConfigDict, Field
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timezone, timedelta
 
@@ -41,6 +41,11 @@ from adapters.mappers.decisions import map_decisions_from_app_data
 from adapters.mappers.notifications import map_notifications_from_app_data
 from adapters.mappers.ai_notifications import derive_notifications_from_ai_state
 from adapters.mappers.common import slug
+from adapters.decision_approvals import (
+    ApprovalValidationError,
+    build_approval_record,
+    find_decision,
+)
 from adapters.mappers.properties import map_properties_from_app_data
 from adapters.mappers.reports import map_reports_from_app_data
 from adapters.mappers.tenants import map_tenants_from_app_data
@@ -717,6 +722,52 @@ async def _load_ai_state() -> Optional[Dict[str, Any]]:
         return None
 
 
+async def _load_ai_state_by_analysis_id(analysis_id: str) -> Optional[Dict[str, Any]]:
+    """Load one applied analysis explicitly instead of following latest."""
+    if _use_memory_store():
+        return _ai_state_memory_store().get(analysis_id)
+    if not _mongo_available:
+        return None
+    try:
+        doc = await _get_db()[_AI_STATE_COLLECTION].find_one(
+            {"analysis_id": analysis_id},
+            {"_id": 0},
+        )
+        return _strip_id(doc) if doc else None
+    except Exception as exc:
+        logger.warning("AI state load failed (analysis_id=%s): %s", analysis_id, exc)
+        raise RuntimeError("ai_state_store_unavailable") from exc
+
+
+async def _persist_decision_approval(record: Dict[str, Any]) -> tuple[Dict[str, Any], bool]:
+    """Atomically insert one durable approval, returning its canonical record."""
+    if not _mongo_available:
+        raise RuntimeError("approval_store_unavailable")
+
+    approval_id = record.get("_id")
+    if not approval_id:
+        raise RuntimeError("approval_id_missing")
+
+    try:
+        collection = _get_db()["decision_approvals"]
+        result = await collection.update_one(
+            {"_id": approval_id},
+            {"$setOnInsert": record},
+            upsert=True,
+        )
+        stored = await collection.find_one({"_id": approval_id})
+        if not stored:
+            raise RuntimeError("approval_not_persisted")
+        return _strip_id(stored), result.upserted_id is None
+    except Exception as exc:
+        logger.warning(
+            "Decision approval persist failed (approval_id=%s): %s",
+            approval_id,
+            exc,
+        )
+        raise RuntimeError("approval_store_unavailable") from exc
+
+
 async def _clear_ai_state() -> None:
     """Clear all persisted AI state. Used by /api/demo/clear so a fresh
     demo load doesn't leak the previous import's reasoning."""
@@ -1297,6 +1348,71 @@ async def list_decisions():
         }
     # Legacy fallback: return the raw decisions list (pre-Gap-4 shape).
     return ctx["decisions"]
+
+
+class DecisionApproveRequest(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    analysis_id: str
+    decision_id: str
+
+
+@api_router.post("/decisions/approve")
+async def approve_decision(req: DecisionApproveRequest):
+    """Approve and prepare one late-tenant reminder without sending it."""
+    if not _mongo_available:
+        raise HTTPException(
+            503,
+            {"code": "approval_store_unavailable", "message": "MongoDB is required"},
+        )
+
+    try:
+        ai_state = await _load_ai_state_by_analysis_id(req.analysis_id)
+    except RuntimeError as exc:
+        raise HTTPException(
+            503,
+            {"code": "approval_store_unavailable", "message": str(exc)},
+        ) from exc
+    if not ai_state:
+        raise HTTPException(
+            404,
+            {"code": "analysis_not_found", "analysis_id": req.analysis_id},
+        )
+
+    decision = find_decision(ai_state, req.decision_id)
+    if not decision:
+        raise HTTPException(
+            404,
+            {
+                "code": "decision_not_found",
+                "analysis_id": req.analysis_id,
+                "decision_id": req.decision_id,
+            },
+        )
+
+    try:
+        approval = build_approval_record(ai_state, decision)
+    except ApprovalValidationError as exc:
+        status_code = 422 if exc.code == "decision_data_incomplete" else 409
+        raise HTTPException(
+            status_code,
+            {"code": exc.code, "message": str(exc)},
+        ) from exc
+
+    try:
+        stored, idempotent_replay = await _persist_decision_approval(approval)
+    except RuntimeError as exc:
+        raise HTTPException(
+            503,
+            {"code": "approval_store_unavailable", "message": str(exc)},
+        ) from exc
+
+    return {
+        "ok": True,
+        "status": "approved_and_prepared",
+        "idempotent_replay": idempotent_replay,
+        "approval": stored,
+    }
 
 
 @api_router.get("/tenants")
