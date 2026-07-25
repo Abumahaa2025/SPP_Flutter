@@ -100,6 +100,7 @@ export default function RootLayout() {
 
       const isDeepLink =
         pathname.startsWith('/portal/') ||
+        pathname.startsWith('/roles/accept') ||
         ['/support', '/about', '/billing', '/privacy', '/terms'].includes(pathname);
 
       let target = '/';

@@ -88,6 +88,8 @@ export type TenantNotification = {
 
 export type TenantApprovalStatus = 'pending' | 'approved' | 'reprocess';
 
+export type CostEvaluationStatus = 'none' | 'proposed' | 'approved' | 'rejected';
+
 export type MaintenanceCategory = 'plumbing' | 'electrical' | 'ac' | 'general' | 'other';
 
 export type MaintenancePriority = 'low' | 'medium' | 'high' | 'urgent';
@@ -137,6 +139,12 @@ export type MaintenanceTicket = {
   tenantComment?: string;
   rating?: number;
   sppInsight?: string;
+  /** Stitch: تقييم التكلفة المالية */
+  estimatedCost?: number;
+  costCurrency?: string;
+  costNote?: string;
+  costStatus?: CostEvaluationStatus;
+  costDecidedAt?: string;
   createdAt: string;
   updatedAt: string;
   closedAt?: string;

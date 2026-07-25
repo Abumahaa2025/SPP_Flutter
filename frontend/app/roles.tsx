@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import {
-  View, Text, StyleSheet, Pressable, Alert, Switch,
+  View, Text, StyleSheet, Pressable, Alert, Switch, Share, Linking,
 } from 'react-native';
 import { KeyboardAwareTextInput } from '@/src/components/KeyboardAwareTextInput';
 import { Feather } from '@expo/vector-icons';
@@ -17,10 +17,15 @@ import { useI18n } from '@/src/i18n';
 import {
   useRoles, ROLE_PERMISSION_KEYS, type RoleKey, type RoleMember,
 } from '@/src/hooks/useRoles';
+import { storage } from '@/src/utils/storage';
 
 const ROLES: RoleKey[] = [
   'owner', 'co_owner', 'property_manager', 'accountant', 'technician', 'tenant',
 ];
+
+function inviteToken() {
+  return `inv_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+}
 
 export default function RolesScreen() {
   const { t, isRTL } = useI18n();
@@ -30,6 +35,7 @@ export default function RolesScreen() {
   const [showAdd, setShowAdd] = useState(false);
   const [draftName, setDraftName] = useState('');
   const [draftEmail, setDraftEmail] = useState('');
+  const [inviteChannel, setInviteChannel] = useState<'whatsapp' | 'sms' | 'link'>('whatsapp');
 
   const dir = isRTL ? 'rtl' : 'ltr';
   const perms = ROLE_PERMISSION_KEYS[selectedRole];
@@ -51,6 +57,40 @@ export default function RolesScreen() {
     ]);
   };
 
+  const sendInvite = async (m: RoleMember) => {
+    Haptics.selectionAsync();
+    const token = inviteToken();
+    const pending = {
+      token,
+      memberId: m.id,
+      name: m.name,
+      email: m.email,
+      role: m.role,
+      createdAt: new Date().toISOString(),
+      status: 'pending' as const,
+    };
+    const raw = await storage.getItem<string>('spp.roleInvites', '[]');
+    let list: typeof pending[] = [];
+    try { list = JSON.parse(raw || '[]'); } catch { list = []; }
+    list = [pending, ...list].slice(0, 40);
+    await storage.setItem('spp.roleInvites', JSON.stringify(list));
+
+    const deepLink = `spp://roles/accept?token=${token}`;
+    const msg = t('roles.invite.message' as any)
+      .replace('{name}', m.name)
+      .replace('{role}', t(`roles.role.${m.role}` as 'roles.role.owner'))
+      .replace('{link}', deepLink);
+
+    if (inviteChannel === 'whatsapp') {
+      const wa = `https://wa.me/?text=${encodeURIComponent(msg)}`;
+      Linking.openURL(wa).catch(() => Share.share({ message: msg }));
+    } else if (inviteChannel === 'sms') {
+      Linking.openURL(`sms:?body=${encodeURIComponent(msg)}`).catch(() => Share.share({ message: msg }));
+    } else {
+      await Share.share({ message: msg });
+    }
+  };
+
   return (
     <ScreenScaffold testID="roles-screen">
       <StoryScreenHeader
@@ -62,7 +102,6 @@ export default function RolesScreen() {
 
       <GuidedSetup flowId="tenant" defaultOpen={false} testID="roles-guided" />
 
-      {/* Role selector */}
       <Animated.View entering={FadeInDown.duration(550)}>
         <GlassCard padding={20} radiusToken="lg" edge="gold">
           <Text style={[styles.section, dir === 'rtl' && styles.rtl]}>{t('roles.selectRole').toUpperCase()}</Text>
@@ -86,7 +125,6 @@ export default function RolesScreen() {
         </GlassCard>
       </Animated.View>
 
-      {/* Permissions matrix */}
       <Animated.View entering={FadeInDown.duration(600).delay(60)} style={{ marginTop: spacing.md }}>
         <GlassCard padding={20} radiusToken="lg" edge="emerald">
           <Text style={[styles.section, dir === 'rtl' && styles.rtl]}>{t('roles.permissions').toUpperCase()}</Text>
@@ -103,7 +141,34 @@ export default function RolesScreen() {
         </GlassCard>
       </Animated.View>
 
-      {/* Team members */}
+      <Animated.View entering={FadeInDown.duration(600).delay(90)} style={{ marginTop: spacing.md }}>
+        <GlassCard padding={16} radiusToken="md">
+          <Text style={[styles.section, dir === 'rtl' && styles.rtl]}>{t('roles.invite.channel' as any)}</Text>
+          <View style={[styles.roleGrid, { marginTop: 10 }]}>
+            {(['whatsapp', 'sms', 'link'] as const).map((ch) => (
+              <Pressable
+                key={ch}
+                testID={`invite-ch-${ch}`}
+                onPress={() => { Haptics.selectionAsync(); setInviteChannel(ch); }}
+                style={[styles.roleChip, inviteChannel === ch && styles.roleChipActive]}
+              >
+                <Text style={[styles.roleChipText, inviteChannel === ch && { color: colors.gold }]}>
+                  {t(`roles.invite.${ch}` as any)}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+          <Pressable
+            testID="roles-open-accept"
+            style={styles.acceptLink}
+            onPress={() => router.push('/roles/accept' as any)}
+          >
+            <Feather name="shield" size={13} color={colors.emerald} />
+            <Text style={styles.acceptLinkText}>{t('roles.invite.openAccept' as any)}</Text>
+          </Pressable>
+        </GlassCard>
+      </Animated.View>
+
       <Animated.View entering={FadeInDown.duration(600).delay(120)} style={{ marginTop: spacing.md }}>
         <GlassCard padding={20} radiusToken="lg">
           <View style={[styles.memberHead, dir === 'rtl' && styles.rowRtl]}>
@@ -159,6 +224,11 @@ export default function RolesScreen() {
                     {m.email || t('roles.noEmail')} · {t(`roles.role.${m.role}` as 'roles.role.owner')}
                   </Text>
                 </View>
+                {m.role !== 'owner' ? (
+                  <Pressable testID={`roles-invite-${m.id}`} onPress={() => sendInvite(m)} hitSlop={8}>
+                    <Feather name="send" size={14} color={colors.gold} />
+                  </Pressable>
+                ) : null}
                 <Switch
                   value={m.active}
                   onValueChange={(v) => updateMember(m.id, { active: v })}
@@ -227,5 +297,7 @@ const styles = StyleSheet.create({
   divider: { height: StyleSheet.hairlineWidth, backgroundColor: colors.divider },
   learnLink: { flexDirection: 'row', alignItems: 'center', gap: 8, justifyContent: 'center', marginTop: spacing.xl, marginBottom: spacing.md },
   learnLinkText: { color: colors.gold, fontSize: 12.5 },
+  acceptLink: { flexDirection: 'row', alignItems: 'center', gap: 8, marginTop: 14 },
+  acceptLinkText: { color: colors.emerald, fontSize: 12.5, fontWeight: typography.weight.medium },
   rtl: { writingDirection: 'rtl', textAlign: 'right' },
 });

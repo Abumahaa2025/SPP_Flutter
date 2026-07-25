@@ -267,6 +267,41 @@ export async function tenantRequestReprocess(
   return next;
 }
 
+/** Stitch flow: technician/owner proposes a repair cost for owner approval. */
+export async function proposeTicketCost(
+  ticket: MaintenanceTicket,
+  amount: number,
+  note?: string,
+  currency = 'SAR',
+): Promise<MaintenanceTicket> {
+  const next = patch(ticket, {
+    estimatedCost: amount,
+    costCurrency: currency,
+    costNote: note,
+    costStatus: 'proposed',
+  });
+  await upsertTicket(next);
+  await addPendingAction({
+    kind: 'approve_owner_alert',
+    labelKey: 'maint.cost.pending',
+    labelParams: { title: ticket.title, amount: String(amount) },
+    payload: { ticketId: ticket.id, kind: 'cost' },
+  });
+  return next;
+}
+
+export async function decideTicketCost(
+  ticket: MaintenanceTicket,
+  decision: 'approved' | 'rejected',
+): Promise<MaintenanceTicket> {
+  const next = patch(ticket, {
+    costStatus: decision,
+    costDecidedAt: now(),
+  });
+  await upsertTicket(next);
+  return next;
+}
+
 export function ticketsForTechnician(tickets: MaintenanceTicket[], techId: string) {
   return tickets.filter((t) => t.technicianId === techId);
 }

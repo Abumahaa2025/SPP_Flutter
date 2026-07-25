@@ -12,6 +12,8 @@ import {
   techCompleteTicket,
   tenantApproveTicket,
   tenantRequestReprocess,
+  proposeTicketCost,
+  decideTicketCost,
   ticketsForTechnician,
   ticketsForUnit,
 } from '@/src/utils/maintenance-workflow';
@@ -152,6 +154,22 @@ export function useOperational() {
     await reload();
   }, [reload]);
 
+  const proposeCost = useCallback(async (ticketId: string, amount: number, note?: string) => {
+    const s = await loadOperational();
+    const ticket = s.tickets.find((t) => t.id === ticketId);
+    if (!ticket) return;
+    await proposeTicketCost(ticket, amount, note);
+    await reload();
+  }, [reload]);
+
+  const decideCost = useCallback(async (ticketId: string, decision: 'approved' | 'rejected') => {
+    const s = await loadOperational();
+    const ticket = s.tickets.find((t) => t.id === ticketId);
+    if (!ticket) return;
+    await decideTicketCost(ticket, decision);
+    await reload();
+  }, [reload]);
+
   /** @deprecated use workflow methods */
   const assignTicket = useCallback(async (ticketId: string, techName: string) => {
     const s = await loadOperational();
@@ -222,6 +240,8 @@ export function useOperational() {
     completeTicket,
     tenantApprove,
     tenantReprocess,
+    proposeCost,
+    decideCost,
     assignTicket,
     updateTicketStatus,
     approveAction,

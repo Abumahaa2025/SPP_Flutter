@@ -33,15 +33,23 @@ export function isPathAllowedForPersona(
   if (SHARED_PREFIXES.some((p) => path === p || path.startsWith(`${p}/`))) return true;
 
   if (persona === 'tenant') {
-    return path === '/' || path.startsWith('/portal/tenant') || path === '/brain';
+    return (
+      path === '/'
+      || path.startsWith('/portal/tenant')
+      || path === '/brain'
+      || path.startsWith('/tenants/')
+      || path.startsWith('/roles/accept')
+    );
   }
 
   if (persona === 'technician') {
     return (
       path === '/'
       || path === '/maintenance'
+      || path.startsWith('/maintenance/')
       || path.startsWith('/portal/tech')
       || path === '/brain'
+      || path.startsWith('/roles/accept')
     );
   }
 

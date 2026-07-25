@@ -3,8 +3,10 @@
  * All figures from PropertyOS (Apply materialisation) — no demo / no invented values.
  */
 import React, { useMemo } from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
 import Animated, { FadeInDown } from 'react-native-reanimated';
+import { useRouter } from 'expo-router';
+import * as Haptics from 'expo-haptics';
 
 import { GlassCard } from '@/src/components/GlassCard';
 import type {
@@ -172,6 +174,7 @@ function Row({
 
 export function OperationalTenantCard({ tenant, state, delay = 0, testID }: Props) {
   const { isRTL, lang } = useI18n();
+  const router = useRouter();
   const ar = lang === 'ar' || isRTL;
   const view = useMemo(() => buildTenantOperationalView(tenant, state, ar), [tenant, state, ar]);
 
@@ -190,6 +193,12 @@ export function OperationalTenantCard({ tenant, state, delay = 0, testID }: Prop
 
   return (
     <Animated.View entering={FadeInDown.duration(450).delay(delay)} testID={testID}>
+      <Pressable
+        onPress={() => {
+          Haptics.selectionAsync();
+          router.push(`/tenants/${tenant.id}` as any);
+        }}
+      >
       <GlassCard padding={18} radiusToken="lg" edge="gold">
         <View style={[styles.head, isRTL && styles.rowRtl]}>
           <View style={[styles.avatar, { borderColor: colors.goldEdge }]}>
@@ -225,6 +234,7 @@ export function OperationalTenantCard({ tenant, state, delay = 0, testID }: Prop
         <Row label={ar ? 'البلاغات' : 'Tickets'} value={view.ticketsLabel} missing rtl={!!isRTL} />
         <Row label={ar ? 'حالة الالتزام' : 'Compliance'} value={view.complianceLabel} rtl={!!isRTL} tone={complianceTone} />
       </GlassCard>
+      </Pressable>
     </Animated.View>
   );
 }
